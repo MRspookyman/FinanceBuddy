@@ -4,9 +4,10 @@ import base64, datetime, http.server, io, json, mimetypes, os, re, secrets, sock
 from . import VERSION, clasificar as C, detectar, importar as IM, modelo, plantilla, rutas
 from .almacen import Almacen
 
+mimetypes.add_type("font/woff2", ".woff2")
 MODULOS = ["datos", "calculos", "componentes", "graficos", "inicio", "inversion", "formularios", "pantallas"]
 MAX_SUBIDA = 25 * 1024 * 1024
-ACENTOS = ["violeta", "azul", "verde", "coral", "rosa", "grafito"]  # colores de acento (estilos.css: body[data-acento])
+ACENTOS = ["salvia", "violeta", "azul", "verde", "coral", "rosa", "grafito"]  # colores de acento (estilos.css: body[data-acento])
 
 def leer(p):
     with io.open(p, "rb") as fh: return fh.read()

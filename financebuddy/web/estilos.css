@@ -1,52 +1,65 @@
 /* FinanceBuddy · estilos
-   Identidad: papel cálido + tinta, un degradado «aurora» (violeta → coral) solo para lo más importante,
-   tarjetas redondeadas y cifras grandes. Verde/rojo solo para ganancia/pérdida y estado. */
+   Identidad «papel»: fondo de papel cálido con una textura muy suave, tarjetas crema, títulos y cifras con serifa
+   (Fraunces, incluida en web/fuentes), colores pastel por categoría y un acento salvia. Líneas finas y aire.
+   Verde/rojo solo para ganancia/pérdida y estado. */
+@font-face{font-family:"Fraunces";src:url("/web/fuentes/fraunces.woff2") format("woff2");font-weight:100 900;font-style:normal;font-display:swap}
 :root{color-scheme:light}
 *{box-sizing:border-box}
 body{margin:0;font-family:"Segoe UI Variable Text","Segoe UI",system-ui,-apple-system,sans-serif;font-size:15px;line-height:1.45;-webkit-font-smoothing:antialiased;
- --bg:#F4F1EC;--surface:#FFFFFF;--surface-2:#F7F5F1;--line:#E8E3DB;--ink:#17151C;--ink-2:#5F5A68;--ink-3:#9D98A6;
- --brand:#5B3DF5;--brand-soft:#EEEAFF;--coral:#FF7A59;--mint:#0FA876;--rose:#E5484D;--amber:#E59400;
- --aurora:linear-gradient(135deg,#4F32E8 0%,#7C4DFF 48%,#FF7A59 100%);
- --shadow:0 1px 2px rgba(23,21,28,.04),0 10px 30px -12px rgba(40,24,90,.14);--shadow-s:0 8px 28px rgba(23,21,28,.16);
- --r:22px;--r-s:14px;--g:16px;
+ --serif:"Fraunces","Sitka Heading",Georgia,"Times New Roman",serif;
+ --bg:#F4EFE7;--surface:#FCFAF6;--surface-2:#F4EEE5;--line:#E8E0D3;--ink:#2A2119;--ink-2:#6B6056;--ink-3:#A3978A;
+ --brand:#5E8266;--brand-soft:#E4ECE1;--coral:#D2775F;--mint:#4F9A6A;--rose:#C8574B;--amber:#D69A3A;
+ --sand:#EAD7B4;--sand-soft:#F1E7D6;--hero:#F1E7D8;
+ --aurora:linear-gradient(135deg,#5E8266 0%,#8FAF91 55%,#D9BE8C 100%);
+ --textura:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .35 0 0 0 0 .27 0 0 0 0 .18 0 0 0 .05 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+ --shadow:0 1px 2px rgba(60,45,25,.05),0 12px 32px -18px rgba(60,45,25,.18);--shadow-s:0 10px 30px rgba(42,33,25,.16);
+ --r:20px;--r-s:14px;--g:16px;
  /* nombres antiguos (formularios y pantallas los usan) */
- --background-primary:var(--surface);--background-secondary:var(--surface-2);--background-modifier-border:var(--line);--background-modifier-hover:rgba(23,21,28,.045);
+ --background-primary:var(--surface);--background-secondary:var(--surface-2);--background-modifier-border:var(--line);--background-modifier-hover:rgba(60,45,25,.05);
  --text-normal:var(--ink);--text-muted:var(--ink-2);--text-faint:var(--ink-3);--text-accent:var(--brand);--interactive-accent:var(--brand);--text-on-accent:#fff;
  --font-interface:inherit;
- --fin-s1:#5B3DF5;--fin-s2:#FF7A59;--fin-s3:#0FA876;--fin-s4:#E59400;--fin-s5:#E0559B;--fin-s6:#2E90FA;--fin-s7:#8E7CC3;
- --fin-good:var(--mint);--fin-bad:var(--rose);--fin-warn:var(--amber);--fin-up:#0B8A61;--fin-down:#D23B40;
- background:var(--bg);color:var(--ink)}
+ --fin-s1:#6F9577;--fin-s2:#D98C6E;--fin-s3:#D2AE66;--fin-s4:#A794CC;--fin-s5:#7FA7BF;--fin-s6:#C9848F;--fin-s7:#A4A77A;
+ --fin-good:var(--mint);--fin-bad:var(--rose);--fin-warn:var(--amber);--fin-up:#3F8A5A;--fin-down:#B9523F;
+ background:var(--bg) var(--textura);color:var(--ink)}
 body.theme-dark{color-scheme:dark;
- --bg:#0D0C12;--surface:#16151D;--surface-2:#1D1C26;--line:#2A2835;--ink:#EEECF3;--ink-2:#A8A3B3;--ink-3:#6E6979;
- --brand:#8C7BFF;--brand-soft:#241F45;--coral:#FF8F73;--mint:#35D0A0;--rose:#FF6B77;--amber:#FFB02E;
- --shadow:0 1px 2px rgba(0,0,0,.3),0 12px 30px -14px rgba(0,0,0,.7);--background-modifier-hover:rgba(255,255,255,.06);
- --fin-s1:#8C7BFF;--fin-s2:#FF8F73;--fin-s3:#35D0A0;--fin-s4:#FFB02E;--fin-s5:#F277B5;--fin-s6:#5AA9FF;--fin-s7:#B3A6E8;--fin-up:#35D0A0;--fin-down:#FF6B77}
-/* Color de acento (Ajustes → Apariencia): cambia la marca, el degradado y la primera serie de los gráficos */
+ --bg:#15120E;--surface:#1E1A15;--surface-2:#28231C;--line:#352E25;--ink:#F1EADF;--ink-2:#BCB0A0;--ink-3:#857A6B;
+ --brand:#9CC2A0;--brand-soft:#26332A;--coral:#E79A80;--mint:#86C79A;--rose:#E58372;--amber:#E8B870;
+ --sand:#5A4A33;--sand-soft:#2E271E;--hero:#2A2419;
+ --aurora:linear-gradient(135deg,#4E6E56 0%,#6F8F73 55%,#9C8157 100%);
+ --shadow:0 1px 2px rgba(0,0,0,.3),0 12px 30px -14px rgba(0,0,0,.7);--background-modifier-hover:rgba(255,255,255,.05);
+ --fin-s1:#9CC2A0;--fin-s2:#E79A80;--fin-s3:#E0C07E;--fin-s4:#B9A8E0;--fin-s5:#95BCD3;--fin-s6:#DC9CA6;--fin-s7:#BFC18F;--fin-up:#86C79A;--fin-down:#E58372}
+/* Color de acento (Ajustes → Apariencia). Salvia es el de serie; los demás cambian la marca, el degradado y la 1.ª serie. */
+body[data-acento=violeta]{--brand:#5B3DF5;--brand-soft:#EEEAFF;--aurora:linear-gradient(135deg,#4F32E8 0%,#7C4DFF 48%,#FF7A59 100%);--fin-s1:#5B3DF5}
 body[data-acento=azul]{--brand:#2563EB;--brand-soft:#E7EEFF;--aurora:linear-gradient(135deg,#1D4ED8 0%,#3B82F6 52%,#22B8CF 100%);--fin-s1:#2563EB}
 body[data-acento=verde]{--brand:#0E9F6E;--brand-soft:#E1F5EC;--aurora:linear-gradient(135deg,#047857 0%,#10B981 55%,#A3D977 100%);--fin-s1:#0E9F6E}
-body[data-acento=coral]{--brand:#E4572E;--brand-soft:#FDEBE4;--aurora:linear-gradient(135deg,#D9480F 0%,#F76707 50%,#FAB005 100%);--fin-s1:#E4572E}
-body[data-acento=rosa]{--brand:#D6336C;--brand-soft:#FCE8EF;--aurora:linear-gradient(135deg,#A61E4D 0%,#E64980 50%,#F783AC 100%);--fin-s1:#D6336C}
-body[data-acento=grafito]{--brand:#3F3F46;--brand-soft:#ECECEE;--aurora:linear-gradient(135deg,#18181B 0%,#3F3F46 55%,#71717A 100%);--fin-s1:#52525B}
+body[data-acento=coral]{--brand:#C9603F;--brand-soft:#F8E6DE;--aurora:linear-gradient(135deg,#B84F30 0%,#D9785A 50%,#E8B26C 100%);--fin-s1:#C9603F}
+body[data-acento=rosa]{--brand:#B84A6E;--brand-soft:#F6E4EA;--aurora:linear-gradient(135deg,#9A3558 0%,#C9657F 50%,#E7A3AE 100%);--fin-s1:#B84A6E}
+body[data-acento=grafito]{--brand:#3F3A34;--brand-soft:#ECE7DF;--aurora:linear-gradient(135deg,#2A2520 0%,#4A443C 55%,#7A7166 100%);--fin-s1:#5B544B}
+body.theme-dark[data-acento=violeta]{--brand:#8C7BFF;--brand-soft:#241F45;--fin-s1:#8C7BFF}
 body.theme-dark[data-acento=azul]{--brand:#6EA0FF;--brand-soft:#17264A;--fin-s1:#6EA0FF}
 body.theme-dark[data-acento=verde]{--brand:#3DD9A0;--brand-soft:#123A2E;--fin-s1:#3DD9A0}
-body.theme-dark[data-acento=coral]{--brand:#FF8A5C;--brand-soft:#43231A;--fin-s1:#FF8A5C}
-body.theme-dark[data-acento=rosa]{--brand:#F77FA8;--brand-soft:#44192B;--fin-s1:#F77FA8}
-body.theme-dark[data-acento=grafito]{--brand:#D4D4D8;--brand-soft:#2B2B31;--fin-s1:#A1A1AA;--aurora:linear-gradient(135deg,#27272A 0%,#3F3F46 55%,#52525B 100%)}
+body.theme-dark[data-acento=coral]{--brand:#EE9A7C;--brand-soft:#40271D;--fin-s1:#EE9A7C}
+body.theme-dark[data-acento=rosa]{--brand:#E79AB2;--brand-soft:#40222D;--fin-s1:#E79AB2}
+body.theme-dark[data-acento=grafito]{--brand:#D8D0C5;--brand-soft:#2E2A25;--fin-s1:#B5ADA2;--aurora:linear-gradient(135deg,#2A2520 0%,#3F3A34 55%,#5A544C 100%)}
 a{color:var(--brand)}
 button{font:inherit}
+/* Títulos y cifras con serifa */
+.fin .fin-head h2,.fb-saludo h2,.fin .fin-panel>h3,.fb-bienvenida h2,.fb-hecho b,#lateral .nombre,
+.fb-hero .v,.fb-total .v,.fin-tile .v,.fb-stat .v,.fin-big .v,.fin-hero .v,.fin h3.fb-sec,.fin .fb-xray h4,.fin .fb-expo h4{font-family:var(--serif);font-optical-sizing:auto}
 
 /* ── armazón: menú lateral + contenido ── */
 body{display:grid;grid-template-columns:236px minmax(0,1fr);min-height:100vh}
-#lateral{position:sticky;top:0;height:100vh;display:flex;flex-direction:column;gap:18px;padding:22px 16px;border-right:1px solid var(--line);background:var(--surface)}
+#lateral{position:sticky;top:0;height:100vh;display:flex;flex-direction:column;gap:18px;padding:24px 16px;border-right:1px solid var(--line);background:color-mix(in srgb,var(--surface) 80%,transparent)}
 #lateral .marca{display:flex;align-items:center;gap:10px;padding:2px 8px;text-decoration:none;color:var(--ink)}
 #lateral .logo svg{width:34px;height:34px;display:block}
-#lateral .nombre{font-weight:750;font-size:1.08em;letter-spacing:-.02em}
+#lateral .nombre{font-weight:600;font-size:1.22em;letter-spacing:-.01em}
 #menu{display:flex;flex-direction:column;gap:4px}
 #menu a{display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:12px;color:var(--ink-2);text-decoration:none;font-weight:600;font-size:.94em}
 #menu a svg{width:20px;height:20px;flex:none}
 #menu a:hover{background:var(--surface-2);color:var(--ink)}
-#menu a.act{background:var(--brand-soft);color:var(--brand)}
-#menu .num{margin-left:auto;min-width:22px;padding:1px 7px;border-radius:999px;font-size:.78em;text-align:center;color:#fff;background:var(--coral)}
+#menu a.act{background:var(--sand-soft);color:var(--ink)}
+#menu a.act svg{color:var(--brand)}
+#menu .num{margin-left:auto;min-width:22px;padding:1px 7px;border-radius:999px;font-size:.78em;text-align:center;color:#fff;background:var(--rose)}
 #lateral .pie{margin-top:auto;display:flex;flex-direction:column;gap:10px}
 #lateral .apuntar{display:block;padding:11px 16px;font-size:.95em}
 #datos{font-size:.76em;color:var(--ink-3);padding:0 6px}
@@ -81,7 +94,7 @@ body{display:grid;grid-template-columns:236px minmax(0,1fr);min-height:100vh}
 .fin a.internal-link:hover{color:var(--brand)}
 .fin .pos{color:var(--fin-up)} .fin .neg{color:var(--fin-down)} .fin .muted{color:var(--ink-2)}
 .fin-head{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px 18px;margin:0 0 20px}
-.fin .fin-head h2{margin:0;font-size:1.9em;font-weight:760;letter-spacing:-.03em;line-height:1.1}
+.fin .fin-head h2{margin:0;font-size:2.2em;font-weight:560;letter-spacing:-.02em;line-height:1.1}
 .fin-head .sub{color:var(--ink-2);font-size:.92em;margin-top:6px}
 .fin-mes{display:flex;align-items:center;gap:2px;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:4px;box-shadow:var(--shadow)}
 .fin .fin-mes button{all:unset;cursor:pointer;padding:5px 12px;border-radius:999px;font-size:.92em;color:var(--ink-2);line-height:1.4}
@@ -92,7 +105,8 @@ body{display:grid;grid-template-columns:236px minmax(0,1fr);min-height:100vh}
 .fin-panel{min-width:0;padding:20px 22px;margin-bottom:var(--g);border-radius:var(--r);background:var(--surface);border:1px solid var(--line);box-shadow:var(--shadow)}
 body.theme-dark .fin-panel{border-color:transparent}
 .fin-grid>.fin-panel{margin-bottom:0}
-.fin .fin-panel>h3{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin:0 0 14px;font-size:1.02em;font-weight:720;letter-spacing:-.01em}
+.fin .fin-panel>h3{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin:0 0 16px;font-size:1.3em;font-weight:560;letter-spacing:-.01em}
+.fin .fin-panel>h3 .x{font-family:"Segoe UI Variable Text","Segoe UI",system-ui,sans-serif;font-size:.66em}
 .fin-panel>h3 .x{font-size:.82em;font-weight:500;color:var(--ink-2)}
 .fin-note{font-size:.8em;color:var(--ink-2);margin-top:10px}
 .fin-empty{padding:26px 18px;text-align:center;border-radius:var(--r-s);border:1.5px dashed var(--line);color:var(--ink-2);font-size:.9em;margin-bottom:var(--g)}
@@ -103,7 +117,7 @@ body.theme-dark .fin-panel{border-color:transparent}
 
 /* ── inicio ── */
 .fb-saludo{margin:0 0 18px;display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:10px}
-.fb-saludo h2{margin:0;font-size:2em;font-weight:780;letter-spacing:-.035em;line-height:1.1}
+.fb-saludo h2{margin:0;font-size:clamp(2em,4.4vw,2.9em);font-weight:560;letter-spacing:-.02em;line-height:1.05}
 .fb-saludo .sub{color:var(--ink-2);font-size:.92em;margin-top:6px;display:flex;flex-wrap:wrap;align-items:center;gap:8px}
 .fb-chip{display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border-radius:999px;font-size:.84em;font-weight:600;color:var(--ink);background:var(--surface);border:1px solid var(--line);text-decoration:none}
 .fb-chip.aviso{background:color-mix(in srgb,var(--amber) 16%,var(--surface));border-color:transparent}
@@ -115,35 +129,37 @@ a.fb-chip:hover{filter:brightness(.97)}
 .fb-alerta.info .i{background:var(--brand-soft)}
 .fb-alerta .fl{margin-left:auto;color:var(--ink-3);font-weight:700}
 a.fb-alerta:hover{border-color:var(--brand)}
-.fb-hero{position:relative;overflow:hidden;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:18px 28px;padding:28px 30px;margin-bottom:var(--g);border-radius:28px;color:#fff;background:var(--aurora);box-shadow:0 18px 44px -18px color-mix(in srgb,var(--brand) 70%,transparent)}
-.fb-hero::before,.fb-hero::after{content:"";position:absolute;border-radius:50%;pointer-events:none;background:rgba(255,255,255,.09)}
-.fb-hero::before{width:320px;height:320px;right:-90px;top:-150px}
-.fb-hero::after{width:180px;height:180px;left:38%;bottom:-120px}
-.fb-hero>*{position:relative}
-.fb-hero .l{font-size:.95em;font-weight:600;opacity:.88}
-.fb-hero .v{font-size:clamp(2.6em,8vw,3.8em);font-weight:800;letter-spacing:-.045em;line-height:1.02;margin:6px 0 8px;font-variant-numeric:tabular-nums}
-.fb-hero .s{font-size:.95em;opacity:.92}
-.fb-hero .pills{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}
-.fb-hero .pill{padding:6px 12px;border-radius:999px;font-size:.84em;font-weight:600;background:rgba(255,255,255,.16);backdrop-filter:blur(4px)}
-.fb-hero a{color:#fff}
-.fb-hero .anillo text{fill:#fff}
-@media (max-width:560px){.fb-hero{grid-template-columns:1fr;padding:22px}.fb-hero .anillo{justify-self:start}}
-.fb-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,160px),1fr));gap:var(--g);margin-bottom:var(--g)}
-.fb-stat{display:flex;align-items:center;gap:14px;padding:18px 20px;border-radius:var(--r);background:var(--surface);border:1px solid var(--line);box-shadow:var(--shadow)}
-body.theme-dark .fb-stat{border-color:transparent}
-.fb-stat .ic{display:grid;place-items:center;flex:none;width:44px;height:44px;border-radius:14px;font-size:20px;background:var(--surface-2)}
-.fb-stat .l{font-size:.8em;color:var(--ink-2);font-weight:600}
-.fb-stat .v{font-size:1.45em;font-weight:760;letter-spacing:-.025em;font-variant-numeric:tabular-nums;white-space:nowrap}
-.fb-stat.entra .ic{background:color-mix(in srgb,var(--mint) 16%,transparent)}
-.fb-stat.sale .ic{background:color-mix(in srgb,var(--coral) 18%,transparent)}
-.fb-stat.ahorro .ic{background:var(--brand-soft)}
-/* anillo y barras de la semana */
-.anillo{display:block}
-.anillo .fondo{stroke:rgba(255,255,255,.22)}
-.anillo .arco{stroke:#fff;transition:stroke-dashoffset .6s}
-.anillo .marca{stroke:#FFD6A5}
-.anillo .c1{font-size:22px;font-weight:800}
-.anillo .c2{font-size:10.5px;opacity:.9}
+/* Portada del Inicio: «Puedes gastar» (tarjeta arena, cifra grande con serifa) y, al lado, tres casillas de color */
+.fb-portada{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1.2fr);gap:var(--g);align-items:stretch;margin-bottom:var(--g)}
+.fb-portada>*{margin-bottom:0!important}
+@media (max-width:980px){.fb-portada{grid-template-columns:1fr}}
+.fb-hero{display:flex;flex-direction:column;align-items:center;text-align:center;gap:4px;padding:26px 28px 22px;margin-bottom:var(--g);border-radius:24px;color:var(--ink);background:var(--hero);border:1px solid color-mix(in srgb,var(--sand) 60%,transparent);box-shadow:var(--shadow)}
+.fb-hero .l{font-family:var(--serif);font-size:1.45em;font-weight:520;letter-spacing:-.01em}
+.fb-hero .v{font-size:clamp(3em,8vw,4.4em);font-weight:560;letter-spacing:-.03em;line-height:1;margin:6px 0 12px;color:var(--brand);font-variant-numeric:lining-nums tabular-nums}
+.fb-hero.pasado .v{color:var(--coral)}
+.fb-hero .s{font-size:.9em;color:var(--ink-2);margin-top:2px}
+.fb-hero .pills{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;margin-top:12px}
+.fb-hero .pill{padding:5px 12px;border-radius:999px;font-size:.84em;font-weight:560;color:var(--ink-2);background:var(--surface);border:1px solid var(--line);text-decoration:none}
+a.fb-hero-link{color:var(--brand)}
+/* Barra de progreso del límite (con la marca del día del mes) */
+.fb-progreso{position:relative;width:100%;height:30px;border-radius:999px;background:var(--surface);border:1px solid var(--line);overflow:hidden}
+.fb-progreso .rel{height:100%;border-radius:999px;background:linear-gradient(90deg,color-mix(in srgb,var(--brand) 70%,var(--surface)),color-mix(in srgb,var(--brand) 38%,var(--surface)));transition:width .6s}
+.fb-hero.pasado .fb-progreso .rel{background:linear-gradient(90deg,color-mix(in srgb,var(--coral) 75%,var(--surface)),color-mix(in srgb,var(--coral) 45%,var(--surface)))}
+.fb-progreso .dia{position:absolute;top:4px;bottom:4px;width:2px;border-radius:1px;background:var(--ink-2);opacity:.45}
+.fb-progreso .et{position:absolute;right:14px;top:50%;transform:translateY(-50%);font-size:.84em;font-weight:600;color:var(--ink-2)}
+.fb-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,150px),1fr));gap:12px;margin-bottom:var(--g)}
+.fb-stat{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:6px;padding:20px 14px;border-radius:var(--r);background:var(--surface);border:1px solid var(--line);box-shadow:var(--shadow)}
+.fb-stat .ic{display:grid;place-items:center;flex:none;width:36px;height:36px;border-radius:50%;font-size:17px;font-weight:700;color:#fff;background:var(--ink-3)}
+.fb-stat .l{font-size:.9em;color:var(--ink-2);font-weight:500}
+.fb-stat .v{font-size:1.9em;font-weight:560;letter-spacing:-.02em;line-height:1.1;font-variant-numeric:lining-nums tabular-nums;white-space:nowrap}
+.fb-stat.entra{background:color-mix(in srgb,var(--mint) 11%,var(--surface));border-color:color-mix(in srgb,var(--mint) 18%,transparent)}
+.fb-stat.entra .ic{background:color-mix(in srgb,var(--mint) 70%,var(--surface))}
+.fb-stat.sale{background:color-mix(in srgb,var(--coral) 12%,var(--surface));border-color:color-mix(in srgb,var(--coral) 18%,transparent)}
+.fb-stat.sale .ic{background:color-mix(in srgb,var(--coral) 78%,var(--surface))}
+.fb-stat.ahorro{background:color-mix(in srgb,var(--sand) 70%,var(--surface));border-color:color-mix(in srgb,var(--amber) 20%,transparent)}
+.fb-stat.ahorro .ic{background:transparent;color:var(--ink);font-size:22px}
+body.theme-dark .fb-stat.ahorro{background:var(--sand-soft)}
+/* barras de la semana */
 .fb-semana{display:grid;grid-template-columns:repeat(7,1fr);gap:8px;align-items:end;height:150px;margin:8px 0 6px;position:relative}
 .fb-semana .d{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:6px;height:100%}
 .fb-semana .b{width:100%;max-width:34px;min-height:4px;border-radius:10px;background:color-mix(in srgb,var(--brand) 78%,transparent)}
@@ -173,7 +189,7 @@ a.fb-item:hover,.fb-item.click:hover{background:var(--surface-2);cursor:pointer}
 .fb-fecha{display:grid;place-items:center;flex:none;width:42px;height:44px;border-radius:12px;background:var(--surface-2);line-height:1.05;text-align:center}
 .fb-fecha b{font-size:1.05em} .fb-fecha span{font-size:.64em;color:var(--ink-2);text-transform:uppercase;font-weight:700}
 .fb-total{display:flex;align-items:baseline;gap:10px;margin:0 0 6px}
-.fb-total .v{font-size:2em;font-weight:780;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+.fb-total .v{font-size:2.3em;font-weight:560;letter-spacing:-.02em;font-variant-numeric:lining-nums tabular-nums}
 .fb-total .s{font-size:.84em;color:var(--ink-2)}
 /* plan */
 .fb-plan{display:flex;flex-direction:column;gap:10px}
@@ -194,13 +210,13 @@ body.theme-dark .fb-chips button.act{color:var(--bg)}
 /* ── componentes compartidos (pantallas de tareas y ajustes) ── */
 .fin-hero{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px 20px;padding:20px 22px;margin-bottom:var(--g);border-radius:var(--r);background:var(--surface);border:1px solid var(--line)}
 .fin-hero .l{color:var(--ink-2);font-size:.85em;font-weight:600}
-.fin-hero .v{font-size:clamp(2.1em,7vw,3em);font-weight:780;letter-spacing:-.03em;line-height:1.08;margin:2px 0 6px}
+.fin-hero .v{font-size:clamp(2.1em,7vw,3em);font-weight:560;letter-spacing:-.03em;line-height:1.08;margin:2px 0 6px}
 .fin-hero .row{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px}
 .fin-hero .s{color:var(--ink-2);font-size:.8em}
 .fin-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,152px),1fr));gap:10px;margin-bottom:var(--g)}
 .fin-tile{display:flex;flex-direction:column;gap:3px;min-width:0;padding:14px 16px;border-radius:var(--r-s);background:var(--surface);border:1px solid var(--line)}
 .fin-tile .l{font-size:.78em;color:var(--ink-2);font-weight:600}
-.fin-tile .v{font-size:1.38em;font-weight:720;letter-spacing:-.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fin-tile .v{font-size:1.6em;font-weight:560;letter-spacing:-.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .fin-tile .s{font-size:.74em;color:var(--ink-3)}
 .fin-delta{display:inline-flex;align-items:center;gap:4px;width:fit-content;font-size:.76em;font-weight:650;padding:1px 8px;border-radius:999px;background:var(--surface-2);color:var(--ink-2);white-space:nowrap}
 .fin-delta.good{color:var(--fin-up)} .fin-delta.bad{color:var(--fin-down)}
@@ -260,7 +276,7 @@ body.theme-dark .fb-chips button.act{color:var(--bg)}
 .fin-rows .v{font-weight:700;white-space:nowrap;font-variant-numeric:tabular-nums}
 .fin-big{margin:2px 0 8px}
 .fin-big .l{font-size:.8em;color:var(--ink-2);font-weight:600}
-.fin-big .v{font-size:2em;font-weight:780;letter-spacing:-.03em;line-height:1.15}
+.fin-big .v{font-size:2.2em;font-weight:560;letter-spacing:-.03em;line-height:1.15}
 .fin-big .v.neg{color:var(--fin-down)}
 .fin-big .s{font-size:.8em;color:var(--ink-2)}
 .fin .fin-vermas{all:unset;cursor:pointer;display:block;margin:12px auto 0;padding:8px 18px;border-radius:999px;font-size:.86em;font-weight:650;color:var(--ink-2);background:var(--surface-2)}
@@ -321,7 +337,7 @@ a.fb-btn,.fin a.fb-btn.internal-link{color:#fff}
 .fb-acceso .t{font-weight:700;font-size:.93em} .fb-acceso .s{font-size:.78em;color:var(--ink-2)}
 /* bienvenida */
 .fb-bienvenida{padding:30px;border-radius:28px;color:#fff;background:var(--aurora);margin-bottom:var(--g)}
-.fb-bienvenida h2{margin:0 0 8px;font-size:2.1em;letter-spacing:-.035em}
+.fb-bienvenida h2{margin:0 0 8px;font-size:2.4em;font-weight:560;letter-spacing:-.02em}
 .fb-bienvenida p{margin:0 0 12px;max-width:620px;opacity:.95}
 .fb-bienvenida a{color:#fff;border-bottom-color:rgba(255,255,255,.6)}
 
@@ -423,3 +439,20 @@ body.theme-dark .fb-grupo{border-color:transparent}
 .fin .fb-cubre{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0 0 10px}
 .fb-top .fb-av{font-size:.9em;font-weight:800;color:var(--ink-2)}
 .fin-panel .fb-alerta{background:var(--surface-2);border-color:transparent}
+/* ── «A dónde va tu dinero»: barras en píldora ── */
+.fb-pildoras{display:flex;flex-direction:column;gap:12px;margin-top:6px}
+.fin a.fb-pildora{display:grid;grid-template-columns:minmax(110px,34%) minmax(0,1fr);align-items:center;gap:12px;color:inherit;text-decoration:none;border-radius:999px}
+.fb-pildora .n{display:flex;align-items:center;gap:6px;min-width:0;font-size:.93em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fb-pildora .n .ic{font-size:1.05em}
+.fb-pildora .pista{position:relative;display:flex;align-items:center;gap:8px;min-width:0;height:34px}
+.fb-pildora .barra{position:relative;display:flex;align-items:center;justify-content:flex-end;height:100%;min-width:34px;padding:0 12px;border-radius:999px;
+ background:color-mix(in srgb,var(--cc) 88%,var(--surface));transition:filter .15s,width .5s;flex:none}
+.fb-pildora .barra.pasado{box-shadow:inset 0 0 0 2px var(--rose)}
+.fb-pildora .tope{position:absolute;left:0;top:0;bottom:0;border-radius:999px;border:1.5px dashed color-mix(in srgb,var(--ink-3) 70%,transparent);pointer-events:none}
+.fb-pildora .val{font-size:.88em;font-weight:620;white-space:nowrap;font-variant-numeric:tabular-nums;color:var(--ink)}
+.fb-pildora .barra .val{color:#2A2119}
+.fin a.fb-pildora:hover .barra{filter:brightness(.96) saturate(1.1)}
+.fb-pildora .fb-var{font-size:.72em}
+@media (max-width:480px){.fin a.fb-pildora{grid-template-columns:1fr;gap:4px}}
+/* textura de papel también en las tarjetas grandes, muy leve */
+.fb-hero{background-image:var(--textura)}

@@ -65,7 +65,7 @@ class TestFlujo(unittest.TestCase):
         c = self.app.datos()["config"]
         self.assertEqual((c["acento"], c["inicio"]), ("verde", ["gasto", "semana"]))
         self.api("/api/config", {"acento": "url(x)"})
-        self.assertEqual(self.app.datos()["config"]["acento"], "violeta")
+        self.assertEqual(self.app.datos()["config"]["acento"], "salvia")
 
     def test_subida_rechaza_otros_formatos(self):
         r = self.api("/api/importar/subir", {"nombre": "virus.exe", "contenido": ""})

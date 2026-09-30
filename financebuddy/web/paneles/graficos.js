@@ -85,17 +85,6 @@ function columnas(padre, { etiquetas, series, titulos, alto = 210 }) {
   });
 }
 
-// Anillo de progreso (sobre fondo de color): fracción usada, marca opcional (p. ej. el día del mes) y dos líneas en el centro.
-function anillo(padre, { frac, marca, c1, c2, tam = 150 }) {
-  const r = 58, C = 2 * Math.PI * r, f = Math.max(0, Math.min(1, frac || 0));
-  const ang = (x) => (x * 360 - 90) * Math.PI / 180;
-  const mk = marca != null ? `<line class="marca" x1="${75 + 49 * Math.cos(ang(marca))}" y1="${75 + 49 * Math.sin(ang(marca))}" x2="${75 + 67 * Math.cos(ang(marca))}" y2="${75 + 67 * Math.sin(ang(marca))}" stroke-width="3" stroke-linecap="round"/>` : "";
-  const d = padre.createDiv({ cls: "anillo" });
-  d.innerHTML = `<svg width="${tam}" height="${tam}" viewBox="0 0 150 150" role="img"><circle class="fondo" cx="75" cy="75" r="${r}" fill="none" stroke-width="13"/>`
-    + `<circle class="arco" cx="75" cy="75" r="${r}" fill="none" stroke-width="13" stroke-linecap="round" stroke-dasharray="${C.toFixed(1)}" stroke-dashoffset="${(C * (1 - f)).toFixed(1)}" transform="rotate(-90 75 75)"/>`
-    + `${mk}<text class="c1" x="75" y="78" text-anchor="middle">${esc(c1)}</text><text class="c2" x="75" y="97" text-anchor="middle">${esc(c2 || "")}</text></svg>`;
-  return d;
-}
 // Líneas sobre los días de un mes (gasto acumulado). series: [{ nombre, color, valores (null = sin dato), discontinua, area }].
 // etiquetas: texto de cada punto para el tooltip; marcas: índices con etiqueta en el eje X.
 function lineas(padre, { etiquetas, series, marcas, etiquetasX, alto = 200 }) {

@@ -53,7 +53,7 @@
     async recargar() {
       const d = await FB.api("/api/datos");
       if (d.registros) FB.DB = d; else FB.aviso(d.mensaje || "No se han podido cargar los datos", true);
-      if (d.config) document.body.dataset.acento = d.config.acento || "violeta";
+      if (d.config) document.body.dataset.acento = d.config.acento || "salvia";
       barra();
     },
     // Recarga los datos y vuelve a dibujar la pantalla actual sin perder la posición (las pantallas leen FB.DB al montarse).
