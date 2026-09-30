@@ -161,9 +161,15 @@ function stack(padre, partes) {
   }
   return st;
 }
+// items: [nombre, color, linea?]; con `linea` la muestra es un trazo (discontinuo si la serie lo es), no un cuadrado.
 function leyenda(padre, items) {
   const l = padre.createDiv({ cls: "fin-legend" });
-  for (const [nombre, color] of items) { const s = l.createSpan(); setVar(s.createEl("i"), "--dc", color); s.appendText(nombre); }
+  for (const [nombre, color, linea] of items) {
+    const s = l.createSpan(), i = s.createEl("i");
+    setVar(i, "--dc", color);
+    if (linea) i.className = linea === "continua" ? "linea" : "linea rayas";
+    s.appendText(nombre);
+  }
   return l;
 }
 // filas: arrays de celdas; si el array tiene `.cls`, se aplica a la fila (p. ej. "prev" para lo previsto).

@@ -100,8 +100,8 @@ function heroGasto(padre, S, M) {
   const barra = (frac, etiqueta) => {
     const b = h.createDiv({ cls: "fb-progreso" });
     b.createDiv({ cls: "rel" }).style.width = `${(Math.max(0, Math.min(1, frac)) * 100).toFixed(1)}%`;
-    if (actual) { const m = b.createDiv({ cls: "dia" }); m.style.left = `${((100 * dia) / dm).toFixed(1)}%`; m.title = `Día ${dia} de ${dm}`; }
-    b.createSpan({ cls: "et", text: etiqueta });
+    if (actual) { const m = b.createDiv({ cls: "dia" }); m.style.left = `${((100 * dia) / dm).toFixed(1)}%`; m.title = `Hoy: día ${dia} de ${dm}`; }
+    h.createDiv({ cls: "pie", text: etiqueta });
   };
   const vari = gastoVariable(M);
   const R = ritmoMes(M.key);
@@ -112,6 +112,7 @@ function heroGasto(padre, S, M) {
     return `${actual ? "Vas" : "Gastaste"} ${eur(Math.abs(dif), 0)} ${dif < 0 ? "por debajo" : "por encima"} de lo normal${actual ? " a estas alturas" : ""}`;
   };
   if (!(limiteVar > 0)) {
+    h.classList.add("neutro"); // sin límite, la cifra es lo gastado: no va en verde
     h.createDiv({ cls: "l", text: actual ? "Llevas gastado este mes" : "Gastaste" });
     h.createDiv({ cls: "v", text: eur(vari, 0) });
     if (actual) barra(dia / dm, `día ${dia} de ${dm}`);
@@ -120,6 +121,7 @@ function heroGasto(padre, S, M) {
   } else if (actual) {
     const pasado = S.disponible < 0, usado = S.vari / limiteVar;
     if (pasado) h.classList.add("pasado");
+    else if (usado >= 0.85) h.classList.add("alto"); // queda poco: ámbar, antes de pasarse
     h.createDiv({ cls: "l", text: pasado ? "Te has pasado este mes" : "Puedes gastar este mes" });
     h.createDiv({ cls: "v", text: eur(Math.abs(S.disponible), 0) });
     barra(usado, `${Math.round(usado * 100)} % de tu límite de ${eur(limiteVar, 0)}`);
@@ -223,12 +225,13 @@ function tarjetaRitmo(p, key = hoyKey) {
     t.createDiv({ cls: "s", text: Math.abs(dif) < 15 ? `${cuando}, como sueles` : `${cuando} · ${eur(Math.abs(dif), 0)} ${dif < 0 ? "menos" : "más"} que tu media` });
   } else t.createDiv({ cls: "s", text: `${cuando} · con más meses importados verás tu media` });
   const series = [];
+  // El gasto, en coral (como «Salió» en toda la app); las dos referencias, en tinta neutra y con trazos distintos.
   if (R.media) series.push({ nombre: "Tu media", color: "var(--ink-3)", valores: R.media, discontinua: true });
-  if (limiteVar > 0) series.push({ nombre: "Límite", color: "var(--coral)", valores: Array.from({ length: R.dm }, (_, i) => (limiteVar * (i + 1)) / R.dm), discontinua: true });
-  series.push({ nombre: actual ? "Este mes" : mesLbl(key), color: "var(--brand)", valores: R.actual, area: true });
+  if (limiteVar > 0) series.push({ nombre: "Límite", color: "var(--ink)", valores: Array.from({ length: R.dm }, (_, i) => (limiteVar * (i + 1)) / R.dm), discontinua: "1.5 4" });
+  series.push({ nombre: actual ? "Este mes" : mesLbl(key), color: "var(--coral)", valores: R.actual, area: true });
   const marcas = [0, 6, 13, 20, 27].filter((i) => i < R.dm);
   lineas(p, { etiquetas: Array.from({ length: R.dm }, (_, i) => mesDT(key).set({ day: i + 1 }).setLocale("es").toFormat("cccc d")), series, marcas, alto: 170 });
-  leyenda(p, series.map((s) => [s.nombre, s.color]).reverse());
+  leyenda(p, series.map((s) => [s.nombre, s.color, s.discontinua ? "rayas" : "continua"]).reverse());
 }
 
 // Tu patrimonio: un total (cuentas + inversión − deudas), su evolución y una línea por grupo. El detalle, en su pantalla.

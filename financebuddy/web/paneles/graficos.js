@@ -86,6 +86,7 @@ function columnas(padre, { etiquetas, series, titulos, alto = 210 }) {
 }
 
 // Líneas sobre los días de un mes (gasto acumulado). series: [{ nombre, color, valores (null = sin dato), discontinua, area }].
+// discontinua: true (rayas) o el patrón del trazo («2 4», punteada) para distinguir dos referencias sin depender del color.
 // etiquetas: texto de cada punto para el tooltip; marcas: índices con etiqueta en el eje X.
 function lineas(padre, { etiquetas, series, marcas, etiquetasX, alto = 200 }) {
   chart(padre, (W) => {
@@ -102,7 +103,7 @@ function lineas(padre, { etiquetas, series, marcas, etiquetasX, alto = 200 }) {
       if (pts.length < 2) continue;
       const d = pts.map(([x, y], i) => `${i ? "L" : "M"}${x.toFixed(1)},${y.toFixed(1)}`).join("");
       if (se.area) s.push(`<path d="${d}L${pts[pts.length - 1][0].toFixed(1)},${Y(0).toFixed(1)}L${pts[0][0].toFixed(1)},${Y(0).toFixed(1)}Z" style="fill:${se.color};opacity:.1"/>`);
-      s.push(`<path d="${d}" style="fill:none;stroke:${se.color};stroke-width:${se.discontinua ? 1.6 : 2.6};stroke-linejoin:round;stroke-linecap:round${se.discontinua ? ";stroke-dasharray:5 5" : ""}"/>`);
+      s.push(`<path d="${d}" style="fill:none;stroke:${se.color};stroke-width:${se.discontinua ? 1.6 : 2.6};stroke-linejoin:round;stroke-linecap:round${se.discontinua ? `;stroke-dasharray:${se.discontinua === true ? "5 5" : se.discontinua}` : ""}"/>`);
       if (!se.discontinua) { const [x, y] = pts[pts.length - 1]; s.push(`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="4.5" style="fill:${se.color};stroke:var(--surface);stroke-width:2.5"/>`); }
     }
     const gw = (W - L - R) / Math.max(1, n - 1);
