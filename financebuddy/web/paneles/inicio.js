@@ -9,6 +9,29 @@ function saludo() {
 }
 
 // ───────────── inicio ─────────────
+// Paneles del Inicio: el usuario elige cuáles ve y en qué orden (Ajustes → Tu inicio; se guarda en config.inicio).
+// ancho: ocupan toda la fila; los demás se colocan de dos en dos.
+const PANELES_INICIO = [
+  { id: "gasto", t: "Cuánto puedes gastar", ancho: true },
+  { id: "mes", t: "Lo que ha entrado y salido este mes", ancho: true },
+  { id: "semana", t: "Esta semana" },
+  { id: "categorias", t: "A dónde va tu dinero" },
+  { id: "ritmo", t: "Ritmo de gasto del mes" },
+  { id: "plan", t: "Qué hacer con tu dinero" },
+  { id: "dinero", t: "Tu dinero" },
+  { id: "inversion", t: "Tu inversión" },
+  { id: "proximos", t: "Próximos fijos" },
+  { id: "meses", t: "Tus últimos meses" },
+];
+// config.inicio: los visibles, en orden · config.inicio_ocultos: los ocultos. Un panel que no está en ninguna (uno nuevo) se ve.
+function panelesInicio() {
+  const existe = (id) => PANELES_INICIO.find((p) => p.id === id);
+  if (!Array.isArray(cfg.inicio)) return PANELES_INICIO.map((p) => ({ ...p, visible: true }));
+  const ocultos = new Set(cfg.inicio_ocultos || []);
+  const visibles = cfg.inicio.map(existe).filter(Boolean);
+  const nuevos = PANELES_INICIO.filter((p) => !cfg.inicio.includes(p.id) && !ocultos.has(p.id));
+  return [...[...visibles, ...nuevos].map((p) => ({ ...p, visible: true })), ...PANELES_INICIO.filter((p) => ocultos.has(p.id) && !cfg.inicio.includes(p.id)).map((p) => ({ ...p, visible: false }))];
+}
 function vistaInicio() {
   const S = presupuestoSemana(), M = finMes(hoyKey);
   const cab = root.createDiv({ cls: "fb-saludo" });
@@ -20,22 +43,29 @@ function vistaInicio() {
   if (!fd || S.diasSinDatos > 6) enlace(sub, "⬆ Importar el extracto", "#importar").className += " fb-chip aviso";
   const nPend = (DB.pendientes || []).length;
   if (nPend) enlace(sub, `${nPend} por revisar`, "#revisar").className += " fb-chip brand";
+  const per = enlace(cab, "Personalizar", "#ajustes/inicio");
+  per.className += " fb-personalizar";
+  per.title = "Elige qué ves en el inicio y en qué orden";
 
   alertas(root);
-  heroGasto(root, S);
-  statsMes(root, M);
-
-  const g1 = root.createDiv({ cls: "fin-grid dos" });
-  tarjetaSemana(panel(g1, "Esta semana", { text: `${S.lunes.toFormat("d/M")} – ${S.domingo.toFormat("d/M")}` }), S);
-  tarjetaCategorias(panel(g1, "A dónde va tu dinero", { text: mesLbl(hoyKey), ruta: "#movimientos" }), M);
-
-  const g2 = root.createDiv({ cls: "fin-grid dos" });
-  tarjetaPlan(panel(g2, "Qué hacer con tu dinero", null, "Cuánto conviene dejar en la cuenta del día a día (un mes de gasto) y a dónde mover lo que sobra."));
-  tarjetaDinero(panel(g2, "Tu dinero", { text: "Actualizar saldos", ruta: "#cerrar" }));
-
-  const g3 = root.createDiv({ cls: "fin-grid dos" });
-  tarjetaProximos(panel(g3, "Próximos fijos", { text: "Gestionar", ruta: "#gestionar/recurrente" }));
-  tarjetaMeses(panel(g3, "Tus últimos meses"));
+  const DIBUJAR = {
+    gasto: (padre) => heroGasto(padre, S),
+    mes: (padre) => statsMes(padre, M),
+    semana: (padre) => tarjetaSemana(panel(padre, "Esta semana", { text: `${S.lunes.toFormat("d/M")} – ${S.domingo.toFormat("d/M")}` }), S),
+    categorias: (padre) => tarjetaCategorias(panel(padre, "A dónde va tu dinero", { text: "Ver por categoría", ruta: "#movimientos/categorias" }), hoyKey),
+    ritmo: (padre) => tarjetaRitmo(panel(padre, "Ritmo de gasto del mes", null, "Tu gasto variable acumulado día a día, comparado con lo que sueles llevar a estas alturas del mes.")),
+    plan: (padre) => tarjetaPlan(panel(padre, "Qué hacer con tu dinero", null, "Cuánto conviene dejar en la cuenta del día a día (un mes de gasto) y a dónde mover lo que sobra.")),
+    dinero: (padre) => tarjetaDinero(panel(padre, "Tu dinero", { text: "Actualizar saldos", ruta: "#cerrar" })),
+    inversion: (padre) => { if (activos().length) tarjetaInversionInicio(panel(padre, "Tu inversión", { text: "Ver todo", ruta: "#inversion" })); },
+    proximos: (padre) => tarjetaProximos(panel(padre, "Próximos fijos", { text: "Gestionar", ruta: "#gestionar/recurrente" })),
+    meses: (padre) => tarjetaMeses(panel(padre, "Tus últimos meses")),
+  };
+  let fila = null;
+  for (const p of panelesInicio().filter((p) => p.visible)) {
+    if (p.ancho) { fila = null; DIBUJAR[p.id](root); continue; }
+    if (!fila || fila.children.length >= 2) fila = root.createDiv({ cls: "fin-grid dos" });
+    DIBUJAR[p.id](fila);
+  }
 }
 
 // Solo lo que pide actuar (los avisos de nivel «warn»), como máximo 3.
@@ -73,7 +103,7 @@ function heroGasto(padre, S) {
     p.createSpan({ cls: "pill", text: `≈ ${eur(S.porSemana, 0)} por semana` });
     p.createSpan({ cls: "pill", text: `${eur(S.porDia, 0)} al día` });
   }
-  p.createSpan({ cls: "pill", text: `${S.restantes} día${S.restantes === 1 ? "" : "s"} por delante` });
+  p.createSpan({ cls: "pill", text: S.restantes > 0 ? `${S.restantes} día${S.restantes === 1 ? "" : "s"} por delante` : "último día del mes" });
   const usado = S.vari / limiteVar;
   anillo(h, { frac: usado, marca: dia / dm, c1: `${Math.round(usado * 100)} %`, c2: "del límite usado" });
 }
@@ -101,23 +131,57 @@ function tarjetaSemana(p, S) {
   barrasSemana(p, dias, meta);
 }
 
-function tarjetaCategorias(p, M) {
-  const porCat = new Map();
-  for (const m of M.real.filter((m) => m.gasto)) porCat.set(m.categoria || "Otros", (porCat.get(m.categoria || "Otros") || 0) + m.gasto);
-  const filas = [...porCat].filter(([, v]) => v > 0.5).sort((a, b) => b[1] - a[1]);
-  if (!filas.length) { vacio(p, "Sin gastos este mes", ""); return; }
-  const top = filas.slice(0, 5), resto = sum(filas.slice(5).map(([, v]) => v));
-  const partes = top.map(([n, v]) => ({ nombre: n, valor: v, color: catColor(n) }));
-  if (resto > 0) partes.push({ nombre: "Resto", valor: resto, color: "var(--ink-3)" });
-  const w = p.createDiv({ cls: "fb-dona" });
-  dona(w, partes, { c1: eur(M.gastos, 0), c2: "gastado" });
-  const l = w.createDiv({ cls: "fb-lista" });
-  for (const [n, v] of top) {
-    const fijo = grupoDe(n) === "fijo";
-    item(l, { av: { cat: n, sm: true }, t: n, s: fijo ? "gasto fijo" : `${pct(v / M.gastos)} del gasto`, v: eur(v, 0),
-      onclick: () => { guardarEstado({ filtroCat: n }); FB.ir("#movimientos"); } });
+// Gasto del mes por categoría: una barra con el reparto y la lista (con la comparación con tu media y el presupuesto).
+function tarjetaCategorias(p, key) {
+  const C = resumenCategorias(key).filter((c) => c.valor > 0.5);
+  const total = sum(C.map((c) => c.valor));
+  if (!C.length) { vacio(p, "Sin gastos este mes", ""); return; }
+  const t = p.createDiv({ cls: "fb-total" });
+  t.createDiv({ cls: "v", text: eur(total, 0) });
+  t.createDiv({ cls: "s", text: `gastado en ${mesLbl(key).toLowerCase()}` });
+  const VISIBLES = 6, top = C.slice(0, VISIBLES), resto = C.slice(VISIBLES);
+  const partes = top.map((c) => ({ nombre: c.nombre, valor: c.valor, color: catColor(c.nombre) }));
+  if (resto.length) partes.push({ nombre: "Resto", valor: sum(resto.map((c) => c.valor)), color: "var(--ink-3)" });
+  stack(p, partes);
+  const l = p.createDiv({ cls: "fb-lista" });
+  for (const c of top) filaCategoria(l, c, total, () => { guardarEstado({ filtroCat: c.nombre }); FB.ir("#movimientos"); });
+  if (resto.length) item(l, { av: { icono: "⋯", sm: true }, t: `${resto.length} categoría${resto.length > 1 ? "s" : ""} más`, v: eur(sum(resto.map((c) => c.valor)), 0), ruta: "#movimientos/categorias" });
+}
+// Una categoría: avatar, nombre, % del total y comparación con la media; barra si tiene presupuesto.
+function filaCategoria(padre, c, total, onclick) {
+  const el = item(padre, { av: { cat: c.nombre, sm: true }, t: c.nombre, v: eur(c.valor, 0), onclick });
+  const s = el.querySelector(".n").createDiv({ cls: "s" });
+  const partes = [c.grupo === "fijo" ? "fijo" : total > 0 ? pct(c.valor / total) : ""];
+  if (isFinite(c.media) && c.media > 5) {
+    const dif = (c.valor - c.media) / c.media;
+    if (Math.abs(dif) >= 0.1) s.createSpan({ cls: "fb-var " + (dif > 0 ? "sube" : "baja"), text: `${dif > 0 ? "▲" : "▼"} ${Math.round(Math.abs(dif) * 100)} %` });
   }
-  if (resto > 0) item(l, { av: { icono: "⋯", sm: true }, t: `${filas.length - 5} categorías más`, v: eur(resto, 0), ruta: "#movimientos" });
+  s.appendText(partes.filter(Boolean).join(" · ") + (isFinite(c.media) && c.media > 5 ? ` · media ${eur(c.media, 0)}` : ""));
+  if (c.presupuesto > 0) {
+    const f = c.valor / c.presupuesto;
+    const b = el.querySelector(".n").createDiv({ cls: "fb-barra fina " + (f > 1 ? "pasado" : f >= 0.9 ? "alto" : "") });
+    b.createDiv().style.width = `${Math.min(100, f * 100).toFixed(1)}%`;
+    b.title = `${eur(c.valor, 0)} de ${eur(c.presupuesto, 0)} de presupuesto`;
+  }
+  return el;
+}
+// Curva de gasto acumulado del mes frente a tu media (Copilot-style): ¿voy mejor o peor que otros meses?
+function tarjetaRitmo(p) {
+  const R = ritmoMes();
+  if (!fechaDatos()) { vacio(p, "Sin movimientos todavía", " Importa el extracto de tu banco."); return; }
+  const t = p.createDiv({ cls: "fb-total" });
+  t.createDiv({ cls: "v", text: eur(R.hoyV, 0) });
+  if (isFinite(R.mediaHoy)) {
+    const dif = R.hoyV - R.mediaHoy;
+    t.createDiv({ cls: "s", text: Math.abs(dif) < 10 ? `a día ${R.dia}, como sueles ir` : `a día ${R.dia}: ${eur(Math.abs(dif), 0)} ${dif < 0 ? "menos" : "más"} que tu media` });
+  } else t.createDiv({ cls: "s", text: `a día ${R.dia} · con más meses importados verás tu media` });
+  const series = [];
+  if (R.media) series.push({ nombre: `Media (${R.nMeses} mes${R.nMeses > 1 ? "es" : ""})`, color: "var(--ink-3)", valores: R.media, discontinua: true });
+  if (limiteVar > 0) series.push({ nombre: "Límite", color: "var(--coral)", valores: Array.from({ length: R.dm }, (_, i) => (limiteVar * (i + 1)) / R.dm), discontinua: true });
+  series.push({ nombre: "Este mes", color: "var(--brand)", valores: R.actual, area: true });
+  const marcas = [0, 6, 13, 20, 27].filter((i) => i < R.dm);
+  lineas(p, { etiquetas: Array.from({ length: R.dm }, (_, i) => mesDT(hoyKey).set({ day: i + 1 }).setLocale("es").toFormat("cccc d")), series, marcas, alto: 180 });
+  leyenda(p, series.map((s) => [s.nombre, s.color]).reverse());
 }
 
 function tarjetaPlan(p) {
@@ -144,7 +208,7 @@ function tarjetaDinero(p) {
     item(l, { av: { icono: ICONO_CUENTA[c.tipo] || "🏦" }, t: c.nombre, s: { corriente: "día a día", ahorro: "ahorro", broker: "sin invertir", otro: "" }[c.tipo] || "", v: eur(v, 0), ruta: `#editar/cuenta/${c.p.id}` });
   }
   if (I.filas.length) item(l, { av: { icono: "🌱" }, t: "Inversión", s: I.aportado ? `${eurS(I.gan, 0)} (${pct(I.gan / I.aportado, true)}) sobre lo que has metido` : "valor de tus activos",
-    v: eur(I.total, 0), pos: I.gan > 0, ruta: "#valores" });
+    v: eur(I.total, 0), pos: I.gan > 0, ruta: "#inversion" });
   if (E.deudas) item(l, { av: { icono: "📉" }, t: "Deudas", v: eur(-E.deudas, 0) });
   const o = objetivos().find((x) => x.vinculado && x.estado !== "conseguido");
   if (o && o.meta > 0) {
@@ -153,6 +217,19 @@ function tarjetaDinero(p) {
     m.setText(`${o.nombre}: ${eur(o.ahorrado, 0)} de ${eur(o.meta, 0)}${o.ahorrado >= o.meta ? " ✓" : ""}`);
     const b = p.createDiv({ cls: "fb-barra" }); b.createDiv().style.width = `${(f * 100).toFixed(1)}%`;
   }
+}
+
+// Resumen de la inversión para el Inicio: valor, ganancia, reparto por activo y la racha de aportaciones.
+function tarjetaInversionInicio(p) {
+  const I = resumenInversion(), racha = constancia();
+  const t = p.createDiv({ cls: "fb-total" });
+  t.createDiv({ cls: "v", text: eur(I.total, 0) });
+  t.createDiv({ cls: "s", text: isFinite(I.gan) && I.aportado > 0 ? `${eurS(I.gan, 0)} (${pct(I.gan / I.aportado, true)}) sobre lo metido` : `${eur(I.aportadoTodo, 0)} metidos` });
+  stack(p, [...I.filas].sort((a, b) => b.valor - a.valor).map((f) => ({ nombre: f.nombre, valor: f.valor, color: colorActivo(f.nombre) })));
+  const l = p.createDiv({ cls: "fb-lista" });
+  for (const f of [...I.filas].sort((a, b) => b.valor - a.valor).slice(0, 4))
+    item(l, { av: { icono: ICONO_ACTIVO[f.clase] || "💼", sm: true }, t: f.nombre, s: isFinite(f.gan) ? `${eurS(f.gan, 0)} · ${pct(f.aportado > 0 ? f.gan / f.aportado : NaN, true)}` : "sin valor anotado", v: eur(f.valor, 0), pos: f.gan > 0, ruta: "#inversion" });
+  if (racha) p.createDiv({ cls: "fin-note", text: `🔥 ${racha} mes${racha > 1 ? "es" : ""} seguido${racha > 1 ? "s" : ""} aportando` });
 }
 
 function tarjetaProximos(p) {
@@ -187,6 +264,10 @@ function vistaMovimientos() {
   st("entra", "↘", "Entró", eur(M.ingresos, 0));
   st("sale", "↗", "Salió", eur(M.gastos, 0));
   st("ahorro", "🐷", "Diferencia", eurS(M.ahorro, 0), tone(M.ahorro));
+  const modo = params[0] === "categorias" ? "categorias" : "lista";
+  const seg = root.createDiv({ cls: "fb-seg" });
+  for (const [k, t, r] of [["lista", "Lista", "#movimientos"], ["categorias", "Por categoría", "#movimientos/categorias"]]) enlace(seg, t, r).className += k === modo ? " act" : "";
+  if (modo === "categorias") { vistaPorCategoria(M); return; }
 
   const todos = [...M.ms].sort((a, b) => b.fecha - a.fecha || (b.p.id || 0) - (a.p.id || 0));
   const cats = [...new Set(todos.map((m) => (m.clase === "transferencia" ? "Entre tus cuentas" : m.categoria)).filter(Boolean))].sort((a, b) => a.localeCompare(b, "es"));
@@ -236,6 +317,34 @@ function vistaMovimientos() {
   pintarChips(); pintar();
 }
 
+// Gasto del mes por categoría (variable y fijo) frente a tu media y tu presupuesto; ingresos por categoría.
+function vistaPorCategoria(M) {
+  const C = resumenCategorias(mes);
+  const total = sum(C.map((c) => c.valor));
+  const abrirCat = (n) => () => { filtroCat = n; guardarEstado({ filtroCat: n }); FB.ir("#movimientos"); };
+  if (!C.length) { vacio(root, "Sin gastos este mes", " Importa el extracto de tu banco o cambia de mes."); return; }
+  const refs = mesesReferencia(mes);
+  const g = root.createDiv({ cls: "fin-grid dos" });
+  for (const [grupo, tit] of [["variable", "Gasto variable"], ["fijo", "Gastos fijos"]]) {
+    const cs = C.filter((c) => (c.grupo === "fijo") === (grupo === "fijo"));
+    if (!cs.length) continue;
+    const p = panel(g, tit, { text: eur(sum(cs.map((c) => c.valor)), 0) });
+    const l = p.createDiv({ cls: "fb-lista" });
+    for (const c of cs) filaCategoria(l, c, total, abrirCat(c.nombre));
+  }
+  const ing = new Map();
+  for (const m of M.real.filter((m) => m.clase === "ingreso")) ing.set(m.categoria, (ing.get(m.categoria) || 0) + m.importe);
+  if (ing.size) {
+    const p = panel(g, "Ingresos", { text: eur(M.ingresos, 0) });
+    const l = p.createDiv({ cls: "fb-lista" });
+    for (const [n, v] of [...ing].sort((a, b) => b[1] - a[1])) item(l, { av: { cat: n, sm: true }, t: n, s: pct(v / M.ingresos), v: eur(v, 0), pos: true, onclick: abrirCat(n) });
+  }
+  const nota = root.createDiv({ cls: "fin-note" });
+  nota.appendText(refs.length ? `▲▼ comparado con la media de ${refs.map(mesCorto).join(", ").toLowerCase()}. ` : "");
+  nota.appendText("¿Quieres un tope para una categoría? ");
+  enlace(nota, "Ponle un presupuesto →", "#gestionar/categoria");
+}
+
 // Pantallas antiguas → las nuevas (enlaces guardados y avisos).
 const VISTAS = { inicio: vistaInicio, resumen: vistaInicio, movimientos: vistaMovimientos, gastos: vistaMovimientos,
-  prevision: vistaInicio, patrimonio: vistaInicio, inversion: vistaInicio };
+  prevision: vistaInicio, patrimonio: vistaInicio, inversion: vistaInversion };

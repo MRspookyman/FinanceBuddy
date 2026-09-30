@@ -7,7 +7,7 @@ Tus finanzas personales **en tu ordenador**. Importas los extractos de tu banco 
 - a dónde va tu dinero (gastos por categoría) y de dónde viene;
 - cuánto tienes en cada cuenta y cómo va tu **inversión**.
 
-Cuatro pantallas: **Inicio**, **Movimientos**, **Importar** y **Ajustes**.
+Pantallas: **Inicio**, **Movimientos**, **Inversión**, **Importar** y **Ajustes**.
 
 Nada sale de tu ordenador: no hay cuentas, ni nube, ni conexión con el banco. Los datos se guardan en un archivo de tu carpeta Documentos.
 
@@ -24,11 +24,25 @@ Solo para **Windows**. Todo en español y en euros.
    Si prefieres verla antes, pulsa **«Probar con datos de ejemplo»**.
 3. **Importa** el extracto de tu banco: pestaña *Importar* → arrastra el Excel o CSV.
    - La primera vez con un banco nuevo te pregunta qué columna es la fecha, el concepto y el importe. Solo esa vez.
-4. **Por revisar**: lo que la app no sabe clasificar sola te lo pregunta.
-   - Marca «recordar» y la próxima vez se clasifica solo (y también las demás dudas iguales).
+4. **Por revisar**: lo que la app no sabe clasificar sola te lo pregunta, agrupado por comercio.
+   - Un clic en la categoría (la más probable sale la primera, marcada con ✨) resuelve el grupo entero y lo recuerda.
+   - **Aprende sola**: lo que ya clasificaste antes de un comercio se usa la siguiente vez, aunque no marques «recordar».
+   - Si una categoría está mal, pulsa el movimiento y elige otra: puedes cambiar a la vez todos los del mismo comercio.
 5. Una vez al mes, *Ajustes → Actualizar saldos*: anotas lo que tienes en cada cuenta y el valor de tu inversión.
    - Así la app comprueba que no falta ningún movimiento.
 6. Con dos o más meses importados, *Ajustes → Detectar fijos*: la app encuentra tus nóminas, alquiler y recibos (lo que se repite cada mes) y te los propone; también te enseña **de dónde viene tu dinero**.
+
+**Inversión**: lo que vale y lo que has metido en cada activo, ganancia y rentabilidad anual, evolución, cuánto
+aportas cada mes (y cuántos meses seguidos), reparto por tipo (fondos, ETF, cripto, materias primas), participaciones y
+precio medio (si el extracto del bróker las trae, como MyInvestor: «… @ 2»), gastos corrientes, intereses del dinero
+sin invertir y posiciones ya vendidas con su resultado.
+**Qué hay dentro de tus fondos**: sube el informe **X-Ray de Morningstar** (PDF; en MyInvestor, *Cartera → X-Ray*) en
+*Importar* y verás sus países, sectores, las 10 mayores empresas, rentabilidad a 1, 3 y 5 años, volatilidad y gastos,
+tu inversión entera «mirando dentro» (acciones, renta fija, cripto, materias primas) y avisos si está muy concentrada.
+
+**A tu gusto** (*Ajustes*): tema automático, claro u oscuro y color de acento; qué paneles ves en el Inicio y en qué orden;
+icono, color y presupuesto de cada categoría (con aviso si te pasas). En *Movimientos → Por categoría* ves cada una
+frente a tu media de los meses anteriores, y en el Inicio, el ritmo de gasto del mes frente a lo que sueles llevar.
 
 Cerrar la pestaña del navegador no cierra la app: para cerrarla, *Ajustes → Cerrar FinanceBuddy*. Si la vuelves a abrir, se reutiliza la que ya estaba en marcha.
 
@@ -49,7 +63,9 @@ Importar dos veces el mismo periodo **no duplica nada**: cada movimiento se reco
   - la primera vez le dices qué columna es cada cosa;
   - vale el importe con signo, o columnas separadas de cargo y abono;
   - el saldo es opcional, pero recomendado.
-- **Inversión**: las compras se asignan a cada activo por el texto con el que aparecen en el extracto. La primera vez te pregunta de qué activo es cada compra.
+- **Sin preguntar de qué cuenta es**: si el extracto trae el IBAN, la app lo recuerda (sus 4 últimas cifras) y la próxima vez lo importa en su cuenta sola.
+- **Tus traspasos**: si el extracto trae el titular, el dinero que mueves a tu nombre se reconoce como traspaso (no como gasto o ingreso). Y si la salida de una cuenta y la entrada en otra (mismo importe, ±3 días) están en extractos distintos, se emparejan solas.
+- **Inversión**: las compras se asignan a cada activo por el texto con el que aparecen en el extracto. La primera vez te propone crear el activo (con nombre y tipo) y con un clic guarda todas sus compras.
 
 ## Tus datos
 
@@ -74,6 +90,7 @@ python -m financebuddy                 :: arranca con tus datos (Documentos\Fina
 python -m financebuddy --ejemplo       :: con datos inventados en una carpeta temporal
 python -m unittest pruebas.test_importar pruebas.test_servidor
 python pruebas\run.py --tests          :: todas las pantallas en Chrome/Edge sin ventana + pruebas de cálculos
+                                       :: (otro navegador: variable FB_NAVEGADOR con la ruta de chrome)
 build.bat                              :: genera dist\FinanceBuddy.exe
 ```
 
@@ -87,14 +104,15 @@ financebuddy/
   modelo.py        tipos de registro, campos y validación
   importar.py      importación de extractos: formatos, cadena de saldos, duplicados, dudas
   lectura.py       lectura de Excel/CSV, fechas, importes y reconocimiento del formato
-  clasificar.py    clasificación automática (reglas, traspasos, Bizum, recurrentes)
+  clasificar.py    clasificación automática (reglas, traspasos, Bizum, recurrentes, lo aprendido de tu historial)
   detectar.py      fijos que se repiten cada mes y de dónde viene el dinero
+  xray.py          informe X-Ray de Morningstar (PDF): composición de tus fondos
   plantilla.py     categorías, reglas y formatos de serie
   ejemplo.py       datos de ejemplo
   web/             la interfaz: index.html, nucleo.js, estilos.css y paneles/*.js
 pruebas/           pruebas (Python y cálculos en el navegador)
 ```
 
-Los módulos de `web/paneles/` se concatenan y comparten ámbito, en este orden: `datos`, `calculos`, `componentes`, `graficos`, `inicio`, `formularios`, `pantallas`.
+Los módulos de `web/paneles/` se concatenan y comparten ámbito, en este orden: `datos`, `calculos`, `componentes`, `graficos`, `inicio`, `inversion`, `formularios`, `pantallas`.
 
 Con [Claude Code](https://claude.com/claude-code), la skill `.claude/skills/financebuddy-dev` explica la arquitectura y cómo probar y extender la app.

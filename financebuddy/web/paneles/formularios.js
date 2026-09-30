@@ -15,14 +15,17 @@ const FORMS = {
       { k: "nombre", l: "Nombre", req: true, ph: "p. ej. Cuenta nómina" },
       { k: "tipo", l: "Tipo", t: "opc", opc: Object.entries(TIPO_CUENTA) },
       { k: "extracto", l: "Importo sus movimientos", t: "bool", ayuda: "Márcalo si vas a importar el extracto de esta cuenta. Si no, su saldo se calcula con los traspasos desde tus otras cuentas." },
+      { k: "iban", l: "Últimas 4 cifras del IBAN", ph: "p. ej. 8765", ayuda: "Si el extracto trae el IBAN, así la app sabe de qué cuenta es sin preguntar. Se rellena solo la primera vez que importas." },
       { k: "notas", l: "Notas" }],
     fila: (r) => [r.nombre, TIPO_CUENTA[r.tipo] || r.tipo, r.extracto ? "importa extracto" : ""], cols: ["Nombre", "Tipo", ""] },
   categoria: { uno: "categoría", plural: "Categorías", ayuda: "Los gastos de las categorías «fijo» no cuentan para tu límite de gasto variable.",
     campos: [
       { k: "nombre", l: "Nombre", req: true },
       { k: "grupo", l: "Grupo", t: "opc", opc: [["variable", "Gasto variable"], ["fijo", "Gasto fijo (alquiler, recibos…)"], ["ingreso", "Ingreso"]] },
-      { k: "presupuesto", l: "Presupuesto mensual (opcional)", t: "num", ayuda: "Si lo pones, verás una barra de lo gastado frente a este presupuesto." }],
-    fila: (r) => [r.nombre, { variable: "variable", fijo: "fijo", ingreso: "ingreso" }[r.grupo] || r.grupo, r.presupuesto ? eur(r.presupuesto, 0) : ""], cols: ["Nombre", "Grupo", "Presupuesto"] },
+      { k: "presupuesto", l: "Presupuesto mensual (opcional)", t: "num", ayuda: "Si lo pones, verás una barra de lo gastado frente a este presupuesto y un aviso si te pasas." },
+      { k: "icono", l: "Icono", t: "emoji" },
+      { k: "color", l: "Color", t: "color" }],
+    fila: (r) => [`${r.icono || catIcono(r.nombre)}  ${r.nombre}`, { variable: "variable", fijo: "fijo", ingreso: "ingreso" }[r.grupo] || r.grupo, r.presupuesto ? eur(r.presupuesto, 0) : ""], cols: ["Nombre", "Grupo", "Presupuesto"] },
   movimiento: { uno: "movimiento", plural: "Movimientos", ayuda: "Todo lo importado del banco y lo apuntado a mano.",
     campos: [
       { k: "fecha", l: "Fecha", t: "fecha", req: true, defecto: () => hoy.toISODate() },
@@ -58,7 +61,7 @@ const FORMS = {
   activo: { uno: "activo", plural: "Activos", ayuda: "Fondos, acciones, ETF o cripto. Actualiza su valor de vez en cuando (Inversión → Actualizar valores).",
     campos: [
       { k: "nombre", l: "Nombre", req: true, ph: "p. ej. Fondo indexado MSCI World" },
-      { k: "clase", l: "Tipo", t: "opc", opc: [["fondo", "Fondo"], ["etf", "ETF"], ["accion", "Acción"], ["cripto", "Cripto"], ["otro", "Otro"]] },
+      { k: "clase", l: "Tipo", t: "opc", opc: [["fondo", "Fondo"], ["etf", "ETF / ETC"], ["accion", "Acción"], ["cripto", "Cripto"], ["materia", "Materias primas (oro, cobre…)"], ["otro", "Otro"]] },
       { k: "cuenta", l: "Cuenta del bróker", t: "opc", opc: opcCuentas((c) => c.tipo === "broker"), vacio: "— ninguna —" },
       { k: "valor", l: "Valor actual (€)", t: "num" },
       { k: "fecha_valor", l: "Fecha de ese valor", t: "fecha", defecto: () => hoy.toISODate() },
@@ -66,6 +69,7 @@ const FORMS = {
       { k: "fecha_inicio", l: "Fecha de la primera compra", t: "fecha", ayuda: "Aproximada: sirve para la rentabilidad anual." },
       { k: "patrones", l: "Cómo aparece en el extracto del bróker", t: "lista", ayuda: "Textos separados por comas (p. ej. «msci world»). Al importar, las compras con ese texto se asignan a este activo." },
       { k: "isin", l: "ISIN (opcional)" },
+      { k: "ter", l: "Gastos corrientes (% al año, opcional)", t: "num", ayuda: "El TER del fondo o ETF (p. ej. 0,06). Con él verás cuánto te cuesta al año." },
       { k: "estado", l: "Estado", t: "opc", opc: [["activo", "Lo tengo"], ["vendido", "Vendido"]] }],
     fila: (r) => [r.nombre, r.clase, r.valor != null ? eur(r.valor, 0) : "—", r.fecha_valor ? `a ${fechaCorta(r.fecha_valor)}` : ""], cols: ["Nombre", "Tipo", "Valor", ""] },
   aportacion: { uno: "aportación", plural: "Aportaciones", ayuda: "Compras (+) y ventas (−) de tus activos.",
@@ -73,6 +77,7 @@ const FORMS = {
       { k: "fecha", l: "Fecha", t: "fecha", req: true, defecto: () => hoy.toISODate() },
       { k: "activo", l: "Activo", t: "opc", opc: opcActivos, req: true },
       { k: "importe", l: "Importe (€): + compra, − venta", t: "num", req: true },
+      { k: "participaciones", l: "Participaciones (opcional)", t: "num", ayuda: "Las que compras (+) o vendes (−). Con ellas la app calcula tu precio medio." },
       { k: "cuenta", l: "Cuenta del bróker", t: "opc", opc: opcCuentas((c) => c.tipo === "broker"), vacio: "— la del activo —" },
       { k: "recurrente", l: "Aportación periódica", t: "opc", opc: opcRecurrentes("aportacion"), vacio: "— ninguna —" }],
     fila: (r) => [fechaCorta(r.fecha), r.activo, { text: eurS(r.importe), cls: r.importe < 0 ? "neg" : "" }], cols: ["Fecha", "Activo", "Importe"],
@@ -128,6 +133,9 @@ const FORMS = {
     fila: (r) => [mesDT(r.mes).isValid ? mesLbl(r.mes) : r.mes, r.notas || ""], cols: ["Mes", "Notas"], orden: (a, b) => String(b.mes).localeCompare(String(a.mes)) },
 };
 
+const EMOJIS = ["🏠", "💡", "🛡️", "📺", "🛒", "🍽️", "☕", "🍺", "🎉", "🎬", "🎮", "🎾", "🏋️", "🚌", "🚗", "⛽", "✈️", "🏖️", "💊", "🦷", "🛍️", "👕", "🛋️", "🔧",
+  "📚", "🎓", "🎁", "💇", "🐾", "👶", "💶", "🏦", "📱", "💻", "🧾", "❤️", "💼", "💰", "📈", "🏷️"];
+
 // ───────────── editor ─────────────
 // opciones: { titulo, volver (ruta tras guardar), datosIniciales, alGuardar(id) }
 function formulario(padre, tipo, reg, opciones = {}) {
@@ -174,6 +182,22 @@ function formulario(padre, tipo, reg, opciones = {}) {
         el.checked = !!d[c.k];
         l.appendText(" sí");
         el.onchange = () => { d[c.k] = el.checked; };
+      } else if (c.t === "emoji") {
+        // Un emoji: escribirlo o elegir uno de la lista
+        el = form.createDiv({ cls: "fb-picker" });
+        const i = el.createEl("input", { cls: "mini", attr: { type: "text", maxlength: "8", placeholder: catIcono(d.nombre || "") } });
+        i.value = d[c.k] ?? "";
+        i.oninput = () => { d[c.k] = i.value.trim(); };
+        const g = el.createDiv({ cls: "fb-emojis" });
+        for (const e of EMOJIS) { const b = g.createEl("button", { text: e, attr: { type: "button" } }); if (e === d[c.k]) b.className = "act"; b.onclick = () => { d[c.k] = e; dibujar(); }; }
+      } else if (c.t === "color") {
+        el = form.createDiv({ cls: "fb-picker" });
+        const g = el.createDiv({ cls: "fb-colores" });
+        const actual = d[c.k] || "";
+        const b0 = g.createEl("button", { cls: "auto" + (actual ? "" : " act"), text: "auto", attr: { type: "button", title: "El de serie" } }); b0.onclick = () => { d[c.k] = ""; dibujar(); };
+        for (const col of PALETA) { const b = g.createEl("button", { cls: col.toLowerCase() === actual.toLowerCase() ? "act" : "", attr: { type: "button", title: col } }); b.style.background = col; b.onclick = () => { d[c.k] = col; dibujar(); }; }
+        const i = g.createEl("input", { attr: { type: "color", title: "Otro color" } }); i.value = actual || catColor(d.nombre || "x");
+        i.onchange = () => { d[c.k] = i.value.toUpperCase(); dibujar(); };
       } else if (c.t === "area") {
         el = form.createEl("textarea", { attr: { rows: "4" } });
         el.value = d[c.k] ?? "";

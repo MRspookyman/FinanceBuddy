@@ -94,6 +94,29 @@ def reconocer(filas, perfiles, tipo=None):
         if r: return p, r[0], r[1]
     return None
 
+RE_IBAN = re.compile(r"\b([A-Z]{2}\d{2}(?:\s*[\dA-Z]){10,30})\b")
+
+def datos_cabecera(filas, hasta=40):
+    """Lo que dicen las filas de encima de la tabla (si lo dicen): IBAN (solo sus 4 últimas cifras) y titular.
+    Santander: «Cuenta | Fecha» y debajo el IBAN; «Titular | Saldo» y debajo el nombre."""
+    out = {}
+    filas = filas[:hasta]
+    for i, f in enumerate(filas):
+        for j, c in enumerate(f):
+            t = texto(c)
+            if not t: continue
+            m = RE_IBAN.search(t.upper())
+            if m and "iban" not in out:
+                digitos = re.sub(r"\D", "", m.group(1)[4:])
+                if len(digitos) >= 10: out["iban"] = digitos[-4:]
+            if norm(t).rstrip(":") in ("titular", "titulares", "nombre del titular", "titular de la cuenta") and "titular" not in out:
+                cand = [filas[i + 1][j] if i + 1 < len(filas) and j < len(filas[i + 1]) else None, f[j + 1] if j + 1 < len(f) else None]
+                etiqueta = lambda x: norm(x).rstrip(":") in ("saldo", "fecha", "cuenta", "iban", "divisa", "moneda", "entidad", "oficina")
+                nombre = next((texto(x) for x in cand if texto(x) and not etiqueta(texto(x)) and not RE_IBAN.search(texto(x).upper())
+                               and numero(x) is None and fecha(x) is None), None)
+                if nombre and len(nombre) >= 5: out["titular"] = nombre
+    return out
+
 def cabecera_probable(filas):
     """Para configurar un formato nuevo: la fila que parece la cabecera (≥ 3 textos y debajo una fila con fecha e importe)."""
     for i, f in enumerate(filas[:40]):

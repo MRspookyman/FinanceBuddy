@@ -7,8 +7,10 @@ import datetime, re
 CAMPOS = {
     # Cuentas del usuario. tipo: corriente (día a día) · ahorro · broker (efectivo del bróker) · otro (fianza, depósito…).
     # extracto: el usuario importa los movimientos de esta cuenta (si no, sus saldos se deducen de los traspasos).
-    "cuenta": {"nombre": "texto*", "tipo": ("corriente", "ahorro", "broker", "otro"), "extracto": "bool", "notas": "texto"},
-    "categoria": {"nombre": "texto*", "grupo": ("variable", "fijo", "ingreso"), "presupuesto": "num+"},
+    # iban: sus 4 últimas cifras (para saber de qué cuenta es un extracto sin preguntar).
+    "cuenta": {"nombre": "texto*", "tipo": ("corriente", "ahorro", "broker", "otro"), "extracto": "bool", "iban": "texto", "notas": "texto"},
+    # icono: un emoji · color: #RRGGBB (si faltan, la app pone uno propio de la categoría).
+    "categoria": {"nombre": "texto*", "grupo": ("variable", "fijo", "ingreso"), "presupuesto": "num+", "icono": "texto", "color": "texto"},
     # importe siempre positivo: la clase da el signo. Transferencias con destino (sale) u origen (entra) = otra cuenta.
     # ext_*: huella de la fila del extracto de la que sale (para no importarla dos veces).
     "movimiento": {"fecha": "fecha*", "clase": ("gasto", "ingreso", "reembolso", "transferencia"), "categoria": "texto",
@@ -19,11 +21,12 @@ CAMPOS = {
                    "dia": "int", "desde": "fecha*", "hasta": "fecha", "meses": "meses", "activo": "bool",
                    "activo_inversion": "texto", "cuenta": "texto"},
     # patrones: textos del extracto del bróker que identifican el activo (p. ej. «s&p 500 index»).
-    "activo": {"nombre": "texto*", "clase": ("fondo", "etf", "accion", "cripto", "otro"), "cuenta": "texto", "valor": "num",
+    # ter: gastos corrientes anuales (%) · materia: materias primas (oro, cobre…).
+    "activo": {"nombre": "texto*", "clase": ("fondo", "etf", "accion", "cripto", "materia", "otro"), "cuenta": "texto", "valor": "num",
                "fecha_valor": "fecha", "aportado_inicial": "num", "fecha_inicio": "fecha", "estado": ("activo", "vendido"),
-               "patrones": "lista", "isin": "texto"},
-    # importe: + compra, − venta.
-    "aportacion": {"fecha": "fecha*", "activo": "texto*", "importe": "num*", "cuenta": "texto", "recurrente": "texto",
+               "patrones": "lista", "isin": "texto", "ter": "num+"},
+    # importe: + compra, − venta · participaciones: las compradas (+) o vendidas (−), si el extracto las dice («… @ 2»).
+    "aportacion": {"fecha": "fecha*", "activo": "texto*", "importe": "num*", "participaciones": "num", "cuenta": "texto", "recurrente": "texto",
                    "ext_texto": "texto", "ext_importe": "num", "ext_fecha": "fecha"},
     # saldos: {cuenta: saldo} · valores: {activo: valor} a esa fecha.
     "patrimonio": {"fecha": "fecha*", "saldos": "mapa", "valores": "mapa", "otros": "num", "deudas": "num+", "nota": "texto"},
@@ -39,6 +42,9 @@ CAMPOS = {
     "perfil": {"nombre": "texto*", "tipo": ("banco", "inversion"), "columnas": "mapa", "cuenta": "texto",
                "compras_negativas": "bool", "acciones": "listamapa"},
     "cierre": {"mes": "texto*", "fecha": "fecha", "notas": "texto"},
+    # Informe X-Ray de Morningstar (xray.py): datos = {tipos, paises, regiones, sectores, top, rentabilidad, riesgo, fondos,
+    # enlaces: {fondo del informe: tu activo}} · activos: tus activos que describe.
+    "composicion": {"fecha": "fecha*", "nombre": "texto", "datos": "mapa", "activos": "lista"},
     # Internos (solo los escribe el servidor)
     "pendiente": {"tipo_import": ("banco", "inversion"), "cuenta": "texto", "archivo": "texto", "perfil": "texto",
                   "fila": "mapa", "duda": "texto"},
@@ -52,7 +58,7 @@ REFERENCIAS = {
                ("activo", "cuenta"), ("aportacion", "cuenta"), ("objetivo", "cuenta"), ("perfil", "cuenta"),
                ("regla", "cuenta_otra"), ("pendiente", "cuenta"), ("patrimonio", "saldos*")],
     "categoria": [("movimiento", "categoria"), ("recurrente", "categoria"), ("regla", "categoria")],
-    "activo": [("aportacion", "activo"), ("recurrente", "activo_inversion"), ("patrimonio", "valores*")],
+    "activo": [("aportacion", "activo"), ("recurrente", "activo_inversion"), ("patrimonio", "valores*"), ("composicion", "activos[]")],
     "recurrente": [("movimiento", "recurrente"), ("aportacion", "recurrente"), ("regla", "recurrente")],
 }
 UNICOS = {"cuenta": "nombre", "categoria": "nombre", "activo": "nombre", "recurrente": "nombre", "cierre": "mes", "perfil": "nombre"}
@@ -105,6 +111,9 @@ def limpiar(tipo, datos):
         if oblig and v in (None, ""): raise ValueError(f"falta «{k}»")
         if v not in (None, "", [], {}): out[k] = v
         elif isinstance(t, tuple) or t == "bool": out[k] = v
+    if tipo == "categoria":
+        if out.get("color") and not re.fullmatch(r"#[0-9a-fA-F]{6}", out["color"]): raise ValueError("color: usa el formato #RRGGBB")
+        if len(out.get("icono", "")) > 8: raise ValueError("icono: pon un solo emoji")
     # Mapas numéricos
     for k in ("saldos", "valores"):
         if k in out: out[k] = {str(a): numero(b) for a, b in out[k].items() if numero(b) is not None}

@@ -25,13 +25,14 @@
     addClass(c) { this.classList.add(c); },
   });
 
-  // ── tema ──
-  const temaGuardado = (() => { try { return localStorage.getItem("fb-tema"); } catch (_) { return null; } })();
-  document.body.classList.toggle("theme-dark", temaGuardado ? temaGuardado === "oscuro" : matchMedia("(prefers-color-scheme: dark)").matches);
+  // ── tema: automático (el del sistema), claro u oscuro; se guarda en este navegador ──
+  const leerTema = () => { try { return localStorage.getItem("fb-tema") || "auto"; } catch (_) { return "auto"; } };
+  const oscuroSistema = matchMedia("(prefers-color-scheme: dark)");
+  const aplicarTema = () => { const t = leerTema(); document.body.classList.toggle("theme-dark", t === "auto" ? oscuroSistema.matches : t === "oscuro"); };
+  aplicarTema();
+  oscuroSistema.addEventListener && oscuroSistema.addEventListener("change", () => { if (leerTema() === "auto") { aplicarTema(); montar(); } });
   document.getElementById("tema").onclick = () => {
-    const o = !document.body.classList.contains("theme-dark");
-    document.body.classList.toggle("theme-dark", o);
-    try { localStorage.setItem("fb-tema", o ? "oscuro" : "claro"); } catch (_) {}
+    FB.tema(document.body.classList.contains("theme-dark") ? "claro" : "oscuro");
     montar();
   };
 
@@ -52,6 +53,7 @@
     async recargar() {
       const d = await FB.api("/api/datos");
       if (d.registros) FB.DB = d; else FB.aviso(d.mensaje || "No se han podido cargar los datos", true);
+      if (d.config) document.body.dataset.acento = d.config.acento || "violeta";
       barra();
     },
     // Recarga los datos y vuelve a dibujar la pantalla actual sin perder la posición (las pantallas leen FB.DB al montarse).
@@ -60,6 +62,12 @@
       await FB.recargar();
       montar();
       window.scrollTo(0, y);
+    },
+    // Sin argumento: el tema elegido (auto | claro | oscuro). Con argumento: lo cambia.
+    tema(t) {
+      if (t === undefined) return leerTema();
+      try { localStorage.setItem("fb-tema", t); } catch (_) {}
+      aplicarTema();
     },
     estado: {},
     ir(ruta) {
@@ -79,21 +87,23 @@
     inicio: '<path d="M4 10.5 12 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5.5h-5V20H5a1 1 0 0 1-1-1z"/>',
     movimientos: '<path d="M5 7h11M5 7l3-3M5 7l3 3M19 17H8m11 0-3-3m3 3-3 3"/>',
     importar: '<path d="M12 4v11m0 0-4-4m4 4 4-4M5 19h14"/>',
+    inversion: '<path d="M4 19h16M6 15l4-4 3 3 5-6"/><path d="M15 8h3v3"/>',
     revisar: '<path d="M12 3.5 3.5 19h17zM12 10v4m0 2.6v.1"/>',
     ajustes: '<path d="M4 7h9m4 0h3M4 17h3m4 0h9"/><circle cx="15" cy="7" r="2.2"/><circle cx="9" cy="17" r="2.2"/>',
   };
-  const SECCION = { resumen: "inicio", gastos: "movimientos", prevision: "inicio", patrimonio: "inicio", inversion: "inicio", objetivos: "ajustes",
-    gestionar: "ajustes", editar: "ajustes", fijos: "ajustes", cerrar: "ajustes", valores: "ajustes" };
+  const SECCION = { resumen: "inicio", gastos: "movimientos", prevision: "inicio", patrimonio: "inicio", objetivos: "ajustes",
+    gestionar: "ajustes", editar: "ajustes", fijos: "ajustes", cerrar: "ajustes", valores: "inversion" };
   function barra() {
     const DB = FB.DB; if (!DB) return;
     const fechas = (DB.registros.movimiento || []).map((m) => m.fecha).sort();
     document.getElementById("datos").textContent = fechas.length ? `Movimientos hasta el ${fechas[fechas.length - 1].split("-").reverse().join("/")}` : "";
     document.getElementById("ejemplo").hidden = !(DB.info && DB.info.ejemplo);
     const n = (DB.pendientes || []).length;
-    const items = [["inicio", "Inicio"], ["movimientos", "Movimientos"], ["importar", "Importar"], n ? ["revisar", "Por revisar"] : null, ["ajustes", "Ajustes"]].filter(Boolean);
+    // [ruta, nombre, nombre corto (barra de abajo en el móvil)]
+    const items = [["inicio", "Inicio"], ["movimientos", "Movimientos", "Movs."], ["inversion", "Inversión"], ["importar", "Importar"], n ? ["revisar", "Por revisar", "Revisar"] : null, ["ajustes", "Ajustes"]].filter(Boolean);
     const v = ruta()[0], act = SECCION[v] || v;
     const menu = document.getElementById("menu");
-    menu.innerHTML = items.map(([k, t]) => `<a href="#${k}" class="internal-link${k === act ? " act" : ""}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">${ICO[k]}</svg><span>${t}</span>${k === "revisar" ? `<span class="num">${n}</span>` : ""}</a>`).join("");
+    menu.innerHTML = items.map(([k, t, c]) => `<a href="#${k}" class="internal-link${k === act ? " act" : ""}" title="${t}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">${ICO[k]}</svg><span class="lg">${t}</span><span class="ct">${c || t}</span>${k === "revisar" ? `<span class="num">${n}</span>` : ""}</a>`).join("");
   }
 
   // ── montaje de la pantalla actual ──

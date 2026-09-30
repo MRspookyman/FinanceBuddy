@@ -3,6 +3,7 @@
 #
 # Uso: python pruebas/run.py [pantalla1,pantalla2] [--tests] [--shot] [--tema=oscuro] [--ancho=N] [--alto=N] [--datos=CARPETA]
 #   --datos: usa esa carpeta de datos en lugar de crear una de ejemplo (p. ej. para ver tus datos reales)
+#   FB_NAVEGADOR: ruta de otro Chrome/Chromium (p. ej. fuera de Windows)
 import html, os, re, subprocess, sys, tempfile, time, urllib.request
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
@@ -11,15 +12,15 @@ SALIDA = os.path.join(tempfile.gettempdir(), "fb-pruebas")
 # Navegadores con modo sin ventana (el primero que exista)
 EDGES = [r"C:\Program Files\Google\Chrome\Application\chrome.exe", r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
          r"C:\Program Files\Microsoft\Edge\Application\msedge.exe"]
-PANTALLAS = "inicio,movimientos,importar,revisar,apuntar,cerrar,valores,ajustes,fijos,gestionar/movimiento,gestionar/cuenta,editar/movimiento/nuevo,editar/recurrente/nuevo,bienvenida"
+PANTALLAS = "inicio,movimientos,inversion,importar,revisar,apuntar,cerrar,valores,ajustes,fijos,gestionar/movimiento,gestionar/cuenta,editar/movimiento/nuevo,editar/recurrente/nuevo,bienvenida"
 HOY = "2026-09-30"
 
 def main():
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     flags = dict(a[2:].split("=", 1) if "=" in a else (a[2:], "1") for a in sys.argv[1:] if a.startswith("--"))
     pantallas = (args[0] if args else PANTALLAS).split(",")
-    edge = next((e for e in EDGES if os.path.exists(e)), None)
-    if not edge: sys.exit("No encuentro Microsoft Edge.")
+    edge = next((e for e in [os.environ.get("FB_NAVEGADOR", "")] + EDGES if e and os.path.exists(e)), None)
+    if not edge: sys.exit("No encuentro Chrome ni Edge (o indica otro con la variable FB_NAVEGADOR).")
     os.makedirs(SALIDA, exist_ok=True)
     puerto = int(flags.get("puerto", 8799))
     cmd = [sys.executable, "-m", "financebuddy", "--sin-navegador", "--puerto", str(puerto), "--hoy", flags.get("hoy", HOY), "--pruebas"]
@@ -37,6 +38,7 @@ def main():
             qs = "?pruebas=1" if "tests" in flags and i == 0 else ""
             url = f"http://127.0.0.1:{puerto}/{qs}#{v}"
             base = [edge, "--headless", "--disable-gpu", "--no-first-run", f"--user-data-dir={perfil}", "--virtual-time-budget=6000"]
+            if os.name != "nt": base.append("--no-sandbox")
             if flags.get("tema") == "oscuro": base.append("--force-dark-mode")
             out = subprocess.run(base + ["--dump-dom", url], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120).stdout
             m = re.search(r'<div id="log">(.*?)</div>', out, re.S)

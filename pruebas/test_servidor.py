@@ -49,6 +49,24 @@ class TestFlujo(unittest.TestCase):
         self.assertEqual(self.app.datos()["registros"]["movimiento"], [])
         self.assertTrue(any("antes de vaciar" in n for n in self.app.copias()))
 
+    def test_subida_detecta_el_tipo(self):
+        self.api("/api/bienvenida", {"cuentas": [{"nombre": "Nómina", "tipo": "corriente", "saldo": 1000}]})
+        ruta = os.path.join(self.dir, "x.xlsx"); excel_santander(ruta, FILAS)
+        with open(ruta, "rb") as fh: b64 = base64.b64encode(fh.read()).decode()
+        r = self.api("/api/importar/subir", {"nombre": "extracto.xlsx", "tipo": None, "contenido": b64})
+        self.assertEqual((r.get("necesita"), r.get("tipo")), ("cuenta", "banco"))  # Santander reconocido sin decirle el tipo
+        r = self.api("/api/importar/reintentar", {"archivo": r["archivo"], "tipo": r["tipo"], "cuenta": "Nómina", "perfil": r["perfil"]})
+        self.assertTrue(r["ok"], r)
+        P = self.app.datos()["pendientes"]
+        self.assertTrue(P and all("sugerencia" in p for p in P if p["fila"]["clase"] != "transferencia"))
+
+    def test_config_de_apariencia(self):
+        self.api("/api/config", {"acento": "verde", "inicio": ["gasto", "semana", "<script>"]})
+        c = self.app.datos()["config"]
+        self.assertEqual((c["acento"], c["inicio"]), ("verde", ["gasto", "semana"]))
+        self.api("/api/config", {"acento": "url(x)"})
+        self.assertEqual(self.app.datos()["config"]["acento"], "violeta")
+
     def test_subida_rechaza_otros_formatos(self):
         r = self.api("/api/importar/subir", {"nombre": "virus.exe", "contenido": ""})
         self.assertFalse(r["ok"])
