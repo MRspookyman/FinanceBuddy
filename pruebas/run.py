@@ -1,0 +1,57 @@
+# Abre cada pantalla en Edge sin ventana (headless) contra un servidor con datos de ejemplo y muestra los errores de
+# la página (#log). Con --tests ejecuta además las pruebas de cálculos (pruebas_calculos.js).
+#
+# Uso: python pruebas/run.py [pantalla1,pantalla2] [--tests] [--shot] [--tema=oscuro] [--ancho=N] [--alto=N] [--datos=CARPETA]
+#   --datos: usa esa carpeta de datos en lugar de crear una de ejemplo (p. ej. para ver tus datos reales)
+import html, os, re, subprocess, sys, tempfile, time, urllib.request
+sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
+RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+SALIDA = os.path.join(tempfile.gettempdir(), "fb-pruebas")
+# Navegadores con modo sin ventana (el primero que exista)
+EDGES = [r"C:\Program Files\Google\Chrome\Application\chrome.exe", r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+         r"C:\Program Files\Microsoft\Edge\Application\msedge.exe"]
+PANTALLAS = "resumen,gastos,prevision,inversion,patrimonio,objetivos,importar,revisar,apuntar,cerrar,valores,ajustes,gestionar/movimiento,gestionar/cuenta,editar/movimiento/nuevo,editar/recurrente/nuevo,bienvenida"
+HOY = "2026-09-30"
+
+def main():
+    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    flags = dict(a[2:].split("=", 1) if "=" in a else (a[2:], "1") for a in sys.argv[1:] if a.startswith("--"))
+    pantallas = (args[0] if args else PANTALLAS).split(",")
+    edge = next((e for e in EDGES if os.path.exists(e)), None)
+    if not edge: sys.exit("No encuentro Microsoft Edge.")
+    os.makedirs(SALIDA, exist_ok=True)
+    puerto = int(flags.get("puerto", 8799))
+    cmd = [sys.executable, "-m", "financebuddy", "--sin-navegador", "--puerto", str(puerto), "--hoy", flags.get("hoy", HOY), "--pruebas"]
+    if "datos" in flags: cmd += ["--datos", flags["datos"]]
+    else: cmd += ["--ejemplo", "--datos", os.path.join(SALIDA, "datos")]
+    srv = subprocess.Popen(cmd, cwd=RAIZ, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+    try:
+        for _ in range(100):
+            try: urllib.request.urlopen(f"http://127.0.0.1:{puerto}/", timeout=1); break
+            except Exception: time.sleep(0.1)
+        else: sys.exit("El servidor no arranca: " + srv.stderr.read().decode(errors="replace")[-2000:])
+        perfil = tempfile.mkdtemp()
+        fallos = 0
+        for i, v in enumerate(pantallas):
+            qs = "?pruebas=1" if "tests" in flags and i == 0 else ""
+            url = f"http://127.0.0.1:{puerto}/{qs}#{v}"
+            base = [edge, "--headless", "--disable-gpu", "--no-first-run", f"--user-data-dir={perfil}", "--virtual-time-budget=6000"]
+            if flags.get("tema") == "oscuro": base.append("--force-dark-mode")
+            out = subprocess.run(base + ["--dump-dom", url], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120).stdout
+            m = re.search(r'<div id="log">(.*?)</div>', out, re.S)
+            texto = html.unescape(m.group(1)).strip() if m else "(sin log)"
+            h2 = re.search(r"<h2[^>]*>(.*?)</h2>", out, re.S)
+            if not out.strip(): texto = "(el navegador no devolvió la página)"
+            if "Error" in texto or "✕" in texto or not out.strip(): fallos += 1
+            print(f"── {v} [{html.unescape(h2.group(1)) if h2 else '—'}]: {texto or 'ok'}")
+            if "shot" in flags:
+                png = os.path.join(SALIDA, f"{v.replace('/', '-')}{'-' + flags['tema'] if 'tema' in flags else ''}.png")
+                subprocess.run(base + [f"--window-size={flags.get('ancho', '1200')},{flags.get('alto', '2600')}", f"--screenshot={png}", url], capture_output=True, timeout=120)
+        if "shot" in flags: print("capturas en", SALIDA)
+        return 1 if fallos else 0
+    finally:
+        srv.terminate()
+
+if __name__ == "__main__":
+    sys.exit(main())

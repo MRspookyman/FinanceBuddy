@@ -1,0 +1,97 @@
+# FinanceBuddy
+
+Tus finanzas personales **en tu ordenador**. Importas los extractos de tu banco y de tu bróker (Excel o CSV) y la app te dice:
+
+- **cuánto puedes gastar** lo que queda de mes y esta semana;
+- **qué hacer con tu dinero**: cuánto conviene dejar en la cuenta corriente y cuánto mover al ahorro o a la inversión;
+- a dónde va tu dinero (gastos por categoría, mes a mes);
+- cómo va tu **inversión** (ganancia y rentabilidad anual);
+- tu **patrimonio** y una **previsión** de los próximos 12 meses.
+
+Nada sale de tu ordenador: no hay cuentas, ni nube, ni conexión con el banco. Los datos se guardan en un archivo de tu carpeta Documentos.
+
+Solo para **Windows**. Todo en español y en euros.
+
+## Empezar
+
+1. Descarga `FinanceBuddy.exe` y ábrelo (doble clic). No hace falta instalar nada.
+   - Windows puede avisar de que es una aplicación desconocida: pulsa «Más información» → «Ejecutar de todas formas».
+2. Se abre en tu navegador. La primera vez te pide:
+   - tus cuentas y cuánto tienes hoy en cada una;
+   - tu límite de gasto variable al mes;
+   - tus ingresos y gastos fijos.
+   Si prefieres verla antes, pulsa **«Probar con datos de ejemplo»**.
+3. **Importa** el extracto de tu banco: pestaña *Importar* → arrastra el Excel o CSV.
+   - La primera vez con un banco nuevo te pregunta qué columna es la fecha, el concepto y el importe. Solo esa vez.
+4. **Por revisar**: lo que la app no sabe clasificar sola te lo pregunta.
+   - Marca «recordar» y la próxima vez se clasifica solo (y también las demás dudas iguales).
+5. Una vez al mes, **Cerrar el mes**: anotas el saldo de tus cuentas y el valor de tu inversión.
+   - Así la app comprueba que no falta ningún movimiento y sigue tu patrimonio.
+
+Cerrar la pestaña del navegador no cierra la app: para cerrarla, *Ajustes → Cerrar FinanceBuddy*. Si la vuelves a abrir, se reutiliza la que ya estaba en marcha.
+
+## Uso semanal
+
+1. Descarga el extracto de tu banco: en la web o la app del banco, *Movimientos → Exportar a Excel*.
+2. Arrástralo a *Importar*, o guárdalo en la carpeta `Importar\Banco` y pulsa «Importar la carpeta».
+   - Los movimientos del bróker van a `Importar\Inversión`.
+3. Revisa lo pendiente, si hay algo.
+4. Mira el *Resumen*.
+
+Importar dos veces el mismo periodo **no duplica nada**: cada movimiento se reconoce por su fecha e importe en el extracto.
+
+## Bancos y brókers
+
+- **De serie** reconoce los extractos de **Santander** y la cuenta de efectivo de **MyInvestor**.
+- **Cualquier otro** banco o bróker que exporte Excel o CSV funciona:
+  - la primera vez le dices qué columna es cada cosa;
+  - vale el importe con signo, o columnas separadas de cargo y abono;
+  - el saldo es opcional, pero recomendado.
+- **Inversión**: las compras se asignan a cada activo por el texto con el que aparecen en el extracto. La primera vez te pregunta de qué activo es cada compra.
+
+## Tus datos
+
+Están en `Documentos\FinanceBuddy` (se puede cambiar en *Ajustes*):
+
+| Carpeta o archivo | Qué es |
+|---|---|
+| `datos.db` | Todos tus datos (base de datos SQLite). |
+| `Importar\Banco`, `Importar\Inversión` | Archivos pendientes de importar. |
+| `Importar\Procesados` | Archivos ya importados. |
+| `Copias\` | Copia de seguridad automática diaria (las 30 últimas). Se restaura desde *Ajustes*. |
+
+Para llevarte tus datos a otro ordenador, copia la carpeta entera.
+
+## Para desarrolladores
+
+Requisitos: Python 3.10+ en Windows.
+
+```bat
+pip install -r requirements.txt -r requirements-dev.txt
+python -m financebuddy                 :: arranca con tus datos (Documentos\FinanceBuddy)
+python -m financebuddy --ejemplo       :: con datos inventados en una carpeta temporal
+python -m unittest pruebas.test_importar pruebas.test_servidor
+python pruebas\run.py --tests          :: todas las pantallas en Chrome/Edge sin ventana + pruebas de cálculos
+build.bat                              :: genera dist\FinanceBuddy.exe
+```
+
+Estructura:
+
+```
+financebuddy/
+  __main__.py      arranque (servidor local + navegador)
+  servidor.py      servidor HTTP en 127.0.0.1 y la API JSON (clave por arranque en la cabecera X-FB-Token)
+  almacen.py       base de datos SQLite (registros JSON por tipo) y copias de seguridad
+  modelo.py        tipos de registro, campos y validación
+  importar.py      importación de extractos: formatos, cadena de saldos, duplicados, dudas
+  lectura.py       lectura de Excel/CSV, fechas, importes y reconocimiento del formato
+  clasificar.py    clasificación automática (reglas, traspasos, Bizum, recurrentes)
+  plantilla.py     categorías, reglas y formatos de serie
+  ejemplo.py       datos de ejemplo
+  web/             la interfaz: index.html, nucleo.js, estilos.css y paneles/*.js
+pruebas/           pruebas (Python y cálculos en el navegador)
+```
+
+Los módulos de `web/paneles/` se concatenan y comparten ámbito, en este orden: `datos`, `calculos`, `componentes`, `graficos`, `bloques`, `vistas`, `formularios`, `pantallas`.
+
+Con [Claude Code](https://claude.com/claude-code), la skill `.claude/skills/financebuddy-dev` explica la arquitectura y cómo probar y extender la app.

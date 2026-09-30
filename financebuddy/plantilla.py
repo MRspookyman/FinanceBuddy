@@ -1,0 +1,90 @@
+# Lo que trae una instalación nueva: categorías, reglas de comercios habituales en España y los formatos
+# de archivo que se reconocen de serie (Santander y MyInvestor). El usuario puede cambiarlo todo desde la app.
+
+CATEGORIAS = [
+    ("Vivienda", "fijo"), ("Suministros", "fijo"), ("Seguros", "fijo"), ("Suscripciones", "fijo"),
+    ("Supermercado", "variable"), ("Comer fuera", "variable"), ("Ocio", "variable"), ("Transporte", "variable"),
+    ("Coche", "variable"), ("Salud", "variable"), ("Compras", "variable"), ("Hogar", "variable"), ("Viajes", "variable"),
+    ("Formación", "variable"), ("Regalos", "variable"), ("Cuidado personal", "variable"), ("Mascotas", "variable"),
+    ("Efectivo", "variable"), ("Comisiones", "variable"), ("Otros", "variable"),
+    ("Nómina", "ingreso"), ("Otros ingresos", "ingreso"),
+]
+
+# (patrón, categoría, clase). Gana la primera que case: las más concretas primero («amazon prime» antes que «amazon»).
+REGLAS = [
+    ("nomina", "Nómina", "ingreso"),
+    ("repsol luz", "Suministros", "gasto"), ("iberdrola", "Suministros", "gasto"), ("endesa", "Suministros", "gasto"),
+    ("naturgy", "Suministros", "gasto"), ("totalenergies", "Suministros", "gasto"), ("holaluz", "Suministros", "gasto"),
+    ("canal de isabel", "Suministros", "gasto"), ("aguas de", "Suministros", "gasto"), ("movistar", "Suministros", "gasto"),
+    ("vodafone", "Suministros", "gasto"), ("orange", "Suministros", "gasto"), ("digi spain", "Suministros", "gasto"),
+    ("pepephone", "Suministros", "gasto"), ("simyo", "Suministros", "gasto"), ("lowi", "Suministros", "gasto"),
+    ("o2", "Suministros", "gasto"), ("jazztel", "Suministros", "gasto"), ("masmovil", "Suministros", "gasto"),
+    ("mapfre", "Seguros", "gasto"), ("mutua madrile", "Seguros", "gasto"), ("linea directa", "Seguros", "gasto"),
+    ("allianz", "Seguros", "gasto"), ("axa", "Seguros", "gasto"), ("sanitas", "Seguros", "gasto"),
+    ("adeslas", "Seguros", "gasto"), ("generali", "Seguros", "gasto"), ("reale seguros", "Seguros", "gasto"),
+    ("amazon prime", "Suscripciones", "gasto"), ("netflix", "Suscripciones", "gasto"), ("spotify", "Suscripciones", "gasto"),
+    ("disney", "Suscripciones", "gasto"), ("hbo", "Suscripciones", "gasto"), ("max.com", "Suscripciones", "gasto"),
+    ("dazn", "Suscripciones", "gasto"), ("apple.com/bill", "Suscripciones", "gasto"), ("google one", "Suscripciones", "gasto"),
+    ("youtube", "Suscripciones", "gasto"), ("openai", "Suscripciones", "gasto"), ("anthropic", "Suscripciones", "gasto"),
+    ("basic-fit", "Suscripciones", "gasto"), ("gimnasio", "Suscripciones", "gasto"), ("playstation", "Suscripciones", "gasto"),
+    ("mercadona", "Supermercado", "gasto"), ("lidl", "Supermercado", "gasto"), ("carrefour", "Supermercado", "gasto"),
+    ("aldi", "Supermercado", "gasto"), ("alcampo", "Supermercado", "gasto"), ("eroski", "Supermercado", "gasto"),
+    ("consum", "Supermercado", "gasto"), ("ahorramas", "Supermercado", "gasto"), ("supermercados dia", "Supermercado", "gasto"),
+    ("en dia", "Supermercado", "gasto"), ("compra dia", "Supermercado", "gasto"),
+    ("hipercor", "Supermercado", "gasto"), ("bonpreu", "Supermercado", "gasto"),
+    ("gadis", "Supermercado", "gasto"), ("froiz", "Supermercado", "gasto"), ("masymas", "Supermercado", "gasto"),
+    ("covirán", "Supermercado", "gasto"), ("coviran", "Supermercado", "gasto"), ("spar", "Supermercado", "gasto"),
+    ("glovo", "Comer fuera", "gasto"), ("just eat", "Comer fuera", "gasto"), ("uber eats", "Comer fuera", "gasto"),
+    ("mcdonald", "Comer fuera", "gasto"), ("burger king", "Comer fuera", "gasto"), ("telepizza", "Comer fuera", "gasto"),
+    ("domino", "Comer fuera", "gasto"), ("starbucks", "Comer fuera", "gasto"), ("100 montaditos", "Comer fuera", "gasto"),
+    ("restaurante", "Comer fuera", "gasto"), ("cafeteria", "Comer fuera", "gasto"), ("meson", "Comer fuera", "gasto"),
+    ("bar", "Comer fuera", "gasto"), ("taberna", "Comer fuera", "gasto"), ("cerveceria", "Comer fuera", "gasto"),
+    ("pizzeria", "Comer fuera", "gasto"),
+    ("cinesa", "Ocio", "gasto"), ("yelmo", "Ocio", "gasto"), ("kinepolis", "Ocio", "gasto"), ("ticketmaster", "Ocio", "gasto"),
+    ("padel", "Ocio", "gasto"), ("bowling", "Ocio", "gasto"), ("steam", "Ocio", "gasto"),
+    ("repsol", "Coche", "gasto"), ("cepsa", "Coche", "gasto"), ("moeve", "Coche", "gasto"), ("galp", "Coche", "gasto"),
+    ("bp", "Coche", "gasto"), ("shell", "Coche", "gasto"), ("plenoil", "Coche", "gasto"), ("ballenoil", "Coche", "gasto"),
+    ("petroprix", "Coche", "gasto"), ("plenergy", "Coche", "gasto"), ("gasolinera", "Coche", "gasto"), ("parking", "Coche", "gasto"),
+    ("telpark", "Coche", "gasto"), ("peaje", "Coche", "gasto"), ("itv", "Coche", "gasto"), ("autopista", "Coche", "gasto"),
+    ("renfe", "Transporte", "gasto"), ("emt", "Transporte", "gasto"), ("metro de", "Transporte", "gasto"),
+    ("crtm", "Transporte", "gasto"), ("cabify", "Transporte", "gasto"), ("uber", "Transporte", "gasto"),
+    ("bolt", "Transporte", "gasto"), ("blablacar", "Transporte", "gasto"), ("taxi", "Transporte", "gasto"),
+    ("alsa", "Transporte", "gasto"),
+    ("farmacia", "Salud", "gasto"), ("dental", "Salud", "gasto"), ("dentist", "Salud", "gasto"), ("clinica", "Salud", "gasto"),
+    ("fisio", "Salud", "gasto"), ("optica", "Salud", "gasto"),
+    ("amazon", "Compras", "gasto"), ("amzn", "Compras", "gasto"), ("aliexpress", "Compras", "gasto"), ("temu", "Compras", "gasto"),
+    ("shein", "Compras", "gasto"), ("zara", "Compras", "gasto"), ("primark", "Compras", "gasto"), ("pull and bear", "Compras", "gasto"),
+    ("zalando", "Compras", "gasto"), ("decathlon", "Compras", "gasto"), ("mediamarkt", "Compras", "gasto"),
+    ("el corte ingles", "Compras", "gasto"), ("pccomponentes", "Compras", "gasto"), ("fnac", "Compras", "gasto"), ("en game", "Compras", "gasto"),
+    ("wallapop", "Compras", "gasto"), ("vinted", "Compras", "gasto"),
+    ("ikea", "Hogar", "gasto"), ("leroy merlin", "Hogar", "gasto"), ("bricomart", "Hogar", "gasto"), ("jysk", "Hogar", "gasto"),
+    ("ryanair", "Viajes", "gasto"), ("vueling", "Viajes", "gasto"), ("iberia", "Viajes", "gasto"), ("booking", "Viajes", "gasto"),
+    ("airbnb", "Viajes", "gasto"), ("iryo", "Viajes", "gasto"), ("ouigo", "Viajes", "gasto"), ("hotel", "Viajes", "gasto"),
+    ("udemy", "Formación", "gasto"), ("coursera", "Formación", "gasto"), ("casa del libro", "Formación", "gasto"),
+    ("peluqueria", "Cuidado personal", "gasto"), ("barber", "Cuidado personal", "gasto"),
+    ("veterinari", "Mascotas", "gasto"), ("tiendanimal", "Mascotas", "gasto"), ("kiwoko", "Mascotas", "gasto"),
+    ("cajero", "Efectivo", "gasto"), ("retirada efectivo", "Efectivo", "gasto"),
+    ("comision", "Comisiones", "gasto"), ("liquidacion del contrato", "Comisiones", "gasto"),
+]
+
+# Formatos de archivo reconocidos de serie. columnas: {campo: texto de la cabecera (sin tildes, en minúsculas)}.
+#   banco: fecha, fecha_valor?, concepto, importe | cargo+abono, saldo?
+#   inversión: fecha, concepto, importe (compras en negativo si compras_negativas)
+PERFILES = [
+    {"nombre": "Santander", "tipo": "banco",
+     "columnas": {"fecha": "fecha operacion", "fecha_valor": "fecha valor", "concepto": "concepto", "importe": "importe", "saldo": "saldo"}},
+    {"nombre": "MyInvestor (cuenta de efectivo)", "tipo": "inversion", "compras_negativas": True,
+     "columnas": {"fecha": "fecha de operacion", "concepto": "concepto", "importe": "importe"},
+     "acciones": [{"patron": "periodo", "accion": "interes"}]},
+]
+
+def instalar(alm):
+    """Carga la plantilla en una base de datos nueva (solo lo que falte)."""
+    with alm.transaccion():
+        if not alm.contar("categoria"):
+            for n, g in CATEGORIAS: alm.guardar("categoria", {"nombre": n, "grupo": g})
+        if not alm.contar("regla"):
+            for p, c, cl in REGLAS: alm.guardar("regla", {"patron": p, "categoria": c, "clase": cl, "origen": "plantilla"})
+        if not alm.contar("perfil"):
+            for p in PERFILES: alm.guardar("perfil", p)
+        if alm.config("limite_variable") is None: alm.set_config("limite_variable", 0)

@@ -1,0 +1,17 @@
+# Compilación
+build/
+dist/
+*.spec
+__pycache__/
+*.pyc
+
+# Datos de usuario: nunca en el repositorio
+*.db
+*.db-shm
+*.db-wal
+Importar/
+Copias/
+*.xlsx
+*.xls
+*.csv
+!pruebas/ejemplos/*.csv

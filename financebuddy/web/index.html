@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="es"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FinanceBuddy</title>
+<link rel="icon" href="/web/icono.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/web/estilos.css">
+<script src="/web/vendor/luxon.min.js"></script>
+</head><body>
+<div id="barra">
+  <a href="#resumen" class="marca">FinanceBuddy</a>
+  <span id="datos"></span>
+  <span class="hueco"></span>
+  <a href="#apuntar" class="fb-btn">+ Apuntar</a>
+  <button id="tema" title="Tema claro/oscuro" aria-label="Cambiar tema">◐</button>
+</div>
+<div id="ejemplo" hidden>Estás viendo <b>datos de ejemplo</b> (inventados) · <a href="#ajustes">volver a mis datos</a></div>
+<div id="app"><p class="cargando">Cargando…</p></div>
+<div id="aviso" role="status"></div>
+<div id="log"></div>
+<script>const TOKEN = "__TOKEN__", VERSION = "__VERSION__";</script>
+<script src="/web/nucleo.js"></script>
+</body></html>
