@@ -399,3 +399,4 @@ body.theme-dark .fb-grupo{border-color:transparent}
 .fb-orden .r button[disabled]{opacity:.25;cursor:default}
 .fin-panel.resalta{box-shadow:0 0 0 2px var(--brand),var(--shadow)}
 .fb-fila .fb-et{min-width:70px}
+.fin h3.fb-sec{margin:22px 0 10px;font-size:1.05em;font-weight:720;color:var(--ink-2)}

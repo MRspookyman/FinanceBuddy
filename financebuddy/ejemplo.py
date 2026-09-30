@@ -29,6 +29,8 @@ PENDIENTES = [  # días antes de hoy, texto del extracto, importe, clase, catego
     (3, "Transferencia de Juan Perez Garcia", 50.0, "ingreso", "Otros ingresos", "Transferencia de Juan Perez Garcia", "Ingreso sin identificar: ¿qué es?"),
 ]
 
+PENDIENTES_BROKER = [(26, "ISHARES PHYSICAL GOLD ETC @ 1", -48.9), (5, "ISHARES PHYSICAL GOLD ETC @ 1", -49.6)]
+
 def crear(raiz, hoy=None, meses=5, reemplazar=True):
     """Crea (o recrea) una carpeta de datos de ejemplo. hoy: AAAA-MM-DD (por defecto, hoy)."""
     if reemplazar and os.path.exists(os.path.join(raiz, "datos.db")):
@@ -110,5 +112,10 @@ def crear(raiz, hoy=None, meses=5, reemplazar=True):
             f = (hoy - datetime.timedelta(days=dias)).isoformat()
             alm.guardar("pendiente", {"tipo_import": "banco", "cuenta": CORRIENTE, "archivo": "ejemplo.xlsx", "perfil": "Santander", "duda": duda,
                                       "fila": {"op": f, "texto": texto, "importe": imp, "clase": clase, "cat": cat, "concepto": concepto, "duda": duda}})
+        for dias, texto, imp in PENDIENTES_BROKER:
+            f = (hoy - datetime.timedelta(days=dias)).isoformat()
+            duda = "Salida de dinero: ¿es la compra de un activo (¿cuál?), una comisión o un traspaso a tu banco?"
+            alm.guardar("pendiente", {"tipo_import": "inversion", "cuenta": BROKER, "archivo": "ejemplo.csv", "perfil": "MyInvestor (cuenta de efectivo)",
+                                      "duda": duda, "fila": {"op": f, "texto": texto, "importe": imp, "duda": duda}})
     alm.cerrar()
     return raiz

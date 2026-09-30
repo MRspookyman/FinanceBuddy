@@ -38,11 +38,16 @@ def titulo(s):
 RE_COMERCIO = re.compile(r"(?:pago movil en|transaccion contactless en|compra internet en|compra con tarjeta en|pago con tarjeta en|cargo por compra en|"
                          r"compra en|pago en|compra tarj\.?(?:\s*:)?|compra)\s+(.+?)(?:,|$)", re.I)
 
+# Prefijos de las pasarelas de pago («SQ *Bar Pepe», «WL *Steam», «MGP*Wallapop»…) y números de tienda delante
+# («12229 Pull and…»): no son el comercio.
+RE_PASARELA = re.compile(r"^(?:(?:sq|wl|mgp|pp|paypal|sumup|sum ?up|zettle|izettle|sp|stripe)\s*\*\s*|sq\s+|\d{3,}\s+)", re.I)
+
 def comercio(texto):
     """Nombre del comercio en textos del tipo «Compra X, Ciudad…» (o None)."""
     m = RE_COMERCIO.search(re.sub(r"\s+", " ", RE_TARJETA.sub(" ", texto)))
     if not m: return None
-    return titulo(re.sub(r"\s+\d{3,}$", "", m.group(1).strip()))
+    nombre = RE_PASARELA.sub("", m.group(1).strip()).strip() or m.group(1).strip()
+    return titulo(re.sub(r"\s+\d{3,}$", "", nombre))
 
 def patron_sugerido(texto):
     """Texto corto que identifica el movimiento, para ofrecer «recordar para la próxima vez»."""
@@ -58,8 +63,8 @@ def patron_sugerido(texto):
 # Palabras del concepto de un Bizum → categoría
 KW_BIZUM = [(r"\b(cena|comida|comi|comer|copa|copas|cerve|cerveza|desayun|bocata|pizza|tapas|vermu|burger|chiringo|tinto|cocacola|refresco|cafe|helado|kebab|sushi|bar\b)", "Comer fuera"),
             (r"\b(padel|cine|entrada|concierto|futbol|partido)", "Ocio"), (r"\b(cumple|regalo)", "Regalos"),
-            (r"\b(wifi|luz|agua|gas|internet)", "Suministros"), (r"\b(alquiler|piso)", "Vivienda"),
-            (r"\b(gasolina|gasofa|peaje)", "Coche"), (r"\b(taxi|uber|cabify)", "Transporte"), (r"\b(viaje|hotel|vuelo|billete)", "Viajes"),
+            (r"\b(gasolina|gasofa|gasoil|diesel|peaje)", "Coche"),
+            (r"\b(wifi|luz|agua|gas\b|internet)", "Suministros"), (r"\b(alquiler|piso)", "Vivienda"), (r"\b(taxi|uber|cabify)", "Transporte"), (r"\b(viaje|hotel|vuelo|billete)", "Viajes"),
             (r"\b(super|compra)", "Supermercado")]
 
 def cat_por_palabras(s):
@@ -116,7 +121,22 @@ def sugerir(texto, imp, mem, cat_actual=""):
         return {"clase": signo if imp < 0 else "ingreso", "categoria": cat_actual, "motivo": "por el concepto"}
     return None
 
-def clasificar_fila(f, todas, reglas, cuentas, recurrentes, cuenta_propia, categorias=None, mem=None):
+# Categorías que no se reparten con amigos: un Bizum recibido no es «tu parte» de un recibo o de una suscripción.
+NO_COMPARTIDAS = {"Suscripciones", "Comisiones", "Efectivo", "Apuestas", "Seguros", "Suministros"}
+
+def palabras(s):
+    return set(re.findall(r"[a-z0-9]+", norm(s)))
+
+def es_titular(texto, titulares):
+    """¿Aparece en el texto el nombre de alguno de los titulares (todas sus palabras, en cualquier orden)?"""
+    ps = palabras(texto)
+    return any(len(t) >= 2 and t <= ps for t in (titulares or []))
+
+def titulares_de(nombres):
+    """Nombres de titular (config «titulares») → conjuntos de palabras para es_titular()."""
+    return [{w for w in palabras(n) if len(w) >= 3} for n in nombres or [] if n]
+
+def clasificar_fila(f, todas, reglas, cuentas, recurrentes, cuenta_propia, categorias=None, mem=None, titulares=None):
     """f: {op, texto, importe}. Devuelve {clase, cat, concepto, destino?/origen?, recurrente?, duda?}.
     todas: todas las filas del archivo ya clasificadas hasta aquí (para los Bizums recibidos)."""
     t, tn, imp = f["texto"], norm(f["texto"]), f["importe"]
@@ -137,7 +157,12 @@ def clasificar_fila(f, todas, reglas, cuentas, recurrentes, cuenta_propia, categ
         if clase == "ingreso" and imp < 0: clase = "gasto"
         out = con(clase=clase, cat=regla.get("categoria") or "", **({"recurrente": regla["recurrente"]} if regla.get("recurrente") else {}))
         return enlazar(out, f, recurrentes)
-    # 2) Traspasos entre cuentas propias: el texto nombra otra cuenta del usuario
+    # 2) Dinero a tu nombre (a otra cuenta tuya o desde ella): traspaso. La cuenta la dice el cruce entre extractos
+    #    (importar.emparejar_traspasos) o el usuario.
+    if titulares and re.search(r"transferencia|traspaso|bizum|a favor de|\bde\b", tn) and es_titular(t, titulares):
+        return con(clase="transferencia", concepto="A otra cuenta tuya" if imp < 0 else "Desde otra cuenta tuya",
+                   duda="Dinero a tu nombre: ¿a qué cuenta tuya va (o de cuál viene)?")
+    # 2b) Traspasos entre cuentas propias: el texto nombra otra cuenta del usuario
     for c in otras:
         n = norm(c["nombre"])
         if len(n) >= 4 and casa(n, tn) and re.search(r"traspaso|transferencia|trasp\.|a cuenta|de cuenta", tn):
@@ -162,7 +187,9 @@ def clasificar_fila(f, todas, reglas, cuentas, recurrentes, cuenta_propia, categ
         cat = cat_por_palabras(conc)
         if not cat:
             dia = datetime.date.fromisoformat(f["op"])
-            cerca = [g for g in todas if g is not f and g.get("clase") == "gasto" and g.get("cat") and not g.get("duda") and g["cat"] != "Otros" and abs(g["importe"]) >= imp
+            fijas = {n for n, g in (categorias or {}).items() if g == "fijo"} | NO_COMPARTIDAS
+            cerca = [g for g in todas if g is not f and g.get("clase") == "gasto" and g.get("cat") and not g.get("duda") and g["cat"] not in fijas
+                     and g["cat"] != "Otros" and abs(g["importe"]) >= imp
                      and 0 <= (dia - datetime.date.fromisoformat(g["op"])).days <= 1]
             if cerca: cat = max(cerca, key=lambda g: abs(g["importe"]))["cat"]
         if cat: return con(clase="reembolso", cat=cat, concepto=f"Parte de {nombre}")

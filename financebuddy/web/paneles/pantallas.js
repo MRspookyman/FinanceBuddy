@@ -245,8 +245,15 @@ function vistaRevisar() {
   const cont = root.createDiv({ cls: "fb-grupos" });
   for (const g of G) tarjetaGrupo(cont, g);
   if (inv.length) {
-    const pi = panel(root, "Movimientos del bróker");
-    for (const p of inv) tarjetaInversion(pi, p);
+    root.createEl("h3", { cls: "fb-sec", text: "Tu bróker" });
+    const gi = new Map();
+    for (const p of [...inv].sort((a, b) => String(a.fila.op).localeCompare(String(b.fila.op)))) {
+      const k = [p.cuenta, p.fila.patron || sugerirPatron(p.fila.texto), p.fila.importe < 0 ? "-" : "+"].join("|");
+      if (!gi.has(k)) gi.set(k, []);
+      gi.get(k).push(p);
+    }
+    const ci = root.createDiv({ cls: "fb-grupos" });
+    for (const g of [...gi.values()].sort((a, b) => b.length - a.length)) tarjetaGrupoInversion(ci, g);
   }
 }
 // Categorías que más usas (por número de movimientos), para ofrecerlas a un clic.
@@ -256,33 +263,78 @@ function catsFrecuentes(entra, n = 6) {
   const validas = new Set(catSegunClase({ clase: entra ? "ingreso" : "gasto" }).map(([v]) => v));
   return [...c].filter(([k]) => validas.has(k)).sort((a, b) => b[1] - a[1]).map(([k]) => k).slice(0, n);
 }
+// Cabecera común de un grupo de «Por revisar»: avatar, nombre, fechas, total y el texto del extracto.
+function cabGrupo(card, g, av, nombre) {
+  const p = g[0], f = p.fila, entra = f.importe > 0;
+  const cab = card.createDiv({ cls: "cab" });
+  avatar(cab, av);
+  const n = cab.createDiv({ cls: "n" });
+  n.createDiv({ cls: "t", text: nombre });
+  n.createDiv({ cls: "s", text: g.length > 1 ? `${g.length} movimientos · del ${fmtISO(g[0].fila.op)} al ${fmtISO(g[g.length - 1].fila.op)} · ${p.cuenta}` : `${fmtISO(f.op)} · ${p.cuenta}` });
+  cab.createDiv({ cls: "v " + (entra ? "pos" : ""), text: eurS(sum(g.map((x) => x.fila.importe))) });
+  card.createDiv({ cls: "ext", text: f.texto + (g.length > 1 ? `  (${g.map((x) => eur(Math.abs(x.fila.importe))).join(" · ")})` : "") });
+  if (p.duda) card.createDiv({ cls: "duda", text: p.duda });
+}
+// Resolver un grupo entero (ids) con la misma decisión; la tarjeta se desliza fuera y la pantalla se refresca.
+const resolverGrupo = (card, g, extra) => async (datos, btn) => {
+  btn.disabled = true;
+  const r = await FB.api("/api/resolver", { id: g[0].id, ids: g.map((x) => x.id), ...extra(), ...datos });
+  if (!r.ok) { btn.disabled = false; mensaje(card, r.mensaje || "Error", "err"); return; }
+  card.classList.add("fuera");
+  FB.aviso(r.mensaje);
+  setTimeout(() => FB.refrescar(), 220);
+};
+// Traspaso a una cuenta tuya que aún no está en la app: se crea y se resuelve el grupo.
+async function nuevaCuentaYTraspaso(hecho, btn) {
+  const nombre = (prompt("Nombre de la cuenta (p. ej. «Cuenta BBVA» o «Revolut»):") || "").trim();
+  if (!nombre) return;
+  const r = await FB.api("/api/guardar", { tipo: "cuenta", datos: { nombre, tipo: "corriente", extracto: false } });
+  if (!r.ok) { FB.aviso(r.mensaje || "No se ha podido crear la cuenta", true); return; }
+  hecho({ accion: "guardar", clase: "transferencia", cuenta_otra: nombre }, btn);
+}
+// Dudas del bróker: crear el activo (nombre y tipo sugeridos) o elegir uno, intereses, comisión o traspaso.
+function tarjetaGrupoInversion(padre, g) {
+  const p = g[0], f = p.fila, entra = f.importe > 0, sug = p.sugerencia || {};
+  const card = padre.createDiv({ cls: "fb-grupo" });
+  let nombreNuevo = sug.nuevo || C_titulo(sugerirPatron(f.texto)), recordar = true, patron = f.patron || sugerirPatron(f.texto);
+  cabGrupo(card, g, { icono: entra ? "💶" : "📈" }, sug.nuevo || sug.activo || C_titulo(sugerirPatron(f.texto)));
+  const hecho = resolverGrupo(card, g, () => ({ recordar, patron }));
+  const chips = card.createDiv({ cls: "fb-cats" });
+  const chip = (texto, datos, cls, title) => { const b = chips.createEl("button", { text: texto, cls: cls || "" }); if (title) b.title = title; b.onclick = () => hecho(datos(), b); return b; };
+  const acts = opcActivos().map(([v]) => v);
+  if (!entra && sug.accion === "activo" && sug.nuevo) chip(`✨ Crear «${nombreNuevo}»`, () => ({ accion: "activo", nuevo_activo: nombreNuevo }), "sug", "Crea el activo y guarda estas compras en él");
+  if (sug.accion === "activo" && sug.activo) chip(`✨ ${entra ? "Venta de" : "Compra de"} ${sug.activo}`, () => ({ accion: "activo", activo: sug.activo }), "sug");
+  if (entra && sug.accion === "ignorar") chip("✨ 🔁 Traspaso desde mi banco", () => ({ accion: "ignorar" }), "sug", "El dinero que pasas al bróker ya cuenta en el extracto del banco");
+  if (entra && sug.accion === "interes") chip("✨ 💰 Intereses", () => ({ accion: "interes" }), "sug");
+  for (const a of acts.filter((a) => a !== sug.activo)) chip(`📈 ${a}`, () => ({ accion: "activo", activo: a }));
+  if (entra && sug.accion !== "interes") chip("💰 Intereses o dividendos", () => ({ accion: "interes" }));
+  if (!entra) chip("🏦 Comisión", () => ({ accion: "interes" }));
+  if (!(entra && sug.accion === "ignorar")) chip(entra ? "🔁 Traspaso desde mi banco" : "🔁 Traspaso a mi banco", () => ({ accion: "ignorar" }));
+  if (entra && sug.nuevo) chip(`Venta: nuevo activo «${nombreNuevo}»`, () => ({ accion: "activo", nuevo_activo: nombreNuevo }));
+  plegable(card, "Opciones", (c) => {
+    const f0 = c.createDiv({ cls: "fb-fila" });
+    f0.createSpan({ cls: "fb-et", text: "Nombre del activo nuevo" });
+    const iN = f0.createEl("input", { attr: { type: "text" } }); iN.value = nombreNuevo; iN.oninput = () => (nombreNuevo = iN.value);
+    const f1 = c.createDiv({ cls: "fb-fila" });
+    const lab = f1.createEl("label"); const chk = lab.createEl("input", { attr: { type: "checkbox" } }); chk.checked = recordar; chk.onchange = () => (recordar = chk.checked);
+    lab.appendText("Recordar para la próxima vez los que contengan:");
+    const iPat = f1.createEl("input", { attr: { type: "text" } }); iPat.value = patron; iPat.oninput = () => (patron = iPat.value);
+  });
+}
 function tarjetaGrupo(padre, g) {
   const p = g[0], f = p.fila, entra = f.importe > 0, esTr = f.clase === "transferencia";
   const sug = p.sugerencia;
   const card = padre.createDiv({ cls: "fb-grupo" });
-  const cab = card.createDiv({ cls: "cab" });
-  avatar(cab, sug ? { cat: sug.categoria } : { icono: esTr ? "🔁" : entra ? "💰" : "❔" });
-  const n = cab.createDiv({ cls: "n" });
-  n.createDiv({ cls: "t", text: f.concepto || C_titulo(sugerirPatron(f.texto)) });
-  n.createDiv({ cls: "s", text: g.length > 1 ? `${g.length} movimientos · del ${fmtISO(g[0].fila.op)} al ${fmtISO(g[g.length - 1].fila.op)} · ${p.cuenta}` : `${fmtISO(f.op)} · ${p.cuenta}` });
-  const tot = sum(g.map((x) => x.fila.importe));
-  cab.createDiv({ cls: "v " + (entra ? "pos" : ""), text: eurS(tot) });
-  card.createDiv({ cls: "ext", text: f.texto + (g.length > 1 ? `  (${g.map((x) => eur(Math.abs(x.fila.importe))).join(" · ")})` : "") });
-  if (p.duda) card.createDiv({ cls: "duda", text: p.duda });
-  const ids = g.map((x) => x.id);
+  cabGrupo(card, g, sug ? { cat: sug.categoria } : { icono: esTr ? "🔁" : entra ? "💰" : "❔" }, f.concepto || C_titulo(sugerirPatron(f.texto)));
   let recordar = true, patron = f.patron || sugerirPatron(f.texto), concepto = f.concepto || "";
-  const hecho = async (datos, btn) => {
-    btn.disabled = true;
-    const r = await FB.api("/api/resolver", { id: p.id, ids, recordar, patron, concepto: g.length === 1 ? concepto : null, ...datos });
-    if (!r.ok) { btn.disabled = false; mensaje(card, r.mensaje || "Error", "err"); return; }
-    card.classList.add("fuera");
-    FB.aviso(r.mensaje);
-    setTimeout(() => FB.refrescar(), 220);
-  };
+  const hecho = resolverGrupo(card, g, () => ({ recordar, patron, concepto: g.length === 1 ? concepto : null }));
   const chips = card.createDiv({ cls: "fb-cats" });
   const chip = (texto, datos, cls) => { const b = chips.createEl("button", { text: texto, cls: cls || "" }); b.onclick = () => hecho(datos, b); return b; };
   const claseCat = (cat) => (grupoDe(cat) === "ingreso" ? "ingreso" : "gasto");
-  if (esTr) for (const c of cuentas().filter((c) => c.nombre !== p.cuenta)) chip(`🔁 ${entra ? "Desde" : "A"} ${c.nombre}`, { accion: "guardar", clase: "transferencia", cuenta_otra: c.nombre }, "sug");
+  if (esTr) {
+    for (const c of cuentas().filter((c) => c.nombre !== p.cuenta)) chip(`🔁 ${entra ? "Desde" : "A"} ${c.nombre}`, { accion: "guardar", clase: "transferencia", cuenta_otra: c.nombre }, "sug");
+    const bN = chips.createEl("button", { text: "＋ Otra cuenta mía…" }); bN.title = "Una cuenta tuya que aún no está en la app"; bN.onclick = () => nuevaCuentaYTraspaso(hecho, bN);
+  }
   const vistas = new Set();
   if (sug && sug.categoria) {
     const b = chip(`✨ ${catIcono(sug.categoria)} ${sug.categoria}`, { accion: "guardar", clase: sug.clase, categoria: sug.categoria }, "sug");
@@ -559,6 +611,12 @@ function vistaAjustes() {
     ["🔍", "Detectar fijos", "nóminas, alquiler, recibos y de dónde viene tu dinero", "#fijos"],
     ["🧾", "Actualizar saldos", "cierra el mes: lo que tienes en cada cuenta", "#cerrar"],
   ]);
+  const pT = panel(root, "Tú", null, "Tu nombre tal y como sale en el banco. Con él, el dinero que mueves entre cuentas a tu nombre se reconoce como traspaso y no como gasto o ingreso.");
+  pT.createDiv({ cls: "fin-note", text: "Se rellena solo con el titular del primer extracto que lo traiga. Si hay más titulares (cuenta conjunta), sepáralos con «;»." });
+  const fT = pT.createDiv({ cls: "fb-fila" });
+  const iT = fT.createEl("input", { attr: { type: "text", placeholder: "p. ej. GARCÍA LÓPEZ ANA" } }); iT.value = (cfg.titulares || []).join("; ");
+  const bT = fT.createEl("button", { cls: "fb-btn", text: "Guardar" });
+  bT.onclick = async () => { await FB.api("/api/titulares", { titulares: iT.value.split(";") }); FB.aviso("Guardado ✓"); await FB.refrescar(); };
   const pI = panel(root, "Tu inicio", null, "Elige qué ves en la pantalla de inicio y en qué orden. Se guarda al momento.");
   pI.id = "tu-inicio";
   personalizarInicio(pI);

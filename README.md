@@ -55,7 +55,9 @@ Importar dos veces el mismo periodo **no duplica nada**: cada movimiento se reco
   - la primera vez le dices qué columna es cada cosa;
   - vale el importe con signo, o columnas separadas de cargo y abono;
   - el saldo es opcional, pero recomendado.
-- **Inversión**: las compras se asignan a cada activo por el texto con el que aparecen en el extracto. La primera vez te pregunta de qué activo es cada compra.
+- **Sin preguntar de qué cuenta es**: si el extracto trae el IBAN, la app lo recuerda (sus 4 últimas cifras) y la próxima vez lo importa en su cuenta sola.
+- **Tus traspasos**: si el extracto trae el titular, el dinero que mueves a tu nombre se reconoce como traspaso (no como gasto o ingreso). Y si la salida de una cuenta y la entrada en otra (mismo importe, ±3 días) están en extractos distintos, se emparejan solas.
+- **Inversión**: las compras se asignan a cada activo por el texto con el que aparecen en el extracto. La primera vez te propone crear el activo (con nombre y tipo) y con un clic guarda todas sus compras.
 
 ## Tus datos
 

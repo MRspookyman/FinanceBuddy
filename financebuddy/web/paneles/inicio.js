@@ -101,7 +101,7 @@ function heroGasto(padre, S) {
     p.createSpan({ cls: "pill", text: `≈ ${eur(S.porSemana, 0)} por semana` });
     p.createSpan({ cls: "pill", text: `${eur(S.porDia, 0)} al día` });
   }
-  p.createSpan({ cls: "pill", text: `${S.restantes} día${S.restantes === 1 ? "" : "s"} por delante` });
+  p.createSpan({ cls: "pill", text: S.restantes > 0 ? `${S.restantes} día${S.restantes === 1 ? "" : "s"} por delante` : "último día del mes" });
   const usado = S.vari / limiteVar;
   anillo(h, { frac: usado, marca: dia / dm, c1: `${Math.round(usado * 100)} %`, c2: "del límite usado" });
 }

@@ -7,7 +7,8 @@ import datetime, re
 CAMPOS = {
     # Cuentas del usuario. tipo: corriente (día a día) · ahorro · broker (efectivo del bróker) · otro (fianza, depósito…).
     # extracto: el usuario importa los movimientos de esta cuenta (si no, sus saldos se deducen de los traspasos).
-    "cuenta": {"nombre": "texto*", "tipo": ("corriente", "ahorro", "broker", "otro"), "extracto": "bool", "notas": "texto"},
+    # iban: sus 4 últimas cifras (para saber de qué cuenta es un extracto sin preguntar).
+    "cuenta": {"nombre": "texto*", "tipo": ("corriente", "ahorro", "broker", "otro"), "extracto": "bool", "iban": "texto", "notas": "texto"},
     # icono: un emoji · color: #RRGGBB (si faltan, la app pone uno propio de la categoría).
     "categoria": {"nombre": "texto*", "grupo": ("variable", "fijo", "ingreso"), "presupuesto": "num+", "icono": "texto", "color": "texto"},
     # importe siempre positivo: la clase da el signo. Transferencias con destino (sale) u origen (entra) = otra cuenta.

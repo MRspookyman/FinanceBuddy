@@ -33,9 +33,11 @@ class App:
         pend = regs.pop("pendiente", [])
         if pend:  # la categoría más probable de cada duda del banco (por tu historial)
             mem = C.memoria(regs.get("movimiento", []))
+            activos = regs.get("activo", [])
             for p in pend:
                 f = p.get("fila") or {}
-                if p.get("tipo_import") == "banco" and f.get("clase") != "transferencia":
+                if p.get("tipo_import") == "inversion": p["sugerencia"] = IM.sugerencia_inversion(p, activos)
+                elif f.get("clase") != "transferencia":
                     p["sugerencia"] = C.sugerir(f.get("texto", ""), f.get("importe", 0), mem, f.get("cat", ""))
         regs.pop("ignorado", None)
         return {"registros": regs, "pendientes": pend, "config": self.alm.config(),
@@ -184,6 +186,9 @@ class App:
                 elif k == "acento": a.set_config(k, v if v in ACENTOS else ACENTOS[0])
                 elif k in ("inicio", "inicio_ocultos"):  # paneles de Inicio visibles (en orden) y ocultos
                     a.set_config(k, [x for x in (v if isinstance(v, list) else []) if isinstance(x, str) and re.fullmatch(r"[a-z]{2,20}", x)][:20])
+            return {"ok": True}
+        if ruta == "/api/titulares":
+            a.set_config("titulares", [re.sub(r"\s+", " ", str(x)).strip()[:80] for x in (d.get("titulares") or []) if str(x).strip()][:6])
             return {"ok": True}
         if ruta == "/api/recategorizar": return {"ok": True, "mensaje": IM.recategorizar(a, int(d["id"]), d)}
         if ruta == "/api/parecidos": return {"ok": True, **IM.parecidos(a, int(d["id"]))}

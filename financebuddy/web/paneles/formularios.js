@@ -15,6 +15,7 @@ const FORMS = {
       { k: "nombre", l: "Nombre", req: true, ph: "p. ej. Cuenta nómina" },
       { k: "tipo", l: "Tipo", t: "opc", opc: Object.entries(TIPO_CUENTA) },
       { k: "extracto", l: "Importo sus movimientos", t: "bool", ayuda: "Márcalo si vas a importar el extracto de esta cuenta. Si no, su saldo se calcula con los traspasos desde tus otras cuentas." },
+      { k: "iban", l: "Últimas 4 cifras del IBAN", ph: "p. ej. 8765", ayuda: "Si el extracto trae el IBAN, así la app sabe de qué cuenta es sin preguntar. Se rellena solo la primera vez que importas." },
       { k: "notas", l: "Notas" }],
     fila: (r) => [r.nombre, TIPO_CUENTA[r.tipo] || r.tipo, r.extracto ? "importa extracto" : ""], cols: ["Nombre", "Tipo", ""] },
   categoria: { uno: "categoría", plural: "Categorías", ayuda: "Los gastos de las categorías «fijo» no cuentan para tu límite de gasto variable.",

@@ -7,12 +7,13 @@ from financebuddy.almacen import Almacen
 def escribir(ruta, enc, texto):
     with io.open(ruta, "w", encoding=enc) as fh: fh.write(texto)
 
-def excel_santander(ruta, filas, saldo_inicial=1000.0, romper=False):
+def excel_santander(ruta, filas, saldo_inicial=1000.0, romper=False, iban="ES00 0000 0000 0000 0000", titular=None):
     """filas: [(fecha ISO, concepto, importe)] en orden cronológico → Excel con el formato de Santander (más reciente arriba)."""
     import openpyxl
     wb = openpyxl.Workbook(); ws = wb.active
-    for _ in range(3): ws.append([])
-    ws.append(["Movimientos de la cuenta"]); ws.append(["ES00 0000 0000 0000 0000"]); ws.append([])
+    ws.append([None, None, "Cuenta", "Fecha"]); ws.append([None, None, iban, "30/09/2026 | 10:00:00"])
+    ws.append([None, None, "Titular", "Saldo"]); ws.append([None, None, titular or "", "1.000,00€ EUR"])
+    ws.append(["Movimientos de la cuenta"]); ws.append([])
     ws.append(["Fecha operación", "Fecha valor", "Concepto", "Importe", "Saldo", "Divisa"])
     s, out = saldo_inicial, []
     for i, (f, c, imp) in enumerate(filas):
@@ -224,6 +225,87 @@ class TestAprender(Base):
         i = self.a.guardar("categoria", {"nombre": "Pádel", "grupo": "variable", "icono": "🎾", "color": "#12AB34"})
         self.assertEqual(self.a.obtener("categoria", i)["color"], "#12AB34")
         with self.assertRaises(ValueError): self.a.guardar("categoria", {"nombre": "X", "color": "red;}"})
+
+class TestExtractosReales(Base):
+    """Lo aprendido con extractos reales: titular e IBAN de la cabecera, traspasos cruzados, reglas nuevas, bróker."""
+    def test_gasolina_no_es_suministros_y_bizum_no_reparte_recibos(self):
+        filas = [("2026-08-20", "Bizum a favor de Ana Ruiz concepto gasofa", -10.0),
+                 ("2026-09-02", "Compra Anthropic* Claude Sub, San Francisco, Tarjeta 5163830304139456 , Comision 0,00", -200.0),
+                 ("2026-09-02", "Bizum de Pedro Gil concepto sin concepto", 7.0)]
+        self.importar(self.extracto(filas))
+        cat = {m["ext_texto"][:10]: (m["clase"], m.get("categoria")) for m in self.movs()}
+        self.assertEqual(cat["Bizum a fa"], ("gasto", "Coche"))
+        self.assertNotIn("Bizum de P", cat)  # sin gasto que repartir cerca (la suscripción no cuenta): se pregunta
+        self.assertEqual(len(self.a.todos("pendiente")), 1)
+
+    def test_reglas_nuevas_y_prefijos_de_pago(self):
+        from financebuddy import clasificar as C
+        reglas = C.ordenar_reglas(self.a.todos("regla"))
+        cat = lambda t: (C.regla_para(t, reglas) or {}).get("categoria")
+        self.assertEqual(cat("COMPRA BET365, PALMA DEMALLO, TARJETA 5163830304139456 , COMISION 0,00"), "Apuestas")
+        self.assertEqual(cat("TRANSACCION CONTACTLESS EN E S EUROPA, ANDUJAR ES, TARJ. :*139456"), "Coche")
+        self.assertEqual(cat("PAGO MOVIL EN BURGUER TOMAS, JAEN ES"), "Comer fuera")
+        self.assertEqual(C.patron_sugerido("PAGO MOVIL EN SQ *ESTACION JAE, JAEN ES"), "estacion jae")
+        self.assertEqual(C.patron_sugerido("COMPRA WL *STEAM PURCHASE, BELLEVUE"), "steam purchase")
+        self.assertEqual(C.patron_sugerido("TRANSACCION CONTACTLESS EN 12229 PULL AND, JAEN ES"), "pull and")
+
+    def test_plantilla_nueva_llega_a_instalaciones_existentes(self):
+        cat = next(c for c in self.a.todos("categoria") if c["nombre"] == "Apuestas")
+        self.a.borrar("categoria", cat["id"])
+        for r in self.a.todos("regla"):
+            if r["patron"] == "bet365": self.a.borrar("regla", r["id"])
+        self.a.guardar("regla", {"patron": "mercadona", "categoria": "Hogar", "clase": "gasto", "origen": "usuario"})
+        self.a.set_config("plantilla_version", 1)
+        plantilla.instalar(self.a)
+        self.assertTrue(any(c["nombre"] == "Apuestas" for c in self.a.todos("categoria")))
+        self.assertTrue(any(r["patron"] == "bet365" for r in self.a.todos("regla")))
+        self.assertEqual(sum(r["patron"] == "mercadona" for r in self.a.todos("regla")), 2)  # la del usuario sigue, no se duplica la de serie
+        n = len(self.a.todos("regla")); plantilla.instalar(self.a); self.assertEqual(len(self.a.todos("regla")), n)
+
+    def test_cuenta_por_iban_y_titular(self):
+        self.a.guardar("cuenta", {"nombre": "Otra", "tipo": "corriente", "extracto": True})
+        r = self.importar(self.extracto(FILAS, iban="ES12 0049 1111 2222 3333 4444", titular="GARCIA LOPEZ ANA"))
+        self.assertTrue(r["ok"])
+        self.assertEqual(next(c for c in self.a.todos("cuenta") if c["nombre"] == "Nómina")["iban"], "4444")
+        self.assertEqual(self.a.config("titulares"), ["GARCIA LOPEZ ANA"])
+        # El mismo formato con otro IBAN: no se da por hecho que sea la cuenta de antes
+        with self.assertRaises(IM.NecesitaCuenta): IM.importar_archivo(self.a, self.c, self.extracto(FILAS, nombre="b.xlsx", iban="ES12 0049 1111 2222 3333 5555"), "banco")
+        r = IM.importar_archivo(self.a, self.c, self.extracto(FILAS, nombre="b.xlsx", iban="ES12 0049 1111 2222 3333 5555"), "banco", "Otra")
+        r = IM.importar_archivo(self.a, self.c, self.extracto(FILAS + [("2026-09-20", "Compra Lidl, Madrid", -3.0)], nombre="c.xlsx", iban="ES12 0049 1111 2222 3333 4444"), "banco")
+        self.assertEqual((r["cuenta"], r["nuevas"]), ("Nómina", 1))  # sin preguntar: por el IBAN
+
+    def test_traspaso_a_tu_nombre_se_cruza_con_el_broker(self):
+        self.a.set_config("titulares", ["GARCIA LOPEZ ANA"])
+        filas = [("2026-08-26", "Transferencia inmediata a favor de Ana García López concepto ahorro", -500.0),
+                 ("2026-08-27", "Transferencia de GARCIA LOPEZ ANA, concepto gastos.", 300.0)]
+        r = self.importar(self.extracto(filas))
+        P = self.a.todos("pendiente")
+        self.assertEqual({p["fila"]["clase"] for p in P}, {"transferencia"})  # a tu nombre → traspaso, no gasto/ingreso
+        csv = os.path.join(self.c.inversion, "mi.csv")
+        escribir(csv, "utf-8", "Fecha de operación;Fecha valor;Concepto;Importe\n26/08/2026;26/08/2026;ahorro;500,00\n")
+        r = IM.importar_archivo(self.a, self.c, csv, "inversion", "Bróker")
+        self.assertEqual((r["traspasos"], r["dudas"]), (1, 0))
+        m = next(m for m in self.movs() if m["importe"] == 500.0)
+        self.assertEqual((m["clase"], m.get("destino")), ("transferencia", "Bróker"))
+        self.assertEqual([p["fila"]["importe"] for p in self.a.todos("pendiente")], [300.0])  # la otra sigue esperando su cuenta
+
+    def test_broker_crea_activo_para_todo_el_grupo(self):
+        from financebuddy import servidor
+        csv = os.path.join(self.c.inversion, "mi.csv")
+        escribir(csv, "utf-8", "Fecha de operación;Fecha valor;Concepto;Importe\n"
+                 "04/09/2026;08/09/2026;FIDELITY PHYSICAL BITCOIN ET @;-55,43\n04/08/2026;06/08/2026;FIDELITY PHYSICAL BITCOIN ET @;-55,45\n"
+                 "04/08/2026;06/08/2026;ETF ETFS Copper ETC @ 1;-50,31\n")
+        IM.importar_archivo(self.a, self.c, csv, "inversion", "Bróker")
+        P = self.a.todos("pendiente")
+        sug = IM.sugerencia_inversion(next(p for p in P if "BITCOIN" in p["fila"]["texto"]), self.a.todos("activo"))
+        self.assertEqual((sug["nuevo"], sug["clase"]), ("Fidelity Physical Bitcoin", "cripto"))
+        cobre = next(p for p in P if "Copper" in p["fila"]["texto"])
+        self.assertEqual(IM.sugerencia_inversion(cobre, [])["nuevo"], "ETFS Copper")
+        ids = [p["id"] for p in P if "BITCOIN" in p["fila"]["texto"]]
+        IM.resolver(self.a, ids[0], {"accion": "activo", "nuevo_activo": "Fidelity Physical Bitcoin", "ids": ids, "recordar": True, "patron": "fidelity physical bitcoin"})
+        a = next(x for x in self.a.todos("activo") if x["nombre"] == "Fidelity Physical Bitcoin")
+        self.assertEqual((a["clase"], a["patrones"]), ("cripto", ["fidelity physical bitcoin"]))
+        self.assertEqual(sorted(x["importe"] for x in self.a.todos("aportacion")), [55.43, 55.45])
 
 class TestInversion(Base):
     CSV = ("Fecha de operación;Fecha valor;Concepto;Importe\n"

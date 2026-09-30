@@ -89,7 +89,8 @@ function proyectar(u, hasta) {
   const S = { ...u.cuentas.saldos };
   for (const c of cuentas()) if (S[c.nombre] == null) S[c.nombre] = 0;
   const mover = (c, v) => { c = c || principal(); S[c] = (S[c] || 0) + v; };
-  const conExtracto = (c) => !!(cuentaPor(c) || {}).extracto;
+  // El bróker nunca trae sus traspasos (al importar se descartan: ya están en el banco), aunque importes su extracto.
+  const conExtracto = (c) => !!(cuentaPor(c) || {}).extracto && tipoCuenta(c) !== "broker";
   const ms = movimientos().filter((m) => tras(m.fecha));
   for (const m of ms) {
     if (m.clase === "ingreso" || m.clase === "reembolso") mover(m.cuenta, m.importe);
@@ -246,6 +247,8 @@ function ritmoMes() {
   return { dm, dia, actual, media: med, nMeses: refs.length, hoyV: actual[dia - 1] || 0, mediaHoy: med ? med[dia - 1] : NaN };
 }
 
+const hayIngresosFijos = () => recurrentes().some((r) => r.clase === "ingreso");
+
 // ───────────── qué hacer con tu dinero (plan de reparto) ─────────────
 // Colchón en la cuenta corriente = un mes de gasto (fijos mensuales + límite de gasto variable, redondeado a 50 €)
 // + el déficit de los meses negativos de la previsión en los próximos 6 meses. Lo que sobre, por orden:
@@ -257,7 +260,8 @@ function planReparto() {
   const mensuales = recurrentes().filter((r) => r.clase === "gasto" && !(r.meses && r.meses.length < 12));
   const base = Math.round((sum(mensuales.map((r) => r.importe)) + limiteVar) / 50) * 50;
   const F = prevision();
-  const deficit = -sum(F.filas.filter((f) => f.key !== hoyKey).slice(0, 6).filter((f) => f.neto < 0).map((f) => f.neto));
+  // Sin ingresos fijos la previsión solo ve gastos: no se reserva colchón por un déficit que no es real.
+  const deficit = !hayIngresosFijos() ? 0 : -sum(F.filas.filter((f) => f.key !== hoyKey).slice(0, 6).filter((f) => f.neto < 0).map((f) => f.neto));
   const colchon = base + Math.round(deficit / 50) * 50;
   const corriente = E.cuentas.corriente;
   let sobra = corriente - colchon;
@@ -345,7 +349,8 @@ function avisos() {
   const sinIni = A.filter((a) => a.aportadoIni == null);
   if (sinIni.length) add("info", `Falta cuánto habías aportado antes a ${sinIni.map((a) => a.nombre).join(", ")} · sin rentabilidad`, "#gestionar/activo");
   const F = prevision();
-  if (F.conRegistro && F.minimo && F.minimo.saldo < 0) add("warn", `Tu dinero en cuentas bajaría a ${eur(F.minimo.saldo, 0)} en ${mesLbl(F.minimo.key).toLowerCase()}`, "#inicio");
+  if (!hayIngresosFijos() && fechaDatos() && sum(mesesHasta(hoyKey, 3).map((k) => finMes(k).ingresos)) > 0) add("info", "Tus ingresos aún no están como fijos: la previsión de los próximos meses no los cuenta · detéctalos", "#fijos");
+  else if (F.conRegistro && F.minimo && F.minimo.saldo < 0) add("warn", `Tu dinero en cuentas bajaría a ${eur(F.minimo.saldo, 0)} en ${mesLbl(F.minimo.key).toLowerCase()}`, "#inicio");
   if (F.agota) {
     const meses = Math.round(mesDT(F.agota.key).diff(mesDT(hoyKey), "months").months);
     add(meses <= 1 ? "warn" : "info", `El dinero sin invertir de ${nombresBroker()} se acaba en ${mesLbl(F.agota.key).toLowerCase()}: ese mes faltan ${eur(F.agota.apoBanco, 0)} para las aportaciones · pasa dinero desde el banco antes`, "#inicio");
