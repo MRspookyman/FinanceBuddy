@@ -68,10 +68,10 @@ class App:
     def subir(self, d):
         nombre = os.path.basename(str(d.get("nombre") or "archivo.csv"))
         nombre = re.sub(r'[\\/:*?"<>|]', "_", nombre)
-        if not nombre.lower().endswith(IM.EXTENSIONES): return {"ok": False, "mensaje": "Solo se admiten archivos Excel (.xlsx, .xls), CSV o el informe X-Ray (PDF)."}
+        if not nombre.lower().endswith(IM.EXTENSIONES): return {"ok": False, "mensaje": "Solo se admiten archivos Excel (.xlsx, .xls) o CSV."}
         datos = base64.b64decode(d.get("contenido") or "")
         if len(datos) > MAX_SUBIDA: return {"ok": False, "mensaje": "El archivo es demasiado grande."}
-        tipo = d.get("tipo") if d.get("tipo") in ("banco", "inversion") else None
+        tipo = d.get("tipo") if d.get("tipo") in ("banco", "inversion", "operaciones") else None
         ruta = os.path.join(self.carpeta.carpeta_import(tipo), nombre)
         with io.open(ruta, "wb") as fh: fh.write(datos)
         return self._importar(ruta, tipo)
@@ -81,7 +81,7 @@ class App:
         nombre = os.path.basename(d["archivo"])
         ruta = next((p for p, t in IM.archivos_pendientes(self.carpeta) if os.path.basename(p) == nombre), None)
         if not ruta: return {"ok": False, "mensaje": f"No encuentro «{nombre}» en la carpeta Importar."}
-        tipo = d.get("tipo") if d.get("tipo") in ("banco", "inversion") else None
+        tipo = d.get("tipo") if d.get("tipo") in ("banco", "inversion", "operaciones") else None
         if d.get("columnas"):
             IM.crear_perfil(self.alm, d.get("perfil") or os.path.splitext(nombre)[0], tipo or "banco", d["columnas"], d.get("cuenta"),
                             d.get("compras_negativas", True))

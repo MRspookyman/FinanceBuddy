@@ -3,8 +3,8 @@ rem Genera dist\FinanceBuddy.exe (un solo archivo, sin ventana de consola).
 rem Requisitos: Python 3.10+. Los componentes (requirements.txt y requirements-dev.txt) se instalan solos si faltan.
 cd /d "%~dp0"
 
-rem 1) Componentes: openpyxl y xlrd (Excel), pypdf (X-Ray en PDF), PyInstaller (el .exe)
-python -c "import openpyxl, xlrd, pypdf, PyInstaller" 2>nul
+rem 1) Componentes: openpyxl y xlrd (Excel), PyInstaller (el .exe)
+python -c "import openpyxl, xlrd, PyInstaller" 2>nul
 if errorlevel 1 (
   echo Faltan componentes de Python: instalandolos...
   python -m pip install -r requirements.txt -r requirements-dev.txt
@@ -35,7 +35,7 @@ if not errorlevel 1 (
 python -m PyInstaller --noconfirm --clean --onefile --windowed --name FinanceBuddy ^
   --icon recursos\icono.ico ^
   --add-data "financebuddy\web;financebuddy\web" ^
-  --hidden-import openpyxl --hidden-import xlrd --hidden-import pypdf ^
+  --hidden-import openpyxl --hidden-import xlrd ^
   --exclude-module tkinter --exclude-module PIL --exclude-module cryptography --exclude-module numpy ^
   lanzar.py
 if errorlevel 1 (
