@@ -5,7 +5,7 @@
 # Si el formato no se reconoce, devuelve lo necesario para que el usuario diga qué columna es cada cosa.
 import datetime, os, re, shutil
 from collections import Counter
-from . import clasificar as C, lectura as L, modelo
+from . import clasificar as C, lectura as L, modelo, operaciones as OP
 
 class NecesitaPerfil(Exception):
     def __init__(self, info): super().__init__("formato desconocido"); self.info = info
@@ -13,7 +13,7 @@ class NecesitaPerfil(Exception):
 class NecesitaCuenta(Exception):
     def __init__(self, info): super().__init__("falta la cuenta"); self.info = info
 
-EXTENSIONES = (".xlsx", ".xls", ".xlsm", ".csv", ".txt", ".pdf")
+EXTENSIONES = (".xlsx", ".xls", ".xlsm", ".csv", ".txt")
 
 # ───────────── lectura con perfil ─────────────
 def leer(ruta, alm, tipo=None, perfil_nombre=None, info=None):
@@ -178,7 +178,8 @@ def importar_inversion(alm, ruta, cuenta=None, perfil_nombre=None):
     info = {}
     perfil, filas = leer(ruta, alm, "inversion", perfil_nombre, info)
     cuentas = alm.todos("cuenta")
-    cuenta = cuenta or cuenta_por_iban(cuentas, info.get("iban")) or perfil.get("cuenta")
+    brokers = [c["nombre"] for c in cuentas if c.get("tipo") == "broker"]
+    cuenta = cuenta or cuenta_por_iban(cuentas, info.get("iban")) or perfil.get("cuenta") or (brokers[0] if len(brokers) == 1 else None)
     if not cuenta or not any(c["nombre"] == cuenta for c in cuentas):
         raise NecesitaCuenta({"archivo": os.path.basename(ruta), "tipo": "inversion", "perfil": perfil["nombre"],
                               "cuentas": [c["nombre"] for c in cuentas if c.get("tipo") == "broker"]})
@@ -201,6 +202,7 @@ def importar_inversion(alm, ruta, cuenta=None, perfil_nombre=None):
             if huellas_ap[k] > 0: huellas_ap[k] -= 1; existentes += 1; continue
             km = (f["op"], imp, activo["nombre"])
             if manuales[km] > 0: manuales[km] -= 1; existentes += 1; continue
+            if OP.casar_movimiento(alm, f, cuenta, activo["nombre"], signo): existentes += 1; continue  # ya vino en el archivo de órdenes
             d = {"fecha": f["op"], "activo": activo["nombre"], "importe": imp, "cuenta": cuenta, "participaciones": participaciones(f["texto"], imp),
                  "ext_texto": f["texto"], "ext_importe": f["importe"], "ext_fecha": f["op"]}
             rec = next((r for r in recs if r.get("activo_inversion") == activo["nombre"] and r.get("activo") is not False
@@ -219,6 +221,7 @@ def importar_inversion(alm, ruta, cuenta=None, perfil_nombre=None):
             ya = huellas_mov[hk] > 0 or huellas_ap[hk] > 0
             if ya:
                 (huellas_mov if huellas_mov[hk] > 0 else huellas_ap)[hk] -= 1; existentes += 1; continue
+            if OP.casar_movimiento(alm, f, cuenta, None, signo): existentes += 1; continue  # una orden ya importada (activo por su ISIN)
             duda = ("Entrada de dinero: ¿es un traspaso desde tu banco (se ignora aquí), intereses o la venta de un activo?" if f["importe"] > 0
                     else "Salida de dinero: ¿es la compra de un activo (¿cuál?), una comisión o un traspaso a tu banco?")
             dudas.append({**f, "patron": C.patron_sugerido(f["texto"]), "duda": duda})
@@ -230,12 +233,14 @@ def importar_inversion(alm, ruta, cuenta=None, perfil_nombre=None):
                                              "perfil": perfil["nombre"], "fila": f, "duda": f["duda"]})
         if not perfil.get("cuenta"): alm.guardar("perfil", {**perfil, "cuenta": cuenta}, perfil["id"])
         recordar_cabecera(alm, info, cuenta)
+        con_titulos = OP.aplicar_en_espera(alm)
     n = len(nuevas_ap) + len(nuevos_mov)
     ops = sorted(f["op"] for f in filas)
     return {"ok": True, "tipo": "inversion", "cuenta": cuenta, "perfil": perfil["nombre"], "filas": len(filas), "nuevas": n,
             "existentes": existentes, "dudas": len(dudas), "desde": ops[0], "hasta": ops[-1],
             "mensaje": f"{cuenta}: {len(nuevas_ap)} compras/ventas y {len(nuevos_mov)} intereses nuevos" + (f", {len(dudas)} por revisar" if dudas else "")
-                       + (f" ({existentes} ya estaban)" if existentes else "") + (f" · {ignoradas} traspasos ignorados" if ignoradas else "")}
+                       + (f" ({existentes} ya estaban)" if existentes else "") + (f" · {ignoradas} traspasos ignorados" if ignoradas else "")
+                       + (f" · {con_titulos} completadas con sus títulos" if con_titulos else "")}
 
 def cat_intereses(alm):
     return "Intereses" if any(c["nombre"] == "Intereses" for c in alm.todos("categoria")) else "Otros ingresos"
@@ -281,27 +286,25 @@ def emparejar_traspasos(alm, dias=3):
 
 # ───────────── un archivo cualquiera ─────────────
 def tipo_de(ruta, alm, carpeta):
-    """banco | inversion según la carpeta en la que está; si está en la raíz de Importar, según el formato."""
+    """banco | inversion | operaciones según la carpeta en la que está (en Inversión, las órdenes se reconocen por su
+    formato); si está en la raíz de Importar, según el formato."""
     d = os.path.dirname(os.path.abspath(ruta))
     if d == os.path.abspath(carpeta.banco): return "banco"
-    if d == os.path.abspath(carpeta.inversion): return "inversion"
-    rec = L.reconocer(L.filas_crudas(ruta), alm.todos("perfil"))
+    perfiles = alm.todos("perfil")
+    if d == os.path.abspath(carpeta.inversion):
+        return "operaciones" if L.reconocer(L.filas_crudas(ruta), perfiles, "operaciones") else "inversion"
+    rec = L.reconocer(L.filas_crudas(ruta), perfiles)
     return rec[0]["tipo"] if rec else None
 
 def importar_archivo(alm, carpeta, ruta, tipo=None, cuenta=None, perfil_nombre=None):
-    """Importa un archivo y, si va bien, lo mueve a Importar\\Procesados. Lanza NecesitaPerfil / NecesitaCuenta.
-    Un PDF es el informe X-Ray de Morningstar (composición de tus fondos, ver xray.py)."""
-    if ruta.lower().endswith(".pdf"):
-        from . import xray
-        alm.copia(carpeta.copias)
-        r = xray.importar(alm, ruta)
-    else:
-        tipo = tipo or tipo_de(ruta, alm, carpeta)
-        if tipo is None:
-            raise NecesitaPerfil({"archivo": os.path.basename(ruta), "tipo": None, **L.muestra_para_configurar(L.filas_crudas(ruta))})
-        alm.copia(carpeta.copias)
-        r = (importar_banco if tipo == "banco" else importar_inversion)(alm, ruta, cuenta, perfil_nombre)
-    if r.get("ok") and r.get("tipo") != "xray":
+    """Importa un archivo y, si va bien, lo mueve a Importar\\Procesados. Lanza NecesitaPerfil / NecesitaCuenta."""
+    if tipo == "inversion" and L.reconocer(L.filas_crudas(ruta), alm.todos("perfil"), "operaciones"): tipo = "operaciones"
+    tipo = tipo or tipo_de(ruta, alm, carpeta)
+    if tipo is None:
+        raise NecesitaPerfil({"archivo": os.path.basename(ruta), "tipo": None, **L.muestra_para_configurar(L.filas_crudas(ruta))})
+    alm.copia(carpeta.copias)
+    r = {"banco": importar_banco, "inversion": importar_inversion, "operaciones": OP.importar}[tipo](alm, ruta, cuenta, perfil_nombre)
+    if r.get("ok") and r.get("tipo") != "operaciones":
         t = emparejar_traspasos(alm)
         if t:
             antes = r.get("dudas", 0)
@@ -359,7 +362,10 @@ def nombre_activo(texto):
     t = re.sub(r"^(compra|venta|suscripcion|reembolso|orden|etf)( de)?\s+", "", t, flags=re.I)
     ps = t.split()
     while len(ps) > 1 and (len(ps[-1]) <= 2 or ps[-1].lower() in ("etc", "etf", "etp", "acc")): ps.pop()
-    return C.titulo(" ".join(ps)).replace("S&p", "S&P")
+    t = C.titulo(" ".join(ps))
+    for a, b in (("S&p", "S&P"), ("Ishares", "iShares"), ("Etfs", "ETFS"), ("Msci", "MSCI"), ("Spdr", "SPDR"), ("Dws", "DWS"), ("Wisdomtree", "WisdomTree")):
+        t = re.sub(rf"\b{re.escape(a)}\b", b, t)
+    return t
 
 def sugerencia_inversion(p, activos):
     """Para «Por revisar» (bróker): el activo que parece, o el nombre y tipo del que habría que crear."""
@@ -438,6 +444,9 @@ def _resolver_uno(alm, p, d):
         nombre = d.get("activo")
         if not any(x["nombre"] == nombre for x in alm.todos("activo")): raise ValueError("Elige el activo.")
         signo = -1 if next((pp for pp in alm.todos("perfil") if pp["nombre"] == p["perfil"]), {}).get("compras_negativas", True) else 1
+        if OP.casar_movimiento(alm, f, cuenta, nombre, signo):
+            alm.borrar("pendiente", p["id"])
+            return f"Ya estaba en tus órdenes: {nombre}"
         alm.insertar_crudo("aportacion", modelo.limpiar("aportacion", {"fecha": f["op"], "activo": nombre, "importe": round(signo * f["importe"], 2),
                            "participaciones": participaciones(f["texto"], signo * f["importe"]),
                            "cuenta": cuenta, "ext_texto": f["texto"], "ext_importe": f["importe"], "ext_fecha": f["op"]}))

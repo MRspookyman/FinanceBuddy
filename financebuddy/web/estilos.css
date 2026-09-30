@@ -45,7 +45,7 @@ a{color:var(--brand)}
 button{font:inherit}
 /* Títulos y cifras con serifa */
 .fin .fin-head h2,.fb-saludo h2,.fin .fin-panel>h3,.fb-bienvenida h2,.fb-hecho b,#lateral .nombre,
-.fb-hero .v,.fb-total .v,.fin-tile .v,.fb-stat .v,.fin-big .v,.fin-hero .v,.fin h3.fb-sec,.fin .fb-xray h4,.fin .fb-expo h4{font-family:var(--serif);font-optical-sizing:auto}
+.fb-hero .v,.fb-total .v,.fin-tile .v,.fb-stat .v,.fin-big .v,.fin-hero .v,.fin h3.fb-sec{font-family:var(--serif);font-optical-sizing:auto}
 
 /* ── armazón: menú lateral + contenido ── */
 body{display:grid;grid-template-columns:236px minmax(0,1fr);min-height:100vh}
@@ -317,6 +317,7 @@ a.fb-btn,.fin a.fb-btn.internal-link{color:#fff}
 .fb-form{display:grid;grid-template-columns:minmax(150px,1fr) minmax(160px,320px);gap:10px 18px;align-items:center;max-width:640px}
 .fb-form .et{font-size:.9em;font-weight:600}
 .fb-form .s{grid-column:1/-1;font-size:.76em;color:var(--ink-2);margin-top:-5px}
+.fin .fb-form input.fb-precio{width:96px;padding:3px 8px;margin:0 2px;font-size:1em}
 .fb-form .sep,.fin-panel>div>.sep{grid-column:1/-1;margin-top:12px;font-size:.76em;font-weight:750;color:var(--ink-3);text-transform:uppercase;letter-spacing:.06em}
 .fb-form textarea{grid-column:1/-1}
 @media (max-width:560px){.fb-form{grid-template-columns:1fr}}
@@ -429,11 +430,6 @@ body.theme-dark .fb-grupo{border-color:transparent}
  #menu .lg{display:none}
  #menu .ct{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 }
-/* ── qué hay dentro de tus fondos (X-Ray) ── */
-.fin-grid.fb-xray{grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));gap:8px 28px;margin:14px 0 0}
-.fb-xray .fb-bloque{min-width:0}
-.fin .fb-xray h4,.fin .fb-expo h4{margin:6px 0 6px;font-size:.92em;font-weight:720}
-.fb-xray .fin-meter{margin:8px 0}
 .fb-expo{margin:14px 0 4px}
 .fin .fb-cubre{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0 0 10px}
 .fb-top .fb-av{font-size:.9em;font-weight:800;color:var(--ink-2)}

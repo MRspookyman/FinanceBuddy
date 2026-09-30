@@ -35,9 +35,13 @@ function tasa12(key) {
 const aportTrasValor = (a) => a.fechaValor ? sum(aportacionesReales().filter((x) => x.activo === a.nombre && x.fecha > a.fechaValor.endOf("day")).map((x) => x.importe)) : 0;
 // Sin valor anotado todavía (p. ej. un activo recién creado al importar), vale lo aportado: no es una pérdida del 100 %.
 const aportadoActivo = (a) => (a.aportadoIni || 0) + sum(aportacionesReales().filter((x) => x.activo === a.nombre).map((x) => x.importe));
+// Sin participaciones: lo que queda es solo el redondeo del bróker (≤ 1 % de lo comprado; p. ej. 0,116 − 0,117).
+const casiCero = (quedan, compradas) => Math.abs(quedan) <= Math.max(1e-6, 0.01 * compradas);
 const vendidoDelTodo = (a) => {
   const ops = aportacionesReales().filter((x) => x.activo === a.nombre);
-  return ops.length > 1 && !(a.aportadoIni > 0) && ops.every((x) => hasNum(x.p.participaciones)) && Math.abs(sum(ops.map((x) => num(x.p.participaciones)))) < 1e-9;
+  if (!(ops.length > 1) || a.aportadoIni > 0 || !ops.every((x) => hasNum(x.p.participaciones))) return false;
+  const P = ops.map((x) => num(x.p.participaciones));
+  return casiCero(sum(P), sum(P.filter((v) => v > 0)));
 };
 const valorHoy = (a) => (a.conValor ? a.valor + aportTrasValor(a) : vendidoDelTodo(a) ? 0 : aportadoActivo(a));
 // TIR anualizada (XIRR). flujos: [{ fecha, importe }], negativo = dinero que pones, positivo = lo que recibes/vale.
@@ -79,10 +83,10 @@ function resumenInversion() {
     const compras = mias.filter((x) => x.importe > 0);
     const precioMedio = conPart && sum(compras.map((x) => num(x.p.participaciones))) > 0 ? sum(compras.map((x) => x.importe)) / sum(compras.map((x) => num(x.p.participaciones))) : null;
     return { ...a, valor, ajuste: valor - a.valor, aportado, conocido, gan: a.conValor && conocido && aportado > 0 ? valor - aportado : NaN, fl, tir: fl ? xirr(fl) : NaN, desde,
-      participaciones: part, precioMedio, operaciones: mias.length };
+      participaciones: part, compradas: conPart ? sum(compras.map((x) => num(x.p.participaciones))) : 0, precioMedio, operaciones: mias.length };
   });
   // Vendido del todo (0 participaciones): no es cartera; su resultado es lo que sacaste − lo que metiste.
-  const cerrado = (f) => f.participaciones != null && Math.abs(f.participaciones) < 1e-9 && f.operaciones > 1;
+  const cerrado = (f) => f.participaciones != null && f.operaciones > 1 && casiCero(f.participaciones, f.compradas || 0);
   const cerradas = todas.filter(cerrado).map((f) => ({ nombre: f.nombre, resultado: -f.aportado, p: f.p }));
   const filas = todas.filter((f) => !cerrado(f));
   const total = sum(filas.map((f) => f.valor));
@@ -118,16 +122,18 @@ function evolucionInversion() {
   const i0 = Math.max(0, Math.min(aportado.findIndex((v) => v > 0), keys.length - 2));  // sin meses vacíos delante
   return { keys: keys.slice(i0), aportado: aportado.slice(i0), valor: valor.slice(i0) };
 }
-// Compras (y ventas) de cada mes: lo que has metido en tu inversión.
+// Compras (y ventas) de cada mes: lo que has metido en tu inversión. Los traspasos entre fondos (vender uno para comprar
+// otro) no son dinero nuevo: no cuentan.
+const sinTraspasos = () => aportacionesReales().filter((x) => !x.p.traspaso);
 function aportacionesMes(n = 12) {
   const keys = mesesHasta(hoyKey, n);
-  const APr = aportacionesReales();
+  const APr = sinTraspasos();
   return keys.map((k) => ({ key: k, compras: sum(APr.filter((x) => keyDe(x.fecha) === k && x.importe > 0).map((x) => x.importe)),
     ventas: -sum(APr.filter((x) => keyDe(x.fecha) === k && x.importe < 0).map((x) => x.importe)) }));
 }
 // Meses seguidos con alguna compra, contando hacia atrás desde este mes (o el anterior, si este aún no toca).
 function constancia() {
-  const APr = aportacionesReales().filter((x) => x.importe > 0);
+  const APr = sinTraspasos().filter((x) => x.importe > 0);
   const con = new Set(APr.map((x) => keyDe(x.fecha)));
   let k = con.has(hoyKey) ? hoyKey : mesAnterior(hoyKey), n = 0;
   while (con.has(k)) { n++; k = mesAnterior(k); }

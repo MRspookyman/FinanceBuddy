@@ -89,8 +89,8 @@ function vistaImportar() {
   const radios = [["", "Detectar solo"], ["banco", "Extracto del banco"], ["inversion", "Movimientos del bróker"]].map(([v, t]) => {
     const l = tipoSel.createEl("label"); const r = l.createEl("input", { attr: { type: "radio", name: "tipoimp" } }); r.checked = v === tipo; r.onchange = () => (tipo = v); l.appendText(t); return r;
   });
-  const zona = pS.createDiv({ cls: "fb-zona", text: "Arrastra aquí el Excel o CSV (o el PDF X-Ray de tus fondos), o pulsa para elegirlo" });
-  const inp = pS.createEl("input", { attr: { type: "file", accept: ".xlsx,.xls,.csv,.txt,.pdf", multiple: "" } }); inp.style.display = "none";
+  const zona = pS.createDiv({ cls: "fb-zona", text: "Arrastra aquí el Excel o CSV, o pulsa para elegirlo" });
+  const inp = pS.createEl("input", { attr: { type: "file", accept: ".xlsx,.xls,.csv,.txt", multiple: "" } }); inp.style.display = "none";
   zona.onclick = () => inp.click();
   const subir = async (files) => {
     for (const f of files) {
@@ -124,7 +124,8 @@ function vistaImportar() {
     filasDato(c, [
       { l: "Banco", s: "En la web o la app de tu banco: Cuentas → Movimientos → elige las fechas → Descargar / Exportar en Excel (o CSV). Mejor si incluye la columna de saldo: así la app comprueba que no falta nada.", v: "" },
       { l: "Bróker", s: "Busca los movimientos de la cuenta de efectivo (compras, ventas, intereses) y expórtalos en Excel o CSV.", v: "" },
-      { l: "Qué hay dentro de tus fondos", s: "El informe X-Ray de Morningstar (PDF). En MyInvestor: Cartera → X-Ray → descargar. Súbelo aquí y en Inversión verás sus países, sectores y mayores empresas.", v: "" },
+      { l: "Órdenes de fondos", s: "En MyInvestor, Fondos → Órdenes → descargar (CSV). Añade las participaciones de cada compra y los traspasos entre fondos, que no salen en la cuenta de efectivo. Lo que ya estaba no se duplica.", v: "" },
+      { l: "Operaciones con títulos", s: "Un Excel con Fecha, Tipo (Compra/Venta), Activo, Estado y Títulos: pone las participaciones a las compras de ETF y cripto del extracto de la cuenta.", v: "" },
       { l: "La primera vez", s: "Si la app no conoce el formato, te pedirá qué columna es la fecha, el concepto y el importe. Solo una vez por banco.", v: "" },
       { l: "Repetir no pasa nada", s: "Si importas dos veces el mismo periodo, lo ya importado se reconoce y se omite.", v: "" },
     ]);
@@ -512,7 +513,7 @@ function vistaCerrar() {
       refs.s[c.nombre] = i;
       form.createDiv({ cls: "s", text: est != null ? `según los movimientos: ${eur(est)}${ext ? ` · último extracto: ${eur(ext.saldo)} el ${fmtISO(ext.fecha)}` : ""}` : "saldo de ese día" });
     }
-    const A = activos();
+    const A = activos().filter((a) => !vendidoDelTodo(a));
     if (A.length) {
       form.createDiv({ cls: "sep", text: "Valor de tu inversión ese día" });
       for (const a of A) {
@@ -559,7 +560,8 @@ function vistaCerrar() {
 // ───────────── valores de la inversión ─────────────
 function vistaValores() {
   titulo("Actualizar valores", "Lo que vale hoy cada activo (míralo en tu bróker)");
-  const A = registros("activo").filter((a) => a.estado !== "vendido");
+  // Los que tienes (los vendidos del todo no). Con participaciones, basta el precio que ves en el bróker.
+  const A = resumenInversion().filas.filter((f) => f.estado !== "vendido");
   if (!A.length) { vacio(root, "Aún no hay activos"); enlace(root.createDiv({ cls: "fin-note" }), "Añadir un activo →", "#editar/activo/nuevo"); return; }
   const p = panel(root, "");
   const form = p.createDiv({ cls: "fb-form" });
@@ -568,8 +570,16 @@ function vistaValores() {
   const ins = {};
   for (const a of A) {
     form.createDiv({ cls: "et", text: a.nombre });
-    const i = form.createEl("input", { attr: { type: "number", step: "0.01" } }); i.value = a.valor ?? ""; ins[a.nombre] = i;
-    form.createDiv({ cls: "s", text: a.fecha_valor ? `anterior: ${eur(num(a.valor))} el ${fmtISO(a.fecha_valor)}` : "" });
+    const i = form.createEl("input", { attr: { type: "number", step: "0.01", placeholder: "Valor total (€)" } }); i.value = a.p.valor ?? ""; ins[a.nombre] = i;
+    const s = form.createDiv({ cls: "s" });
+    if (a.participaciones > 0) {
+      s.appendText(`${nf(a.participaciones, 0, 4)} participaciones × precio `);
+      const pr = s.createEl("input", { cls: "fb-precio", attr: { type: "number", step: "0.0001", min: "0", placeholder: "€", "aria-label": `Precio de ${a.nombre}` } });
+      if (a.p.valor != null && a.p.fecha_valor) pr.placeholder = nf(num(a.p.valor) / a.participaciones, 2, 4);
+      pr.oninput = () => { const v = parseFloat(pr.value); if (v > 0) i.value = (Math.round(v * a.participaciones * 100) / 100).toFixed(2); };
+      s.appendText(" € = valor");
+    }
+    if (a.p.fecha_valor) s.appendText(`${a.participaciones > 0 ? " · " : ""}anterior: ${eur(num(a.p.valor))} el ${fmtISO(a.p.fecha_valor)}`);
   }
   const b = p.createEl("button", { cls: "fb-btn", text: "Guardar" });
   b.onclick = async () => {

@@ -26,8 +26,11 @@ CAMPOS = {
                "fecha_valor": "fecha", "aportado_inicial": "num", "fecha_inicio": "fecha", "estado": ("activo", "vendido"),
                "patrones": "lista", "isin": "texto", "ter": "num+"},
     # importe: + compra, − venta · participaciones: las compradas (+) o vendidas (−), si el extracto las dice («… @ 2»).
-    "aportacion": {"fecha": "fecha*", "activo": "texto*", "importe": "num*", "participaciones": "num", "cuenta": "texto", "recurrente": "texto",
-                   "ext_texto": "texto", "ext_importe": "num", "ext_fecha": "fecha"},
+    # orden: huella de la orden del bróker de la que sale (operaciones.py) · supuesta: «si», si la orden no decía si era
+    # compra o venta y se ha supuesto (el extracto de la cuenta, si llega, lo corrige) · traspaso: «si», si es la mitad de
+    # un traspaso entre fondos (vender uno para comprar otro): no es dinero nuevo.
+    "aportacion": {"fecha": "fecha*", "activo": "texto*", "importe": "num*", "participaciones": "cant", "cuenta": "texto", "recurrente": "texto",
+                   "ext_texto": "texto", "ext_importe": "num", "ext_fecha": "fecha", "orden": "texto", "supuesta": "texto", "traspaso": "texto"},
     # saldos: {cuenta: saldo} · valores: {activo: valor} a esa fecha.
     "patrimonio": {"fecha": "fecha*", "saldos": "mapa", "valores": "mapa", "otros": "num", "deudas": "num+", "nota": "texto"},
     # cuenta: lo ahorrado es el saldo de esa cuenta · meta_meses: la meta es N meses de gasto.
@@ -39,26 +42,26 @@ CAMPOS = {
               "recurrente": "texto", "cuenta_otra": "texto", "origen": ("usuario", "plantilla")},
     # Cómo leer el Excel/CSV de un banco o bróker. columnas: {campo: texto de la cabecera}.
     # acciones (inversión): [{patron, accion: interes|ignorar}] aprendidas al revisar.
-    "perfil": {"nombre": "texto*", "tipo": ("banco", "inversion"), "columnas": "mapa", "cuenta": "texto",
+    # operaciones: órdenes con participaciones (fecha, isin | activo, importe?, participaciones, tipo?, estado?).
+    "perfil": {"nombre": "texto*", "tipo": ("banco", "inversion", "operaciones"), "columnas": "mapa", "cuenta": "texto",
                "compras_negativas": "bool", "acciones": "listamapa"},
     "cierre": {"mes": "texto*", "fecha": "fecha", "notas": "texto"},
-    # Informe X-Ray de Morningstar (xray.py): datos = {tipos, paises, regiones, sectores, top, rentabilidad, riesgo, fondos,
-    # enlaces: {fondo del informe: tu activo}} · activos: tus activos que describe.
-    "composicion": {"fecha": "fecha*", "nombre": "texto", "datos": "mapa", "activos": "lista"},
     # Internos (solo los escribe el servidor)
     "pendiente": {"tipo_import": ("banco", "inversion"), "cuenta": "texto", "archivo": "texto", "perfil": "texto",
                   "fila": "mapa", "duda": "texto"},
     "ignorado": {"cuenta": "texto", "ext_fecha": "fecha", "ext_importe": "num", "ext_texto": "texto"},
+    # Operación con participaciones pero sin importe (Excel de operaciones) que espera a su movimiento de la cuenta del bróker.
+    "operacion": {"fecha": "fecha*", "activo": "texto*", "participaciones": "cant*", "orden": "texto"},
 }
 POR_DEFECTO_SI = {("activo", "recurrente"), ("compras_negativas", "perfil")}  # booleanos que, si faltan, valen sí
-EDITABLES = set(CAMPOS) - {"pendiente", "ignorado"}
+EDITABLES = set(CAMPOS) - {"pendiente", "ignorado", "operacion"}
 # Referencias por nombre: al renombrar, se actualizan en los demás registros.
 REFERENCIAS = {
     "cuenta": [("movimiento", "cuenta"), ("movimiento", "destino"), ("movimiento", "origen"), ("recurrente", "cuenta"),
                ("activo", "cuenta"), ("aportacion", "cuenta"), ("objetivo", "cuenta"), ("perfil", "cuenta"),
                ("regla", "cuenta_otra"), ("pendiente", "cuenta"), ("patrimonio", "saldos*")],
     "categoria": [("movimiento", "categoria"), ("recurrente", "categoria"), ("regla", "categoria")],
-    "activo": [("aportacion", "activo"), ("recurrente", "activo_inversion"), ("patrimonio", "valores*"), ("composicion", "activos[]")],
+    "activo": [("aportacion", "activo"), ("recurrente", "activo_inversion"), ("patrimonio", "valores*"), ("operacion", "activo")],
     "recurrente": [("movimiento", "recurrente"), ("aportacion", "recurrente"), ("regla", "recurrente")],
 }
 UNICOS = {"cuenta": "nombre", "categoria": "nombre", "activo": "nombre", "recurrente": "nombre", "cierre": "mes", "perfil": "nombre"}
@@ -71,13 +74,13 @@ def fecha(v):
     try: return datetime.date.fromisoformat(s).isoformat()
     except ValueError: raise ValueError(f"fecha no válida: «{v}»")
 
-def numero(v):
+def numero(v, decimales=2):
     if v in (None, ""): return None
     if isinstance(v, bool): raise ValueError("número no válido")
-    if isinstance(v, (int, float)): return round(float(v), 2)
+    if isinstance(v, (int, float)): return round(float(v), decimales)
     s = str(v).strip().replace("€", "").replace(" ", "").replace("\xa0", "")
     if "," in s: s = s.replace(".", "").replace(",", ".")
-    try: return round(float(s), 2)
+    try: return round(float(s), decimales)
     except ValueError: raise ValueError(f"número no válido: «{v}»")
 
 def limpiar(tipo, datos):
@@ -93,6 +96,8 @@ def limpiar(tipo, datos):
                 v = (str(v).strip().lower() if v not in (None, "") else t[0])
                 if v not in t: raise ValueError(f"debe ser uno de: {', '.join(t)}")
             elif t == "texto": v = re.sub(r"\s+", " ", str(v)).strip() if v not in (None,) else ""
+            elif t == "cant":  # participaciones: hasta 6 decimales
+                v = numero(v, 6)
             elif t in ("num", "num+"):
                 v = numero(v)
                 if v is not None and t == "num+" and v < 0: raise ValueError("no puede ser negativo")

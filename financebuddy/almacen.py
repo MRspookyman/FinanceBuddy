@@ -20,6 +20,7 @@ class Almacen:
         self._tx = 0
         self.con.executescript(ESQUEMA)
         if self.config("version_esquema") is None: self.set_config("version_esquema", VERSION_ESQUEMA)
+        self.con.execute("DELETE FROM registros WHERE tipo='composicion'")  # informes X-Ray de versiones anteriores
 
     # ───── transacciones (anidables: solo la más externa hace COMMIT) ─────
     @contextmanager

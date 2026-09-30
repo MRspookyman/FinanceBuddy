@@ -84,18 +84,38 @@ REGLAS = [
     ("pull and", "Compras", "gasto"), ("bershka", "Compras", "gasto"), ("stradivarius", "Compras", "gasto"), ("mango", "Compras", "gasto"),
     ("lefties", "Compras", "gasto"), ("sprinter", "Compras", "gasto"), ("druni", "Cuidado personal", "gasto"), ("primor", "Cuidado personal", "gasto"),
 ]
-VERSION = 2  # sube al cambiar CATEGORIAS o REGLAS: las instalaciones existentes reciben lo nuevo (sin tocar lo del usuario)
+VERSION = 3  # sube al cambiar CATEGORIAS, REGLAS o PERFILES: las instalaciones existentes reciben lo nuevo (sin tocar lo del usuario)
 
 # Formatos de archivo reconocidos de serie. columnas: {campo: texto de la cabecera (sin tildes, en minúsculas)}.
 #   banco: fecha, fecha_valor?, concepto, importe | cargo+abono, saldo?
 #   inversión: fecha, concepto, importe (compras en negativo si compras_negativas)
+#   operaciones: fecha, isin | activo, importe?, participaciones, tipo? (compra/venta), estado? (ver operaciones.py)
 PERFILES = [
     {"nombre": "Santander", "tipo": "banco",
      "columnas": {"fecha": "fecha operacion", "fecha_valor": "fecha valor", "concepto": "concepto", "importe": "importe", "saldo": "saldo"}},
     {"nombre": "MyInvestor (cuenta de efectivo)", "tipo": "inversion", "compras_negativas": True,
      "columnas": {"fecha": "fecha de operacion", "concepto": "concepto", "importe": "importe"},
      "acciones": [{"patron": "periodo", "accion": "interes"}]},
+    {"nombre": "MyInvestor (órdenes de fondos)", "tipo": "operaciones",
+     "columnas": {"fecha": "fecha de la orden", "isin": "isin", "importe": "importe estimado", "participaciones": "nº de participaciones", "estado": "estado"}},
+    {"nombre": "Operaciones del bróker (títulos)", "tipo": "operaciones",
+     "columnas": {"fecha": "fecha", "tipo": "tipo", "activo": "activo", "estado": "estado", "participaciones": "titulos"}},
 ]
+
+# Fondos y ETF conocidos por su ISIN: nombre, tipo y textos con los que aparecen en el extracto de la cuenta del bróker.
+# Uno que no esté aquí se crea como «Fondo <ISIN>» (se puede renombrar en Ajustes → Inversión).
+ISIN = {
+    "IE00BYX5MX67": ("Fidelity S&P 500", "fondo", ["fidelity s&p 500", "s&p 500 index p acc"]),
+    "IE00BYX5NX33": ("Fidelity MSCI World", "fondo", ["fidelity msci world"]),
+    "LU0034353002": ("DWS Floating Rate Notes", "fondo", ["deutsche float", "dws float", "floating rate notes"]),
+    "FR0000989626": ("Groupama Trésorerie", "fondo", ["groupama tresorerie"]),
+    "IE00B03HD191": ("Vanguard Global Stock Index", "fondo", ["vanguard global stock"]),
+    "IE0032126645": ("Vanguard US 500 Stock Index", "fondo", ["vanguard u.s. 500", "vanguard us 500"]),
+    "IE00B42W4L06": ("Vanguard Global Small-Cap Index", "fondo", ["vanguard global small"]),
+    "IE00BD0NCM55": ("iShares Developed World Index", "fondo", ["ishares developed world"]),
+    "IE00B4L5Y983": ("iShares Core MSCI World", "etf", ["ishares core msci world"]),
+    "IE00B5BMR087": ("iShares Core S&P 500", "etf", ["ishares core s&p 500"]),
+}
 
 def instalar(alm):
     """Carga la plantilla en una base de datos nueva (solo lo que falte) y, en una ya en uso, lo nuevo de cada versión."""
@@ -108,6 +128,9 @@ def instalar(alm):
             patrones = {r["patron"] for r in alm.todos("regla")}
             for p, c, cl in REGLAS:
                 if p not in patrones: alm.guardar("regla", {"patron": p, "categoria": c, "clase": cl, "origen": "plantilla"})
+            formatos = {p["nombre"].lower() for p in alm.todos("perfil")}
+            for p in PERFILES:
+                if p["nombre"].lower() not in formatos: alm.guardar("perfil", p)
         if v < VERSION: alm.set_config("plantilla_version", VERSION)
         if not alm.contar("categoria"):
             for n, g in CATEGORIAS: alm.guardar("categoria", {"nombre": n, "grupo": g})
