@@ -667,7 +667,7 @@ function vistaAjustes() {
 }
 
 // Tema (en este navegador) y color de acento (en tus datos).
-const ACENTOS = [["violeta", "#5B3DF5"], ["azul", "#2563EB"], ["verde", "#0E9F6E"], ["coral", "#F0643C"], ["rosa", "#D6336C"], ["grafito", "#3F3F46"]];
+const ACENTOS = [["salvia", "#5E8266"], ["violeta", "#5B3DF5"], ["azul", "#2563EB"], ["verde", "#0E9F6E"], ["coral", "#C9603F"], ["rosa", "#B84A6E"], ["grafito", "#3F3A34"]];
 function apariencia(p) {
   const f1 = p.createDiv({ cls: "fb-fila" });
   f1.createSpan({ cls: "fb-et", text: "Tema" });
@@ -679,7 +679,7 @@ function apariencia(p) {
   const f2 = p.createDiv({ cls: "fb-fila" });
   f2.createSpan({ cls: "fb-et", text: "Color" });
   const g = f2.createDiv({ cls: "fb-colores" });
-  const actual = cfg.acento || "violeta";
+  const actual = cfg.acento || "salvia";
   for (const [k, col] of ACENTOS) {
     const b = g.createEl("button", { cls: k === actual ? "act" : "", attr: { type: "button", title: cap(k), "aria-label": cap(k) } });
     b.style.background = col;

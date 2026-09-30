@@ -61,11 +61,15 @@ function vistaInicio() {
     meses: (padre) => tarjetaMeses(panel(padre, "Tus últimos meses")),
   };
   let fila = null;
-  for (const p of panelesInicio().filter((p) => p.visible)) {
-    if (p.ancho) { fila = null; DIBUJAR[p.id](root); continue; }
+  const vis = panelesInicio().filter((p) => p.visible);
+  vis.forEach((p, i) => {
+    // «Cuánto puedes gastar» y «Lo que ha entrado y salido», seguidos: juntos en la portada (tarjeta + casillas al lado)
+    if (p.id === "mes" && vis[i - 1] && vis[i - 1].id === "gasto") return;
+    if (p.id === "gasto" && vis[i + 1] && vis[i + 1].id === "mes") { fila = null; const port = root.createDiv({ cls: "fb-portada" }); DIBUJAR.gasto(port); DIBUJAR.mes(port); return; }
+    if (p.ancho) { fila = null; DIBUJAR[p.id](root); return; }
     if (!fila || fila.children.length >= 2) fila = root.createDiv({ cls: "fin-grid dos" });
     DIBUJAR[p.id](fila);
-  }
+  });
 }
 
 // Solo lo que pide actuar (los avisos de nivel «warn»), como máximo 3.
@@ -81,39 +85,45 @@ function alertas(padre) {
   }
 }
 
+// «Puedes gastar este mes»: la cifra grande y una barra con lo que llevas del límite (la raya fina es el día del mes).
 function heroGasto(padre, S) {
   const h = padre.createDiv({ cls: "fb-hero" });
-  const iz = h.createDiv();
   const dm = S.dm, dia = S.fechaDatos && keyDe(S.fechaDatos) === hoyKey ? S.fechaDatos.day : hoy.day;
+  const barra = (frac, etiqueta) => {
+    const b = h.createDiv({ cls: "fb-progreso" });
+    b.createDiv({ cls: "rel" }).style.width = `${(Math.max(0, Math.min(1, frac)) * 100).toFixed(1)}%`;
+    const m = b.createDiv({ cls: "dia" }); m.style.left = `${((100 * dia) / dm).toFixed(1)}%`; m.title = `Día ${dia} de ${dm}`;
+    b.createSpan({ cls: "et", text: etiqueta });
+  };
   if (!(limiteVar > 0)) {
-    iz.createDiv({ cls: "l", text: "Llevas gastado este mes" });
-    iz.createDiv({ cls: "v", text: eur(S.vari, 0) });
-    iz.createDiv({ cls: "s", text: "en gasto variable (comer fuera, compras, ocio…)" });
-    const p = iz.createDiv({ cls: "pills" });
-    enlace(p, "Ponte un límite al mes para saber cuánto te queda →", "#ajustes").className += " pill";
-    anillo(h, { frac: dia / dm, c1: `${dia}/${dm}`, c2: "días del mes" });
+    h.createDiv({ cls: "l", text: "Llevas gastado este mes" });
+    h.createDiv({ cls: "v", text: eur(S.vari, 0) });
+    barra(dia / dm, `día ${dia} de ${dm}`);
+    h.createDiv({ cls: "s", text: "en gasto variable: comer fuera, compras, ocio…" });
+    const p = h.createDiv({ cls: "pills" });
+    enlace(p, "Ponte un límite al mes para saber cuánto te queda →", "#ajustes").className += " pill fb-hero-link";
     return;
   }
-  const pasado = S.disponible < 0;
-  iz.createDiv({ cls: "l", text: pasado ? "Te has pasado este mes" : "Puedes gastar este mes" });
-  iz.createDiv({ cls: "v", text: eur(Math.abs(S.disponible), 0) });
-  iz.createDiv({ cls: "s", text: pasado ? `por encima de tu límite de ${eur(limiteVar, 0)} · frena el gasto variable hasta fin de mes` : `de tu límite de ${eur(limiteVar, 0)} en gasto variable` });
-  const p = iz.createDiv({ cls: "pills" });
+  const pasado = S.disponible < 0, usado = S.vari / limiteVar;
+  if (pasado) h.classList.add("pasado");
+  h.createDiv({ cls: "l", text: pasado ? "Te has pasado este mes" : "Puedes gastar este mes" });
+  h.createDiv({ cls: "v", text: eur(Math.abs(S.disponible), 0) });
+  barra(usado, `${Math.round(usado * 100)} % de tu límite`);
+  if (pasado) h.createDiv({ cls: "s", text: `por encima de tu límite de ${eur(limiteVar, 0)} · frena el gasto variable hasta fin de mes` });
+  const p = h.createDiv({ cls: "pills" });
   if (!pasado && S.restantes > 0) {
     p.createSpan({ cls: "pill", text: `≈ ${eur(S.porSemana, 0)} por semana` });
     p.createSpan({ cls: "pill", text: `${eur(S.porDia, 0)} al día` });
   }
   p.createSpan({ cls: "pill", text: S.restantes > 0 ? `${S.restantes} día${S.restantes === 1 ? "" : "s"} por delante` : "último día del mes" });
-  const usado = S.vari / limiteVar;
-  anillo(h, { frac: usado, marca: dia / dm, c1: `${Math.round(usado * 100)} %`, c2: "del límite usado" });
 }
 
 function statsMes(padre, M) {
   const g = padre.createDiv({ cls: "fb-stats" });
-  const st = (cls, ic, l, v, t) => { const c = g.createDiv({ cls: "fb-stat " + cls }); c.createDiv({ cls: "ic", text: ic }); const d = c.createDiv(); d.createDiv({ cls: "l", text: l }); d.createDiv({ cls: "v " + (t || ""), text: v }); };
-  st("entra", "↘", "Ha entrado", eur(M.ingresos, 0));
-  st("sale", "↗", "Ha salido", eur(M.gastos, 0));
-  st("ahorro", "🐷", "Te queda del mes", eurS(M.ahorro, 0), tone(M.ahorro));
+  const st = (cls, ic, l, v, t) => { const c = g.createDiv({ cls: "fb-stat " + cls }); c.createDiv({ cls: "ic", text: ic }); c.createDiv({ cls: "l", text: l }); c.createDiv({ cls: "v " + (t || ""), text: v }); };
+  st("entra", "↑", "Ha entrado", eur(M.ingresos, 0));
+  st("sale", "↓", "Ha salido", eur(M.gastos, 0));
+  st("ahorro", "⚖️", "Te queda", eurS(M.ahorro, 0));
 }
 
 function tarjetaSemana(p, S) {
@@ -132,6 +142,7 @@ function tarjetaSemana(p, S) {
 }
 
 // Gasto del mes por categoría: una barra con el reparto y la lista (con la comparación con tu media y el presupuesto).
+// Gasto del mes por categoría: barras en píldora del color de cada categoría (el contorno discontinuo es su presupuesto).
 function tarjetaCategorias(p, key) {
   const C = resumenCategorias(key).filter((c) => c.valor > 0.5);
   const total = sum(C.map((c) => c.valor));
@@ -140,12 +151,29 @@ function tarjetaCategorias(p, key) {
   t.createDiv({ cls: "v", text: eur(total, 0) });
   t.createDiv({ cls: "s", text: `gastado en ${mesLbl(key).toLowerCase()}` });
   const VISIBLES = 6, top = C.slice(0, VISIBLES), resto = C.slice(VISIBLES);
-  const partes = top.map((c) => ({ nombre: c.nombre, valor: c.valor, color: catColor(c.nombre) }));
-  if (resto.length) partes.push({ nombre: "Resto", valor: sum(resto.map((c) => c.valor)), color: "var(--ink-3)" });
-  stack(p, partes);
-  const l = p.createDiv({ cls: "fb-lista" });
-  for (const c of top) filaCategoria(l, c, total, () => { guardarEstado({ filtroCat: c.nombre }); FB.ir("#movimientos"); });
-  if (resto.length) item(l, { av: { icono: "⋯", sm: true }, t: `${resto.length} categoría${resto.length > 1 ? "s" : ""} más`, v: eur(sum(resto.map((c) => c.valor)), 0), ruta: "#movimientos/categorias" });
+  const max = Math.max(...top.map((c) => Math.max(c.valor, c.presupuesto || 0)));
+  const box = p.createDiv({ cls: "fb-pildoras" });
+  for (const c of top) {
+    const r = box.createEl("a", { cls: "fb-pildora", href: "#movimientos" });
+    r.onclick = (e) => { e.preventDefault(); guardarEstado({ filtroCat: c.nombre }); FB.ir("#movimientos"); };
+    const n = r.createDiv({ cls: "n" });
+    n.createSpan({ text: c.nombre });
+    n.createSpan({ cls: "ic", text: catIcono(c.nombre) });
+    const pista = r.createDiv({ cls: "pista" });
+    if (c.presupuesto > 0) { const pr = pista.createDiv({ cls: "tope" }); pr.style.width = `${((100 * c.presupuesto) / max).toFixed(1)}%`; pr.title = `Presupuesto: ${eur(c.presupuesto, 0)}`; }
+    const b = pista.createDiv({ cls: "barra" + (c.presupuesto > 0 && c.valor > c.presupuesto ? " pasado" : "") });
+    const ancho = (100 * c.valor) / max;
+    b.style.width = `${Math.max(ancho, 8).toFixed(1)}%`;
+    setVar(b, "--cc", catColor(c.nombre));
+    const v = (ancho >= 38 ? b : pista).createSpan({ cls: "val", text: eur(c.valor, 0) });
+    if (isFinite(c.media) && c.media > 5 && Math.abs(c.valor - c.media) / c.media >= 0.1) {
+      const dif = (c.valor - c.media) / c.media;
+      const d = pista.createSpan({ cls: "fb-var " + (dif > 0 ? "sube" : "baja"), text: `${dif > 0 ? "▲" : "▼"} ${Math.round(Math.abs(dif) * 100)} %` });
+      d.title = `Tu media: ${eur(c.media, 0)}`;
+    }
+    r.title = `${c.nombre}: ${eur(c.valor, 0)} · ${pct(c.valor / total)} del gasto${c.presupuesto > 0 ? ` · presupuesto ${eur(c.presupuesto, 0)}` : ""}`;
+  }
+  if (resto.length) enlace(p.createDiv({ cls: "fin-note" }), `y ${resto.length} categoría${resto.length > 1 ? "s" : ""} más (${eur(sum(resto.map((c) => c.valor)), 0)}) →`, "#movimientos/categorias");
 }
 // Una categoría: avatar, nombre, % del total y comparación con la media; barra si tiene presupuesto.
 function filaCategoria(padre, c, total, onclick) {
@@ -260,10 +288,10 @@ function vistaMovimientos() {
   cabecera("Movimientos", true, "Todo lo que ha entrado y salido. Pulsa uno para cambiarlo.");
   const M = finMes(mes);
   const g = root.createDiv({ cls: "fb-stats" });
-  const st = (cls, ic, l, v, t) => { const c = g.createDiv({ cls: "fb-stat " + cls }); c.createDiv({ cls: "ic", text: ic }); const d = c.createDiv(); d.createDiv({ cls: "l", text: l }); d.createDiv({ cls: "v " + (t || ""), text: v }); };
-  st("entra", "↘", "Entró", eur(M.ingresos, 0));
-  st("sale", "↗", "Salió", eur(M.gastos, 0));
-  st("ahorro", "🐷", "Diferencia", eurS(M.ahorro, 0), tone(M.ahorro));
+  const st = (cls, ic, l, v) => { const c = g.createDiv({ cls: "fb-stat " + cls }); c.createDiv({ cls: "ic", text: ic }); c.createDiv({ cls: "l", text: l }); c.createDiv({ cls: "v", text: v }); };
+  st("entra", "↑", "Entró", eur(M.ingresos, 0));
+  st("sale", "↓", "Salió", eur(M.gastos, 0));
+  st("ahorro", "⚖️", "Diferencia", eurS(M.ahorro, 0));
   const modo = params[0] === "categorias" ? "categorias" : "lista";
   const seg = root.createDiv({ cls: "fb-seg" });
   for (const [k, t, r] of [["lista", "Lista", "#movimientos"], ["categorias", "Por categoría", "#movimientos/categorias"]]) enlace(seg, t, r).className += k === modo ? " act" : "";

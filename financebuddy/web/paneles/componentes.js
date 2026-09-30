@@ -25,11 +25,17 @@ const accion = (padre, texto, fn, title) => {
 const CAT_ICONO = { Vivienda: "🏠", Suministros: "💡", Seguros: "🛡️", Suscripciones: "📺", Supermercado: "🛒", "Comer fuera": "🍽️", Ocio: "🎉",
   Transporte: "🚌", Coche: "🚗", Salud: "💊", Compras: "🛍️", Hogar: "🛋️", Viajes: "✈️", "Formación": "📚", Regalos: "🎁", "Cuidado personal": "💇",
   Mascotas: "🐾", Efectivo: "💶", Comisiones: "🏦", Otros: "📦", "Nómina": "💼", "Otros ingresos": "💰", Apuestas: "🎲", Videojuegos: "🎮", Deporte: "🏀" };
-const PALETA = ["#5B3DF5", "#FF7A59", "#0FA876", "#E59400", "#E0559B", "#2E90FA", "#8E7CC3", "#14B8A6", "#F97316", "#64748B"];
+// Pastel (salvia, arena, terracota, lavanda, cielo, rosa, oliva, agua, melocotón, piedra): legibles en claro y oscuro.
+const PALETA = ["#8FB095", "#DDBB84", "#D98C6E", "#B3A0D6", "#8DB2C8", "#DDA0A0", "#B0B27A", "#83B7AA", "#E8A978", "#A89D92"];
 const hashTxt = (s) => [...String(s)].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7);
 // El icono y el color se pueden elegir en cada categoría (Ajustes → Categorías); si no, los de serie.
 const catReg = (n) => categorias().find((c) => c.nombre === n);
-const catColor = (n) => ((catReg(n) || {}).p || {}).color || PALETA[hashTxt(n) % PALETA.length];
+// Colores de serie de las categorías de la plantilla (como en el diseño); las nuevas, uno estable de la paleta.
+const CAT_COLOR = { Vivienda: "#8FB095", Supermercado: "#DDBB84", "Comer fuera": "#D98C6E", Coche: "#B3A0D6", Suministros: "#8DB2C8",
+  Suscripciones: "#DDA0A0", Seguros: "#A7B8C9", Ocio: "#E8A978", Transporte: "#83B7AA", Salud: "#E3A6B4", Compras: "#B0B27A", Hogar: "#C9B08E",
+  Viajes: "#7FB0D0", "Formación": "#A9A2D8", Regalos: "#E39AA7", "Cuidado personal": "#D5A5C9", Mascotas: "#C2A07E", Efectivo: "#9DBB8C",
+  Comisiones: "#B5A99B", Apuestas: "#CF8F8F", Otros: "#B8ADA0", "Nómina": "#7FAE8A", Intereses: "#9CC0A0", "Otros ingresos": "#A8C49A" };
+const catColor = (n) => ((catReg(n) || {}).p || {}).color || CAT_COLOR[n] || PALETA[hashTxt(n) % (PALETA.length - 1)];
 const catIcono = (n) => ((catReg(n) || {}).p || {}).icono || CAT_ICONO[n] || "🏷️";
 const ICONO_CLASE = { transferencia: "🔁", ingreso: "💰", reembolso: "↩️" };
 function avatar(padre, { cat, clase, icono, sm } = {}) {
