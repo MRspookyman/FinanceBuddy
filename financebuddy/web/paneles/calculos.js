@@ -296,17 +296,17 @@ function resumenCategorias(key) {
   })).filter((c) => c.valor > 0.5 || c.presupuesto > 0).sort((a, b) => b.valor - a.valor);
 }
 // Ritmo del gasto variable del mes en curso: acumulado día a día frente a la media de los meses de referencia.
-function ritmoMes() {
-  const dm = hoy.daysInMonth, fd = fechaDatos();
-  const dia = fd && keyDe(fd) === hoyKey ? fd.day : hoy.day;
+function ritmoMes(key = hoyKey) {
+  const dm = mesDT(key).daysInMonth, fd = fechaDatos();
+  const dia = key !== hoyKey ? dm : fd && keyDe(fd) === hoyKey ? fd.day : hoy.day;
   const acumulado = (key, hasta) => {
     const d0 = mesDT(key), por = new Array(d0.daysInMonth).fill(0);
     for (const m of finMes(key).real) if (m.gasto && grupoDe(m.categoria) !== "fijo") por[m.fecha.day - 1] += m.gasto;
     let a = 0;
     return Array.from({ length: hasta }, (_, i) => (a += por[Math.min(i, por.length - 1)] || 0));
   };
-  const actual = acumulado(hoyKey, dm).map((v, i) => (i < dia ? v : null));
-  const refs = mesesReferencia(hoyKey);
+  const actual = acumulado(key, dm).map((v, i) => (i < dia ? v : null));
+  const refs = mesesReferencia(key);
   const med = refs.length ? Array.from({ length: dm }, (_, i) => media(refs.map((k) => { const a = acumulado(k, dm); return a[Math.min(i, mesDT(k).daysInMonth - 1)]; }))) : null;
   return { dm, dia, actual, media: med, nMeses: refs.length, hoyV: actual[dia - 1] || 0, mediaHoy: med ? med[dia - 1] : NaN };
 }
