@@ -41,6 +41,19 @@ participaciones) añade las participaciones de cada compra y los **traspasos ent
 no cuentan como dinero nuevo), que no salen en la cuenta de efectivo. Un Excel de **operaciones con títulos** (Fecha,
 Tipo, Activo, Estado, Títulos) completa las participaciones de ETF y cripto. Nada se duplica con el extracto de la
 cuenta, se importe antes uno u otro. Con las participaciones, en *Actualizar valores* basta con poner el precio.
+Sin valor anotado, un activo con participaciones se estima con el precio de su última compra o venta (marcado «≈»).
+
+**Cuando lo importado no cuadra**: *Inversión* avisa en **Revisa tu inversión** de lo que ve raro (un traspaso desde
+tu banco tomado por venta, participaciones vendidas de más, operaciones sin participaciones, compras que no se sabe si
+fueron ventas, posibles duplicados, el mismo activo dos veces, valores viejos) y cada aviso lleva a la **ficha del
+activo**: todas sus operaciones con su precio y de dónde vienen (extracto, órdenes, a mano), editables una a una;
+**Cuadrar con tu bróker** (escribes las participaciones que ves en el bróker y se añade un ajuste sin dinero); **Unir
+con otro activo**; y «Era dinero traspasado desde mi banco» o borrar el activo con sus operaciones (no reaparecen al
+reimportar el mismo extracto).
+
+**Por revisar**: filtros (banco, bróker, con sugerencia) y **Revisar y aceptar las sugerencias** de una vez, con una
+casilla por grupo (las dudosas, sin marcar). Las entradas de dinero al bróker con un concepto tuyo («ahorro», «Inicio»)
+se proponen como traspaso desde tu banco, no como la venta de un activo.
 
 **A tu gusto** (*Ajustes*): tema automático, claro u oscuro y color de acento; qué paneles ves en el Inicio y en qué orden;
 icono, color y presupuesto de cada categoría (con aviso si te pasas). En *Movimientos → Por categoría* ves cada una
@@ -109,6 +122,7 @@ financebuddy/
   clasificar.py    clasificación automática (reglas, traspasos, Bizum, recurrentes, lo aprendido de tu historial)
   detectar.py      fijos que se repiten cada mes y de dónde viene el dinero
   operaciones.py   órdenes y operaciones del bróker con participaciones (ISIN, traspasos entre fondos)
+  cartera.py       arreglos a mano: unir activos, deshacer un traspaso tomado por venta, cuadrar participaciones
   plantilla.py     categorías, reglas y formatos de serie
   ejemplo.py       datos de ejemplo
   web/             la interfaz: index.html, nucleo.js, estilos.css y paneles/*.js

@@ -92,7 +92,7 @@
     ajustes: '<path d="M4 7h9m4 0h3M4 17h3m4 0h9"/><circle cx="15" cy="7" r="2.2"/><circle cx="9" cy="17" r="2.2"/>',
   };
   const SECCION = { resumen: "inicio", gastos: "movimientos", prevision: "inicio", patrimonio: "inicio", objetivos: "ajustes",
-    gestionar: "ajustes", editar: "ajustes", fijos: "ajustes", cerrar: "ajustes", valores: "inversion" };
+    gestionar: "ajustes", editar: "ajustes", fijos: "ajustes", cerrar: "ajustes", valores: "inversion", activo: "inversion" };
   function barra() {
     const DB = FB.DB; if (!DB) return;
     const fechas = (DB.registros.movimiento || []).map((m) => m.fecha).sort();
@@ -101,7 +101,8 @@
     const n = (DB.pendientes || []).length;
     // [ruta, nombre, nombre corto (barra de abajo en el móvil)]
     const items = [["inicio", "Inicio"], ["movimientos", "Movimientos", "Movs."], ["inversion", "Inversión"], ["importar", "Importar"], n ? ["revisar", "Por revisar", "Revisar"] : null, ["ajustes", "Ajustes"]].filter(Boolean);
-    const v = ruta()[0], act = SECCION[v] || v;
+    const [v, t] = ruta(), PORTIPO = { movimiento: "movimientos", aportacion: "inversion", activo: "inversion" };
+    const act = (v === "editar" || v === "gestionar") && PORTIPO[t] ? PORTIPO[t] : SECCION[v] || v;
     const menu = document.getElementById("menu");
     menu.innerHTML = items.map(([k, t, c]) => `<a href="#${k}" class="internal-link${k === act ? " act" : ""}" title="${t}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">${ICO[k]}</svg><span class="lg">${t}</span><span class="ct">${c || t}</span>${k === "revisar" ? `<span class="num">${n}</span>` : ""}</a>`).join("");
   }

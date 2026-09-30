@@ -224,6 +224,15 @@ function filasDato(padre, items) {
   return box;
 }
 // «ⓘ» con una explicación en lenguaje sencillo (al pasar el ratón o al pulsar/enfocar).
+// Nombre accesible de cada campo de un formulario: su etiqueta es el .et de al lado (un lector de pantalla leía solo «campo de edición»).
+function etiquetar(cont) {
+  for (const et of cont.querySelectorAll(".fb-form > .et")) {
+    const c = et.nextElementSibling;
+    const ctl = c && (c.matches("input, select, textarea") ? c : c.querySelector("input, select, textarea"));
+    const t = ((et.firstChild && et.firstChild.nodeType === 3 ? et.firstChild.textContent : et.textContent) || "").replace(/\s*\*\s*$/, "").trim();
+    if (ctl && t && !ctl.getAttribute("aria-label")) ctl.setAttribute("aria-label", t);
+  }
+}
 function ayuda(padre, texto) {
   const s = padre.createSpan({ cls: "fin-ayuda", text: "ⓘ", attr: { tabindex: "0", "aria-label": texto } });
   s.createSpan({ cls: "fin-ayuda-t", text: texto });

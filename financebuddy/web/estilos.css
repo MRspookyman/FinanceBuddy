@@ -7,7 +7,7 @@
 *{box-sizing:border-box}
 body{margin:0;font-family:"Segoe UI Variable Text","Segoe UI",system-ui,-apple-system,sans-serif;font-size:15px;line-height:1.45;-webkit-font-smoothing:antialiased;
  --serif:"Fraunces","Sitka Heading",Georgia,"Times New Roman",serif;
- --bg:#F4EFE7;--surface:#FCFAF6;--surface-2:#F4EEE5;--line:#E8E0D3;--ink:#2A2119;--ink-2:#6B6056;--ink-3:#A3978A;
+ --bg:#F4EFE7;--surface:#FCFAF6;--surface-2:#F4EEE5;--line:#E8E0D3;--ink:#2A2119;--ink-2:#6B6056;--ink-3:#7D7063;
  --brand:#5E8266;--brand-soft:#E4ECE1;--coral:#D2775F;--mint:#4F9A6A;--rose:#C8574B;--amber:#D69A3A;
  --sand:#EAD7B4;--sand-soft:#F1E7D6;--hero:#F1E7D8;
  --aurora:linear-gradient(135deg,#5E8266 0%,#8FAF91 55%,#D9BE8C 100%);
@@ -22,7 +22,7 @@ body{margin:0;font-family:"Segoe UI Variable Text","Segoe UI",system-ui,-apple-s
  --fin-good:var(--mint);--fin-bad:var(--rose);--fin-warn:var(--amber);--fin-up:#3F8A5A;--fin-down:#B9523F;
  background:var(--bg) var(--textura);color:var(--ink)}
 body.theme-dark{color-scheme:dark;
- --bg:#15120E;--surface:#1E1A15;--surface-2:#28231C;--line:#352E25;--ink:#F1EADF;--ink-2:#BCB0A0;--ink-3:#857A6B;
+ --bg:#15120E;--surface:#1E1A15;--surface-2:#28231C;--line:#352E25;--ink:#F1EADF;--ink-2:#BCB0A0;--ink-3:#9A8E7E;
  --brand:#9CC2A0;--brand-soft:#26332A;--coral:#E79A80;--mint:#86C79A;--rose:#E58372;--amber:#E8B870;
  --sand:#5A4A33;--sand-soft:#2E271E;--hero:#2A2419;
  --aurora:linear-gradient(135deg,#4E6E56 0%,#6F8F73 55%,#9C8157 100%);
@@ -364,7 +364,7 @@ body.theme-dark .fin .fb-seg a.act,body.theme-dark .fb-seg button.act{color:var(
 /* ── por revisar: grupos por comercio con categorías a un clic ── */
 .fb-pista{margin:-6px 0 14px}
 .fb-grupos{display:flex;flex-direction:column;gap:12px;margin-bottom:var(--g)}
-.fb-grupo{padding:16px 18px;border-radius:var(--r);background:var(--surface);border:1px solid var(--line);box-shadow:var(--shadow);transition:opacity .2s,transform .2s}
+.fb-grupo{padding:13px 16px;border-radius:var(--r);background:var(--surface);border:1px solid var(--line);box-shadow:var(--shadow);transition:opacity .2s,transform .2s}
 body.theme-dark .fb-grupo{border-color:transparent}
 .fb-grupo.fuera{opacity:0;transform:translateX(24px)}
 .fb-grupo .cab{display:flex;align-items:center;gap:12px}
@@ -373,7 +373,7 @@ body.theme-dark .fb-grupo{border-color:transparent}
 .fb-grupo .cab .s{font-size:.8em;color:var(--ink-2)}
 .fb-grupo .cab .v{font-weight:750;font-variant-numeric:tabular-nums;white-space:nowrap}
 .fb-grupo .cab .v.pos{color:var(--fin-up)}
-.fb-grupo .ext{margin:10px 0 0;font-size:.8em;color:var(--ink-3);font-family:ui-monospace,Consolas,monospace;overflow-wrap:anywhere}
+.fb-grupo .ext{margin:8px 0 0;font-size:.78em;color:var(--ink-3);font-family:ui-monospace,Consolas,monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .fb-grupo .duda{margin-top:4px;font-size:.84em;color:var(--ink-2)}
 .fb-grupo .fin-more{margin:10px 0 0;border:none;background:none}
 .fb-grupo .fin-more>summary{padding:4px 0;font-size:.82em;color:var(--ink-3);font-weight:600}
@@ -463,3 +463,27 @@ body.theme-dark .fb-grupo{border-color:transparent}
 .fb-spark svg{display:block;width:100%;height:48px}
 /* textura de papel también en las tarjetas grandes, muy leve */
 .fb-hero{background-image:var(--textura)}
+/* ── revisa tu inversión (salud de la cartera) y ficha de activo ── */
+.fb-salud-l .r{display:grid;grid-template-columns:22px 1fr auto auto;gap:10px;align-items:center;padding:10px 0;border-top:1px solid var(--line)}
+.fb-salud-l .r:first-child{border-top:0;padding-top:2px}
+.fb-salud-l .ic{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;font-size:.76em;font-weight:800;color:var(--surface);background:var(--ink-3)}
+.fb-salud-l .r.error .ic{background:var(--rose)} .fb-salud-l .r.aviso .ic{background:var(--amber)}
+.fb-salud-l .t{font-size:.9em;line-height:1.4}
+.fb-salud-l button.x{all:unset;cursor:pointer;color:var(--ink-3);padding:4px 7px;border-radius:8px;font-size:.85em}
+.fb-salud-l button.x:hover,.fb-salud-l button.x:focus-visible{color:var(--ink);background:var(--surface-2)}
+.fb-cuadrar input{flex:1 1 180px;max-width:240px}
+@media (max-width:560px){.fb-salud-l .r{grid-template-columns:22px 1fr auto}.fb-salud-l .r .fb-btn{grid-column:2;justify-self:start}}
+/* ── por revisar: filtros y aceptar sugerencias en bloque ── */
+.fb-filtro-rev{margin:0 0 12px}
+.fb-bloque-sug{align-items:center;gap:12px;margin:0 0 12px}
+.fb-sug-l .r{display:grid;grid-template-columns:22px minmax(0,1.3fr) auto minmax(0,1fr);gap:4px 12px;align-items:center;padding:9px 0;border-top:1px solid var(--line);cursor:pointer}
+.fb-sug-l .r:first-child{border-top:0}
+.fb-sug-l .n{min-width:0}.fb-sug-l .t{font-weight:650;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fb-sug-l .s{font-size:.78em;color:var(--ink-2)}
+.fb-sug-l .v{font-weight:700;font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}.fb-sug-l .v.pos{color:var(--fin-up)}
+.fb-sug-l .pr{font-size:.88em;font-weight:600;color:var(--ink-2)}
+@media (max-width:560px){.fb-sug-l .r{grid-template-columns:22px 1fr auto}.fb-sug-l .pr{grid-column:2/-1}}
+/* ── foco visible con teclado (los botones usan all:unset, que quita el contorno) ── */
+button:focus-visible,a:focus-visible,summary:focus-visible,[tabindex]:focus-visible,label:focus-within>input[type=checkbox]{outline:2px solid var(--brand)!important;outline-offset:2px}
+@media (max-width:560px){.fin .fin-table .fin-badge{display:table;margin:3px 0 0}.fin .fin-table td{white-space:normal;padding:10px 6px}.fin .fin-table td.num{min-width:64px}.fin .fin-table td:first-child{min-width:110px}}
+.fin button.fin-link{all:unset;cursor:pointer;color:var(--brand);font-weight:650;border-bottom:1px dashed currentColor}

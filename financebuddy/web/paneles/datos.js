@@ -28,9 +28,9 @@ const media = (a) => (a.length ? sum(a) / a.length : NaN);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 const nf = (n, min, max) => n.toLocaleString("es-ES", { minimumFractionDigits: min, maximumFractionDigits: max, useGrouping: "always" });
-const eur = (n, dec = 2) => (n == null || !isFinite(n)) ? "—" : (n < 0 ? "−" : "") + nf(Math.abs(n), dec, dec) + " €";
+const eur = (n, dec = 2) => (n == null || !isFinite(n)) ? "—" : (n < 0 ? "−" : "") + nf(Math.abs(n), dec, dec) + "\u00a0€";  // espacio duro: la cifra y el € nunca se separan
 const eurS = (n, dec = 2) => (n > 0 ? "+" : "") + eur(n, dec);
-const pct = (n, signo = false) => (n == null || !isFinite(n)) ? "—" : (signo && n > 0 ? "+" : "") + (n < 0 ? "−" : "") + nf(Math.abs(n * 100), 1, 1) + " %";
+const pct = (n, signo = false) => (n == null || !isFinite(n)) ? "—" : (signo && n > 0 ? "+" : "") + (n < 0 ? "−" : "") + nf(Math.abs(n * 100), 1, 1) + "\u00a0%";
 const compact = (n) => {
   const a = Math.abs(n);
   const s = a >= 10000 ? nf(a / 1000, 0, 0) + "k" : a >= 1000 ? nf(a / 1000, 0, 1) + "k" : nf(a, 0, 0);
@@ -156,10 +156,11 @@ const movsDelMes = (key) => {
 const categorias = () => (_cats ??= registros("categoria").map((p) => ({
   p, nombre: p.nombre, grupo: txt(p.grupo).toLowerCase() || "variable", presupuesto: num(p.presupuesto),
 })));
-const activos = () => (_activos ??= registros("activo").filter((p) => txt(p.estado).toLowerCase() !== "vendido").map((p) => ({
+const activoDe = (p) => ({
   p, nombre: p.nombre, clase: txt(p.clase) || "otro", cuenta: txt(p.cuenta), valor: num(p.valor), conValor: hasNum(p.valor), ter: hasNum(p.ter) ? num(p.ter) : null, fechaValor: toDate(p.fecha_valor),
   aportadoIni: hasNum(p.aportado_inicial) ? num(p.aportado_inicial) : null, fechaIni: toDate(p.fecha_inicio),
-})));
+});
+const activos = () => (_activos ??= registros("activo").filter((p) => txt(p.estado).toLowerCase() !== "vendido").map(activoDe));
 const esCripto = (a) => /cripto/i.test(a.clase);
 const claseActivo = (nombre) => ((registros("activo").find((a) => a.nombre === nombre) || {}).clase || "otro");
 // Registro de patrimonio: saldo de cada cuenta y valor de cada activo en una fecha. Se agrupa por tipo de cuenta:

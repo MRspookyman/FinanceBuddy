@@ -81,10 +81,13 @@ def activo_de(alm, o, cuenta):
         if a: return a["nombre"], False
         nombre, clase, patrones = plantilla.ISIN.get(o["isin"], (f"Fondo {o['isin']}", "fondo", []))
     else:
-        a = next((a for a in activos if any(C.casa(p, tn) for p in a.get("patrones") or []) or C.casa(a["nombre"], tn)), None)
-        if a: return a["nombre"], False
         from .importar import nombre_activo, clase_activo
         nombre, clase = nombre_activo(o["texto"]), clase_activo(o["texto"])
+        # Por sus patrones, por el mismo nombre o por un nombre de varias palabras que aparece en el texto (uno de una sola
+        # palabra, como «Bitcoin», casaría con cualquier producto que la lleve)
+        a = next((a for a in activos if any(C.casa(p, tn) for p in a.get("patrones") or []) or L.norm(a["nombre"]) == L.norm(nombre)
+                  or (len(a["nombre"].split()) >= 2 and C.casa(a["nombre"], tn))), None)
+        if a: return a["nombre"], False
         patrones = [L.norm(nombre)]
     # Ya existe con ese nombre o lo reconocen sus patrones (creado desde el extracto de la cuenta): se le pone el ISIN
     nn = L.norm(nombre)
@@ -120,7 +123,9 @@ def casar_orden(alm, o, activo, cuenta):
         a = min(cand, key=lambda a: dias(a["fecha"], o["fecha"]))
         signo = 1 if float(a["importe"]) > 0 else -1
         cambios = {"orden": h}
-        if a.get("participaciones") in (None, "") and o["part"]: cambios["participaciones"] = _part(o, signo)
+        # Sin participaciones, o redondeadas en el extracto («@ 31.5» frente a 31,519 en la orden): mandan las de la orden
+        previas = a.get("participaciones")
+        if o["part"] and (previas in (None, "") or abs(abs(float(previas)) - o["part"]) <= 0.01 * o["part"]): cambios["participaciones"] = _part(o, signo)
         alm.guardar("aportacion", {**a, **cambios}, a["id"])
         return "completada"
     if o["importe"] is None: return None

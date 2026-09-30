@@ -33,17 +33,52 @@ function tasa12(key) {
 // ───────────── inversión ─────────────
 // El `valor` de un activo es a `fecha_valor`; las aportaciones posteriores aún no están dentro → se suman.
 const aportTrasValor = (a) => a.fechaValor ? sum(aportacionesReales().filter((x) => x.activo === a.nombre && x.fecha > a.fechaValor.endOf("day")).map((x) => x.importe)) : 0;
-// Sin valor anotado todavía (p. ej. un activo recién creado al importar), vale lo aportado: no es una pérdida del 100 %.
+// Sin valor anotado ni precio conocido (p. ej. un activo recién creado al importar), vale lo aportado: no es una pérdida del 100 %.
 const aportadoActivo = (a) => (a.aportadoIni || 0) + sum(aportacionesReales().filter((x) => x.activo === a.nombre).map((x) => x.importe));
 // Sin participaciones: lo que queda es solo el redondeo del bróker (≤ 1 % de lo comprado; p. ej. 0,116 − 0,117).
 const casiCero = (quedan, compradas) => Math.abs(quedan) <= Math.max(1e-6, 0.01 * compradas);
-const vendidoDelTodo = (a) => {
+// Posición de un activo según sus operaciones. Participaciones: la suma de las de cada operación más los ajustes
+// («cuadrar con el bróker»); se conocen si todas las operaciones las traen o un ajuste posterior cubre las que no.
+// Precio medio: lo pagado en las compras ÷ participaciones compradas. Último precio: el de la última operación con
+// participaciones (importe ÷ participaciones), para estimar lo que vale si no has anotado su valor.
+let _pos = new Map();
+function posicion(a) {
+  if (_pos.has(a.nombre)) return _pos.get(a.nombre);
   const ops = aportacionesReales().filter((x) => x.activo === a.nombre);
-  if (!(ops.length > 1) || a.aportadoIni > 0 || !ops.every((x) => hasNum(x.p.participaciones))) return false;
-  const P = ops.map((x) => num(x.p.participaciones));
-  return casiCero(sum(P), sum(P.filter((v) => v > 0)));
-};
-const valorHoy = (a) => (a.conValor ? a.valor + aportTrasValor(a) : vendidoDelTodo(a) ? 0 : aportadoActivo(a));
+  const ajustes = ops.filter((x) => x.p.ajuste), normales = ops.filter((x) => !x.p.ajuste);
+  const tiene = (x) => hasNum(x.p.participaciones);
+  const ultAjuste = ajustes.length ? DateTime.max(...ajustes.map((x) => x.fecha)).endOf("day") : null;
+  const cubierta = (f) => !!(ultAjuste && f && f <= ultAjuste);
+  const faltan = normales.filter((x) => !tiene(x) && !cubierta(x.fecha));
+  const iniSinCubrir = a.aportadoIni > 0 && !(ultAjuste && (!a.fechaIni || cubierta(a.fechaIni)));
+  const conPart = ops.length > 0 && !faltan.length && !iniSinCubrir;
+  const compras = normales.filter((x) => x.importe > 0);
+  const compradas = sum(compras.map((x) => num(x.p.participaciones))) + sum(ajustes.map((x) => num(x.p.participaciones)));
+  const coste = sum(compras.map((x) => x.importe)) + (a.aportadoIni > 0 ? a.aportadoIni : 0);
+  const conPrecio = normales.filter((x) => tiene(x) && Math.abs(num(x.p.participaciones)) > 1e-9 && Math.abs(x.importe) > 0.005);
+  const u = conPrecio[conPrecio.length - 1];
+  const r = {
+    ops, conPart, part: conPart ? sum(ops.map((x) => num(x.p.participaciones))) : null, contadas: sum(ops.map((x) => num(x.p.participaciones))),
+    compradas, precioMedio: conPart && compradas > 0 ? coste / compradas : null,
+    ultimoPrecio: u ? { precio: Math.abs(u.importe / num(u.p.participaciones)), fecha: u.fecha } : null,
+    sinPart: normales.filter((x) => !tiene(x)).length, faltan: faltan.length, ajustes: ajustes.length, supuestas: normales.filter((x) => x.p.supuesta).length,
+  };
+  r.vendido = conPart && ops.length > 1 && casiCero(r.part, compradas);
+  _pos.set(a.nombre, r);
+  return r;
+}
+const vendidoDelTodo = (a) => posicion(a).vendido;
+// Lo que vale hoy y de dónde sale: «anotado» (Actualizar valores), «precio» (participaciones × precio de la última
+// operación: estimado), «metido» (sin datos: lo aportado) o «vendido» (0).
+function valorInfo(a) {
+  if (a.conValor) return { valor: a.valor + aportTrasValor(a), fuente: "anotado" };
+  const P = posicion(a);
+  if (P.vendido) return { valor: 0, fuente: "vendido" };
+  if (P.conPart && P.part > 0 && P.ultimoPrecio) return { valor: P.part * P.ultimoPrecio.precio, fuente: "precio", precio: P.ultimoPrecio };
+  return { valor: Math.max(0, aportadoActivo(a)), fuente: "metido" };  // nunca negativo (p. ej. un traspaso tomado por venta)
+}
+const valorHoy = (a) => valorInfo(a).valor;
+const conValorReal = (a) => ["anotado", "precio"].includes(valorInfo(a).fuente);
 // TIR anualizada (XIRR). flujos: [{ fecha, importe }], negativo = dinero que pones, positivo = lo que recibes/vale.
 function xirr(fl) {
   if (fl.length < 2 || !fl.some((f) => f.importe > 0) || !fl.some((f) => f.importe < 0)) return NaN;
@@ -61,10 +96,10 @@ function xirr(fl) {
 }
 // Flujos de un activo para la TIR: aportado inicial en `fecha_inicio`, aportaciones reales y el valor de hoy.
 function flujosActivo(a) {
-  if (!a.conValor || a.aportadoIni == null || (a.aportadoIni > 0 && !a.fechaIni)) return null;
+  if (!conValorReal(a) || a.aportadoIni == null || (a.aportadoIni > 0 && !a.fechaIni)) return null;
   const fl = [];
   if (a.aportadoIni > 0) fl.push({ fecha: a.fechaIni, importe: -a.aportadoIni });
-  for (const x of aportacionesReales().filter((x) => x.activo === a.nombre)) fl.push({ fecha: x.fecha, importe: -x.importe });
+  for (const x of aportacionesReales().filter((x) => x.activo === a.nombre && Math.abs(x.importe) > 0.005)) fl.push({ fecha: x.fecha, importe: -x.importe });
   fl.push({ fecha: hoy, importe: valorHoy(a) });
   return fl;
 }
@@ -74,29 +109,85 @@ function resumenInversion() {
     const conocido = a.aportadoIni != null;
     const mias = APr.filter((x) => x.activo === a.nombre);
     const aportado = (a.aportadoIni || 0) + sum(mias.map((x) => x.importe));
-    const valor = valorHoy(a);
+    const V = valorInfo(a), P = posicion(a);
+    const valor = V.valor, real = V.fuente === "anotado" || V.fuente === "precio";
     const fl = flujosActivo(a);
     const desde = fl ? DateTime.min(...fl.map((f) => f.fecha)) : null;
-    // Participaciones y precio medio: solo si todas las operaciones las traen (y no hay un aportado inicial sin ellas).
-    const conPart = mias.length && !(a.aportadoIni > 0) && mias.every((x) => hasNum(x.p.participaciones));
-    const part = conPart ? sum(mias.map((x) => num(x.p.participaciones))) : null;
-    const compras = mias.filter((x) => x.importe > 0);
-    const precioMedio = conPart && sum(compras.map((x) => num(x.p.participaciones))) > 0 ? sum(compras.map((x) => x.importe)) / sum(compras.map((x) => num(x.p.participaciones))) : null;
-    return { ...a, valor, ajuste: valor - a.valor, aportado, conocido, gan: a.conValor && conocido && aportado > 0 ? valor - aportado : NaN, fl, tir: fl ? xirr(fl) : NaN, desde,
-      participaciones: part, compradas: conPart ? sum(compras.map((x) => num(x.p.participaciones))) : 0, precioMedio, operaciones: mias.length };
+    return { ...a, valor, fuente: V.fuente, precioEstimado: V.precio || null, conValorReal: real, ajuste: valor - a.valor, aportado, conocido,
+      gan: real && conocido && aportado > 0 ? valor - aportado : NaN, fl, tir: fl ? xirr(fl) : NaN, desde,
+      participaciones: P.part, compradas: P.compradas, precioMedio: P.precioMedio, ultimoPrecio: P.ultimoPrecio, operaciones: mias.filter((x) => !x.p.ajuste).length, vendido: P.vendido };
   });
   // Vendido del todo (0 participaciones): no es cartera; su resultado es lo que sacaste − lo que metiste.
-  const cerrado = (f) => f.participaciones != null && f.operaciones > 1 && casiCero(f.participaciones, f.compradas || 0);
-  const cerradas = todas.filter(cerrado).map((f) => ({ nombre: f.nombre, resultado: -f.aportado, p: f.p }));
-  const filas = todas.filter((f) => !cerrado(f));
+  const cerradas = todas.filter((f) => f.vendido && !f.conValor).map((f) => ({ nombre: f.nombre, resultado: -f.aportado, p: f.p }));
+  const filas = todas.filter((f) => !(f.vendido && !f.conValor));
   const total = sum(filas.map((f) => f.valor));
-  const con = filas.filter((f) => f.conValor && f.conocido && f.aportado > 0);
+  const con = filas.filter((f) => f.conValorReal && f.conocido && f.aportado > 0);
   const aportado = sum(con.map((f) => f.aportado)), gan = sum(con.map((f) => f.gan));
   const conTir = filas.filter((f) => f.fl);
   const tir = conTir.length ? xirr(conTir.flatMap((f) => f.fl)) : NaN;
   const desde = conTir.length ? DateTime.min(...conTir.map((f) => f.desde)) : null;
-  return { filas, cerradas, total, aportado, gan, AP, sinAport: filas.filter((f) => !f.conocido).length, sinValor: filas.filter((f) => !f.conValor).length,
+  return { filas, cerradas, total, aportado, gan, AP, sinAport: filas.filter((f) => !f.conocido).length, sinValor: filas.filter((f) => f.fuente === "metido").length,
+    estimados: filas.filter((f) => f.fuente === "precio").length,
     aportadoTodo: sum(filas.map((f) => f.aportado)), tir, tirParcial: conTir.length < filas.length, tirCorta: desde ? hoy.diff(desde, "days").days < 365 : false };
+}
+
+// Lo que conviene revisar de la cartera: lo importado puede venir mal o incompleto (un traspaso tomado por venta,
+// operaciones sin participaciones, compras que no se sabe si fueron ventas, duplicados, el mismo activo dos veces…).
+// Cada aviso: { clave, nivel: error|aviso|info, activo, texto, accion: { text, ruta } }. Los descartados (config) no salen.
+const NIVEL_SALUD = { error: 0, aviso: 1, info: 2 };
+const claveNombre = (n) => norm(n).replace(/\b(fondo|fund|index|indice|acc|eur|clase|class|etf|etc|ucits|the|de|del|lc)\b/g, "").replace(/[^a-z0-9]/g, "");
+function saludInversion(soloDe) {
+  const out = [], descartados = new Set((DB.config || {}).avisos_descartados || []), traspasos = new Set();
+  const add = (x) => { if (!descartados.has(x.clave) && (!soloDe || x.activo.nombre === soloDe)) out.push(x); };
+  const ficha = (a) => `#activo/${a.p.id}`;
+  const A = activos();
+  for (const a of A) {
+    const P = posicion(a), V = valorInfo(a);
+    const normales = P.ops.filter((x) => !x.p.ajuste);
+    if (!normales.length) continue;
+    if (normales.every((x) => x.importe < 0) && !normales.some((x) => hasNum(x.p.participaciones)) && !(a.aportadoIni > 0) && traspasos.add(a.nombre))
+      add({ clave: `traspaso|${a.nombre}`, nivel: "error", activo: a, accion: { text: "Revisar", ruta: ficha(a) },
+        texto: `«${a.nombre}» solo tiene ventas (${eur(-sum(normales.map((x) => x.importe)), 0)}) y ninguna compra. ¿Era dinero que pasaste desde tu banco?` });
+    if (traspasos.has(a.nombre)) continue;  // lo demás de este activo sobra hasta aclarar eso
+    else if (P.conPart && P.part < 0 && !P.vendido)
+      add({ clave: `negativas|${a.nombre}|${nf(P.part, 0, 4)}`, nivel: "error", activo: a, accion: { text: "Cuadrar", ruta: ficha(a) },
+        texto: `«${a.nombre}»: salen ${nf(-P.part, 0, 4)} participaciones vendidas de más. Falta alguna compra (o sobra una venta).` });
+    if (P.vendido) continue;
+    if (P.faltan) add({ clave: `sinpart|${a.nombre}|${P.faltan}`, nivel: P.faltan < normales.length ? "aviso" : "info", activo: a, accion: { text: "Cuadrar", ruta: ficha(a) },
+      texto: P.faltan < normales.length ? `${P.faltan} de ${normales.length} operaciones de «${a.nombre}» no dicen cuántas participaciones: dile a la app cuántas tienes y verás tu precio medio.`
+        : `«${a.nombre}»: ninguna operación dice cuántas participaciones compraste. Si las anotas, la app estima su valor y tu precio medio.` });
+    if (P.supuestas) add({ clave: `supuestas|${a.nombre}|${P.supuestas}`, nivel: "aviso", activo: a, accion: { text: "Revisar", ruta: ficha(a) },
+      texto: `${P.supuestas} ${P.supuestas === 1 ? "orden" : "órdenes"} de «${a.nombre}» no decían si eran compra o venta: se han tomado como compras.` });
+    // Posibles duplicados: mismo sentido e importe (±1 %) en ≤ 6 días, y de orígenes distintos (extracto, órdenes, a mano)
+    const origen = (x) => (x.p.ext_fecha ? "e" : "") + (x.p.orden ? "o" : "") || "m";
+    for (let i = 0; i < normales.length; i++) for (let j = i + 1; j < normales.length; j++) {
+      const x = normales[i], y = normales[j];
+      if (Math.abs(y.fecha.diff(x.fecha, "days").days) > 6 || (x.importe > 0) !== (y.importe > 0)) continue;
+      if (Math.abs(Math.abs(x.importe) - Math.abs(y.importe)) > Math.max(1, 0.01 * Math.abs(x.importe))) continue;
+      if (origen(x) === origen(y) && origen(x) !== "m") continue;
+      add({ clave: `dup|${x.p.id}|${y.p.id}`, nivel: "aviso", activo: a, accion: { text: "Revisar", ruta: ficha(a) }, ids: [x.p.id, y.p.id],
+        texto: `«${a.nombre}»: dos ${x.importe > 0 ? "compras" : "ventas"} casi iguales (${eur(Math.abs(x.importe))} el ${x.fecha.toFormat("dd/MM/yy")} y ${eur(Math.abs(y.importe))} el ${y.fecha.toFormat("dd/MM/yy")}). ¿Es la misma contada dos veces?` });
+    }
+    if (/^Fondo [A-Z]{2}[A-Z0-9]{9}\d$/.test(a.nombre)) add({ clave: `nombre|${a.nombre}`, nivel: "info", activo: a, accion: { text: "Ponle nombre", ruta: `#editar/activo/${a.p.id}` },
+      texto: `«${a.nombre}» solo se conoce por su ISIN: ponle el nombre del fondo.` });
+    if (V.fuente === "metido") add({ clave: `valor|${a.nombre}`, nivel: "info", activo: a, accion: { text: "Anotar", ruta: "#valores" },
+      texto: `«${a.nombre}» no tiene valor ni precio: cuenta por lo que has metido (sin ganancia ni pérdida).` });
+    else if (V.fuente === "anotado" && a.fechaValor && diasDesde(a.fechaValor) > 60) add({ clave: `viejo|${a.nombre}|${a.p.fecha_valor}`, nivel: "info", activo: a, accion: { text: "Actualizar", ruta: "#valores" },
+      texto: `El valor de «${a.nombre}» es del ${a.fechaValor.toFormat("dd/MM/yy")}.` });
+  }
+  // El mismo activo dos veces (nombres que se contienen, o el mismo ISIN): hay que unirlos
+  const vivos = A.filter((a) => posicion(a).ops.length && !posicion(a).vendido);
+  for (let i = 0; i < A.length; i++) for (let j = i + 1; j < A.length; j++) {
+    const a = A[i], b = A[j], ka = claveNombre(a.nombre), kb = claveNombre(b.nombre);
+    const mismoIsin = a.p.isin && a.p.isin === b.p.isin;
+    const corta = ka.length <= kb.length ? ka : kb, larga = ka.length <= kb.length ? kb : ka;
+    if (!mismoIsin && !(corta.length >= 4 && larga.includes(corta))) continue;
+    if ((!vivos.includes(a) && !vivos.includes(b)) || traspasos.has(a.nombre) || traspasos.has(b.nombre)) continue;
+    const [x, y] = posicion(a).ops.length <= posicion(b).ops.length ? [a, b] : [b, a];
+    add({ clave: `repe|${a.nombre}|${b.nombre}`, nivel: "aviso", activo: x, accion: { text: "Unir", ruta: `${ficha(x)}/unir/${y.p.id}` },
+      texto: `¿«${x.nombre}» y «${y.nombre}» son el mismo? Únelos para que sus cuentas salgan bien.` });
+  }
+  return out.sort((a, b) => NIVEL_SALUD[a.nivel] - NIVEL_SALUD[b.nivel]);
 }
 
 // Evolución mes a mes: lo aportado acumulado (al final de cada mes) y lo que valía (registros de saldos + hoy).
@@ -416,6 +507,8 @@ function avisos() {
   const A = activos();
   const viejos = A.filter((a) => !a.fechaValor || diasDesde(a.fechaValor) > 35);
   if (viejos.length) add("info", `Valor de la inversión sin actualizar hace más de un mes: ${viejos.map((a) => a.nombre).join(", ")}`, "#valores");
+  const malos = saludInversion().filter((x) => x.nivel === "error");
+  if (malos.length) add("warn", `Tu inversión: ${malos.length === 1 ? "hay algo que no cuadra" : `${malos.length} cosas no cuadran`} (${malos.map((x) => x.activo.nombre).join(", ")}) · revísalo`, "#inversion");
   const sinIni = A.filter((a) => a.aportadoIni == null);
   if (sinIni.length) add("info", `Falta cuánto habías aportado antes a ${sinIni.map((a) => a.nombre).join(", ")} · sin rentabilidad`, "#gestionar/activo");
   const F = prevision();

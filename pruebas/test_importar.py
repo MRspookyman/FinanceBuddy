@@ -410,6 +410,67 @@ class TestOperaciones(Base):
         self.assertEqual(self.aps(), [("2026-05-26", "iShares Physical Gold", -74.59, -1.0), ("2026-06-25", "Fidelity Physical Bitcoin", 303.41, 57.0)])
         self.assertEqual(self.a.todos("operacion"), [])
 
+class TestCartera(Base):
+    """Arreglos a mano de la cartera (cartera.py) y sugerencias del bróker que no inventan activos."""
+    CUENTA = ("Fecha de operación;Fecha valor;Concepto;Importe\n"
+              "04/03/2025;04/03/2025;Inicio;5000\n"
+              "06/03/2025;06/03/2025;GROUPAMA TRESORERIE I ACC EUR;-4999,04\n"
+              "18/03/2025;19/03/2025;S&P 500 INDEX P ACC EUR @ 31.5;-400\n")
+    def importar_cuenta(self, nombre="c.csv"):
+        ruta = os.path.join(self.c.inversion, nombre); escribir(ruta, "utf-8", self.CUENTA)
+        return IM.importar_archivo(self.a, self.c, ruta, "inversion", "Bróker")
+    def test_sugerencias_del_broker(self):
+        self.importar_cuenta()
+        s = {p["fila"]["texto"]: IM.sugerencia_inversion(p, self.a.todos("activo")) for p in self.a.todos("pendiente")}
+        self.assertEqual(s["Inicio"], {"accion": "ignorar"})  # dinero desde tu banco, no la venta de un activo «Inicio»
+        self.assertEqual(s["GROUPAMA TRESORERIE I ACC EUR"], {"accion": "activo", "nuevo": "Groupama Trésorerie", "clase": "fondo", "isin": "FR0000989626"})
+        g = next(p for p in self.a.todos("pendiente") if p["fila"]["texto"].startswith("GROUPAMA"))
+        IM.resolver(self.a, g["id"], {"accion": "activo", "nuevo_activo": "Groupama Trésorerie"})
+        act = next(a for a in self.a.todos("activo") if a["nombre"] == "Groupama Trésorerie")
+        self.assertEqual((act["isin"], act["clase"]), ("FR0000989626", "fondo"))  # así las órdenes (por ISIN) caen en el mismo
+
+    def test_era_un_traspaso(self):
+        from financebuddy import cartera
+        self.importar_cuenta()
+        p = next(p for p in self.a.todos("pendiente") if p["fila"]["texto"] == "Inicio")
+        IM.resolver(self.a, p["id"], {"accion": "activo", "nuevo_activo": "Inicio"})  # el error de antes: tomarlo por una venta
+        ini = next(a for a in self.a.todos("activo") if a["nombre"] == "Inicio")
+        cartera.borrar(self.a, ini["id"], era_traspaso=True)
+        self.assertFalse(any(a["nombre"] == "Inicio" for a in self.a.todos("activo")))
+        self.assertFalse(any(x["activo"] == "Inicio" for x in self.a.todos("aportacion")))
+        r = self.importar_cuenta("c2.csv")  # el mismo extracto otra vez: no vuelve
+        self.assertFalse(any(p["fila"]["texto"] == "Inicio" for p in self.a.todos("pendiente")))
+
+    def test_unir_y_cuadrar(self):
+        from financebuddy import cartera
+        self.a.guardar("activo", {"nombre": "Sp500", "clase": "otro", "cuenta": "Bróker", "valor": 100, "fecha_valor": "2025-03-20"})
+        self.a.guardar("activo", {"nombre": "Fidelity S&P 500", "clase": "fondo", "cuenta": "Bróker", "patrones": ["fidelity s&p 500"]})
+        self.a.guardar("aportacion", {"fecha": "2025-03-18", "activo": "Sp500", "importe": 400, "participaciones": 31.5, "cuenta": "Bróker"})
+        self.a.guardar("aportacion", {"fecha": "2025-04-08", "activo": "Fidelity S&P 500", "importe": 198.7, "participaciones": 17.807, "cuenta": "Bróker"})
+        self.a.guardar("patrimonio", {"fecha": "2025-03-31", "saldos": {"Bróker": 0}, "valores": {"Sp500": 101, "Fidelity S&P 500": 0}})
+        A = {a["nombre"]: a["id"] for a in self.a.todos("activo")}
+        cartera.unir(self.a, A["Sp500"], A["Fidelity S&P 500"])
+        self.assertEqual(sorted(a["nombre"] for a in self.a.todos("activo")), ["Fidelity S&P 500", "Fondo MSCI"])
+        f = next(a for a in self.a.todos("activo") if a["nombre"] == "Fidelity S&P 500")
+        self.assertIn("sp500", f["patrones"]); self.assertEqual(f["valor"], 100)
+        self.assertEqual(self.a.todos("patrimonio")[0]["valores"], {"Fidelity S&P 500": 101})
+        self.assertAlmostEqual(cartera.participaciones(self.a, "Fidelity S&P 500"), 49.307)
+        # El bróker dice 49,326: se añade un ajuste de +0,019 sin dinero; la segunda vez ya cuadra
+        self.assertIn("+0.019", cartera.cuadrar(self.a, f["id"], "49,326", "2025-05-01", "650"))
+        aj = [x for x in self.a.todos("aportacion") if x.get("ajuste")]
+        self.assertEqual([(x["importe"], x["participaciones"]) for x in aj], [(0.0, 0.019)])
+        self.assertIn("ya cuadraba", cartera.cuadrar(self.a, f["id"], 49.326))
+        self.assertEqual(next(a for a in self.a.todos("activo") if a["nombre"] == "Fidelity S&P 500")["valor"], 650)
+
+    def test_ordenes_mandan_sobre_participaciones_redondeadas(self):
+        self.importar_cuenta()
+        s = next(p for p in self.a.todos("pendiente") if p["fila"]["texto"].startswith("S&P"))
+        IM.resolver(self.a, s["id"], {"accion": "activo", "nuevo_activo": "S&P 500 Index P Acc Eur"})
+        ruta = os.path.join(self.c.inversion, "o.csv")
+        escribir(ruta, "cp1252", "Fecha de la orden;ISIN;Importe estimado;Nº de participaciones;Estado\n16/03/2025;IE00BYX5MX67;400 EUR;31,519;Finalizada\n")
+        IM.importar_archivo(self.a, self.c, ruta, None, "Bróker")
+        self.assertEqual([(x["activo"], x["participaciones"]) for x in self.a.todos("aportacion")], [("S&P 500 Index P Acc Eur", 31.519)])
+
 class TestDetectar(Base):
     MESES = ["2026-07", "2026-08", "2026-09"]
     def filas(self):
