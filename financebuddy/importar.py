@@ -105,20 +105,25 @@ def importar_banco(alm, ruta, cuenta=None, perfil_nombre=None):
     for f in reversed(filas):
         f.update(C.clasificar_fila(f, filas, reglas, cuentas, recs, cuenta))
     huellas = huellas_existentes(alm, cuenta)
-    # Movimientos apuntados a mano (sin huella) en esa cuenta: misma fecha e importe
-    manuales = Counter()
-    for m in alm.todos("movimiento"):
-        if not m.get("ext_fecha") and m.get("cuenta", cuenta) in (cuenta, "", None):
-            manuales[(m["fecha"], round(float(m["importe"]), 2))] += 1
-    nuevas, dudas, existentes = [], [], 0
+    # Movimientos apuntados a mano (sin huella) en esa cuenta: mismo importe y sentido, fecha a ±3 días (el banco
+    # suele cargarlo un par de días después). Al casar, el apunte manual se queda con la huella del extracto.
+    manuales = [m for m in alm.todos("movimiento") if not m.get("ext_fecha") and m.get("cuenta", cuenta) in (cuenta, "", None)]
+    def manual_para(f):
+        fecha = datetime.date.fromisoformat(min(f["op"], f.get("val") or f["op"]))
+        entra = f["importe"] > 0
+        cand = [m for m in manuales if abs(float(m["importe"]) - abs(f["importe"])) < 0.005
+                and (m["clase"] == "transferencia" or (m["clase"] in ("ingreso", "reembolso")) == entra)
+                and abs((datetime.date.fromisoformat(m["fecha"]) - fecha).days) <= 3]
+        return min(cand, key=lambda m: abs((datetime.date.fromisoformat(m["fecha"]) - fecha).days)) if cand else None
+    nuevas, dudas, existentes, casadas = [], [], 0, []
     for f in reversed(filas):
         k = (f["op"], round(f["importe"], 2))
         if huellas[k] > 0: huellas[k] -= 1; existentes += 1; continue
-        fecha = min(f["op"], f.get("val") or f["op"])
-        k2 = (fecha, round(abs(f["importe"]), 2))
-        if manuales[k2] > 0: manuales[k2] -= 1; existentes += 1; continue
+        m = manual_para(f)
+        if m: manuales.remove(m); casadas.append((m, f)); existentes += 1; continue
         (dudas if f.get("duda") else nuevas).append(f)
     with alm.transaccion():
+        for m, f in casadas: alm.guardar("movimiento", {**m, "ext_texto": f["texto"], "ext_importe": f["importe"], "ext_fecha": f["op"]}, m["id"])
         for f in nuevas: alm.insertar_crudo("movimiento", movimiento_de(f, cuenta))
         for f in dudas:
             f.setdefault("patron", C.patron_sugerido(f["texto"]))

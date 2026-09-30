@@ -137,6 +137,17 @@ class TestBanco(Base):
         r = self.importar(self.extracto())
         self.assertEqual(r["nuevas"], 5)
 
+    def test_apuntado_a_mano_dias_antes_se_enlaza(self):
+        self.a.guardar("movimiento", {"fecha": "2026-09-03", "clase": "gasto", "categoria": "Hogar", "importe": 12.5, "concepto": "Tornillos", "cuenta": "Nómina"})
+        self.a.guardar("movimiento", {"fecha": "2026-09-10", "clase": "ingreso", "categoria": "Otros ingresos", "importe": 10.0, "concepto": "No es la compra", "cuenta": "Nómina"})
+        self.importar(self.extracto())
+        tornillos = [m for m in self.movs() if m["importe"] == 12.5]
+        self.assertEqual(len(tornillos), 1)
+        self.assertEqual((tornillos[0]["concepto"], tornillos[0]["ext_fecha"]), ("Tornillos", "2026-09-05"))
+        self.assertEqual(sum(1 for m in self.movs() if m["importe"] == 10.0), 3)  # el ingreso a mano no se confunde con las compras de 10 €
+        r = self.importar(self.extracto(nombre="otra.xlsx"))
+        self.assertEqual(r["nuevas"], 0)
+
     def test_formato_nuevo_csv(self):
         ruta = os.path.join(self.c.banco, "banco_x.csv")
         escribir(ruta, "utf-8", "Date;Description;Amount;Balance\n02/09/2026;CARREFOUR EXPRESS;-12,40;987,60\n01/09/2026;Recibo Iberdrola;-50,00;1.000,00\n")

@@ -54,6 +54,14 @@
       if (d.registros) FB.DB = d; else FB.aviso(d.mensaje || "No se han podido cargar los datos", true);
       barra();
     },
+    // Recarga los datos y vuelve a dibujar la pantalla actual sin perder la posición (las pantallas leen FB.DB al montarse).
+    async refrescar() {
+      const y = window.scrollY;
+      await FB.recargar();
+      montar();
+      window.scrollTo(0, y);
+    },
+    estado: {},
     ir(ruta) {
       const h = ruta.startsWith("#") ? ruta : "#" + ruta;
       if (location.hash === h) montar(); else location.hash = h;
@@ -103,7 +111,7 @@
   }
   FB.montar = montar;
   let actual = location.hash;
-  window.addEventListener("hashchange", () => { FB.anterior = actual; actual = location.hash; montar(); });
+  window.addEventListener("hashchange", () => { FB.anterior = actual; actual = location.hash; FB.estado = {}; montar(); });
   // Enlaces internos: navegación sin recargar
   document.addEventListener("click", (e) => {
     const a = e.target.closest && e.target.closest("a.internal-link");

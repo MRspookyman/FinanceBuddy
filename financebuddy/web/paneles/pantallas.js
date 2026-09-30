@@ -77,7 +77,9 @@ function vistaBienvenida() {
 }
 
 // ───────────── importar ─────────────
-let resultadosImport = [];
+// Resultados de la última importación: se guardan en FB.estado para que sigan ahí al refrescar la pantalla.
+let resultadosImport = FB.estado.imp || [];
+const guardarImport = (lista) => { resultadosImport = FB.estado.imp = lista; };
 function vistaImportar() {
   titulo("Importar", "Los movimientos de tu banco y de tu bróker");
   const g = rejilla();
@@ -95,9 +97,9 @@ function vistaImportar() {
       zona.textContent = `Importando ${f.name}…`;
       const b64 = await new Promise((ok) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(",")[1] || ""); r.readAsDataURL(f); });
       const r = await FB.api("/api/importar/subir", { nombre: f.name, tipo, contenido: b64 });
-      resultadosImport.unshift(r);
+      guardarImport([r, ...resultadosImport]);
     }
-    await FB.recargar(); render();
+    await FB.refrescar();
   };
   inp.onchange = () => subir([...inp.files]);
   zona.addEventListener("dragover", (e) => { e.preventDefault(); zona.classList.add("sobre"); });
@@ -110,7 +112,7 @@ function vistaImportar() {
   if (arch.length) filasDato(pC, arch.map((a) => ({ l: a.nombre, s: a.tipo === "banco" ? "banco" : a.tipo === "inversion" ? "bróker" : "se detectará el tipo", v: "" })));
   const fb = pC.createDiv({ cls: "fb-fila" });
   const bI = fb.createEl("button", { cls: "fb-btn", text: arch.length ? `Importar ${arch.length} archivo${arch.length > 1 ? "s" : ""}` : "Importar la carpeta" });
-  bI.onclick = async () => { bI.disabled = true; bI.textContent = "Importando…"; const r = await FB.api("/api/importar/carpeta", {}); resultadosImport = [...(r.resultados || [r]), ...resultadosImport]; await FB.recargar(); render(); };
+  bI.onclick = async () => { bI.disabled = true; bI.textContent = "Importando…"; const r = await FB.api("/api/importar/carpeta", {}); guardarImport([...(r.resultados || [r]), ...resultadosImport]); await FB.refrescar(); };
   const bA = fb.createEl("button", { cls: "fb-btn sec", text: "Abrir la carpeta" });
   bA.onclick = () => FB.api("/api/abrir_carpeta", {});
 
@@ -162,7 +164,7 @@ function resultadoImport(padre, r) {
   if (r.necesita === "perfil") { configurarFormato(card, r); return; }
   mensaje(card, r.mensaje || "No se ha podido importar", "err");
 }
-const reemplazar = async (viejo, nuevo) => { resultadosImport = resultadosImport.map((x) => (x === viejo ? nuevo : x)); await FB.recargar(); render(); };
+const reemplazar = async (viejo, nuevo) => { guardarImport(resultadosImport.map((x) => (x === viejo ? nuevo : x))); await FB.refrescar(); };
 // Formato nuevo: el usuario dice qué columna es cada cosa (se guarda como «formato» y se reconoce solo la próxima vez).
 function configurarFormato(card, r) {
   card.createDiv({ cls: "top", text: `${r.archivo}: formato nuevo` });
@@ -240,7 +242,7 @@ async function resolverPendiente(card, p, datos, boton) {
   boton.disabled = false;
   if (!r.ok) { mensaje(card, r.mensaje || "Error", "err"); return; }
   FB.aviso(r.mensaje);
-  await FB.recargar(); render();
+  await FB.refrescar();
 }
 function tarjetaBanco(padre, p) {
   const f = p.fila, card = padre.createDiv({ cls: "fb-card" });
@@ -333,7 +335,7 @@ function pintarFijos(cont, r) {
       b.disabled = false;
       if (!x.ok) { res.innerHTML = ""; mensaje(res, x.mensaje || "Error", "err"); return; }
       FB.aviso(x.mensaje);
-      await FB.recargar(); render();
+      await FB.refrescar();
     };
   }
   enlace(p1.createDiv({ cls: "fin-note" }), "Ver todos tus recurrentes →", "#gestionar/recurrente");
@@ -472,7 +474,7 @@ function vistaAjustes() {
   const f = pL.createDiv({ cls: "fb-fila" });
   const iL = f.createEl("input", { cls: "corto", attr: { type: "number", step: "10" } }); iL.value = limiteVar || "";
   const bL = f.createEl("button", { cls: "fb-btn", text: "Guardar" });
-  bL.onclick = async () => { await FB.api("/api/config", { limite_variable: iL.value }); FB.aviso("Guardado ✓"); await FB.recargar(); render(); };
+  bL.onclick = async () => { await FB.api("/api/config", { limite_variable: iL.value }); FB.aviso("Guardado ✓"); await FB.refrescar(); };
 
   const pG = panel(g, "Lo más usado");
   const cnt = (t) => (DB.registros[t] || []).length;
@@ -512,7 +514,7 @@ function vistaAjustes() {
   const sCop = fr.createEl("select");
   FB.api("/api/copias").then((r) => { for (const n of r.copias || []) { const o = sCop.createEl("option", { text: n }); o.value = n; } });
   const bRes = fr.createEl("button", { cls: "fb-btn sec", text: "Restaurar" });
-  bRes.onclick = async () => { if (!sCop.value || !confirm(`¿Volver a los datos de «${sCop.value}»? Lo de ahora se guarda antes en otra copia.`)) return; const r = await FB.api("/api/restaurar", { copia: sCop.value }); FB.aviso(r.mensaje || "Hecho", !r.ok); await FB.recargar(); render(); };
+  bRes.onclick = async () => { if (!sCop.value || !confirm(`¿Volver a los datos de «${sCop.value}»? Lo de ahora se guarda antes en otra copia.`)) return; const r = await FB.api("/api/restaurar", { copia: sCop.value }); FB.aviso(r.mensaje || "Hecho", !r.ok); await FB.refrescar(); };
   const det2 = pC.createEl("details"); det2.createEl("summary", { text: "Usar otra carpeta de datos" });
   const fr2 = det2.createDiv({ cls: "fb-fila" });
   const iC = fr2.createEl("input", { attr: { type: "text", placeholder: "C:\\Users\\…\\FinanceBuddy" } }); iC.value = DB.info.carpeta;
