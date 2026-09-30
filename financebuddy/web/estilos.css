@@ -132,17 +132,19 @@ a.fb-alerta:hover{border-color:var(--brand)}
 .fb-hero{display:flex;flex-direction:column;align-items:center;text-align:center;gap:4px;padding:26px 28px 22px;margin-bottom:var(--g);border-radius:24px;color:var(--ink);background:var(--hero);border:1px solid color-mix(in srgb,var(--sand) 60%,transparent);box-shadow:var(--shadow)}
 .fb-hero .l{font-family:var(--serif);font-size:1.45em;font-weight:520;letter-spacing:-.01em}
 .fb-hero .v{font-size:clamp(3em,8vw,4.4em);font-weight:560;letter-spacing:-.03em;line-height:1;margin:6px 0 12px;color:var(--brand);font-variant-numeric:lining-nums tabular-nums}
-.fb-hero.pasado .v{color:var(--coral)}
+.fb-hero.pasado .v{color:var(--coral)} .fb-hero.alto .v{color:var(--amber)} .fb-hero.neutro .v{color:var(--ink)}
 .fb-hero .s{font-size:.9em;color:var(--ink-2);margin-top:2px}
 .fb-hero .pills{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;margin-top:12px}
 .fb-hero .pill{padding:5px 12px;border-radius:999px;font-size:.84em;font-weight:560;color:var(--ink-2);background:var(--surface);border:1px solid var(--line);text-decoration:none}
 a.fb-hero-link{color:var(--brand)}
 /* Barra de progreso del límite (con la marca del día del mes) */
-.fb-progreso{position:relative;width:100%;height:30px;border-radius:999px;background:var(--surface);border:1px solid var(--line);overflow:hidden}
+.fb-progreso{position:relative;width:100%;height:14px;border-radius:999px;background:var(--surface);border:1px solid var(--line);overflow:hidden}
 .fb-progreso .rel{height:100%;border-radius:999px;background:linear-gradient(90deg,color-mix(in srgb,var(--brand) 70%,var(--surface)),color-mix(in srgb,var(--brand) 38%,var(--surface)));transition:width .6s}
+.fb-hero.alto .fb-progreso .rel{background:linear-gradient(90deg,color-mix(in srgb,var(--amber) 75%,var(--surface)),color-mix(in srgb,var(--amber) 45%,var(--surface)))}
+.fb-hero.neutro .fb-progreso .rel{background:color-mix(in srgb,var(--ink-3) 45%,var(--surface))}
 .fb-hero.pasado .fb-progreso .rel{background:linear-gradient(90deg,color-mix(in srgb,var(--coral) 75%,var(--surface)),color-mix(in srgb,var(--coral) 45%,var(--surface)))}
-.fb-progreso .dia{position:absolute;top:4px;bottom:4px;width:2px;border-radius:1px;background:var(--ink-2);opacity:.45}
-.fb-progreso .et{position:absolute;right:14px;top:50%;transform:translateY(-50%);font-size:.84em;font-weight:600;color:var(--ink-2)}
+.fb-progreso .dia{position:absolute;top:0;bottom:0;width:2px;background:var(--ink);opacity:.55}
+.fb-hero .pie{margin-top:8px;font-size:.82em;font-weight:600;color:var(--ink-2);font-variant-numeric:tabular-nums}
 .fb-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,150px),1fr));gap:12px;margin-bottom:var(--g)}
 .fb-stat{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:6px;padding:20px 14px;border-radius:var(--r);background:var(--surface);border:1px solid var(--line);box-shadow:var(--shadow)}
 .fb-stat .ic{display:grid;place-items:center;flex:none;width:36px;height:36px;border-radius:50%;font-size:17px;font-weight:700;color:#fff;background:var(--ink-3)}
@@ -158,10 +160,10 @@ body.theme-dark .fb-stat.ahorro{background:var(--sand-soft)}
 /* barras de la semana */
 .fb-semana{display:grid;grid-template-columns:repeat(7,1fr);gap:8px;align-items:end;height:150px;margin:8px 0 6px;position:relative}
 .fb-semana .d{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:6px;height:100%}
-.fb-semana .b{width:100%;max-width:34px;min-height:4px;border-radius:10px;background:color-mix(in srgb,var(--brand) 78%,transparent)}
-.fb-semana .d.alto .b{background:var(--coral)}
+.fb-semana .b{width:100%;max-width:34px;min-height:4px;border-radius:10px;background:color-mix(in srgb,var(--coral) 55%,var(--surface))}
+.fb-semana .d.alto .b{background:var(--rose)}
 .fb-semana .d.fut .b{background:var(--surface-2);border:1.5px dashed var(--line)}
-.fb-semana .d.hoy .dl{color:var(--brand);font-weight:800}
+.fb-semana .d.hoy .dl{color:var(--ink);font-weight:800}
 .fb-semana .dl{font-size:.74em;color:var(--ink-3);font-weight:650}
 .fb-semana .dv{font-size:.7em;color:var(--ink-2);font-variant-numeric:tabular-nums;min-height:1.2em}
 .fb-semana .meta{position:absolute;left:0;right:0;border-top:2px dashed color-mix(in srgb,var(--ink-3) 70%,transparent);pointer-events:none}
@@ -232,6 +234,7 @@ body.theme-dark .fb-chips button.act{color:var(--bg)}
 .fin-legend{display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:10px;font-size:.8em;color:var(--ink-2)}
 .fin-legend span{display:inline-flex;align-items:center;gap:6px}
 .fin-legend i{display:inline-block;width:10px;height:10px;border-radius:4px;background:var(--dc)}
+.fin-legend i.linea{width:16px;height:0;border-radius:0;background:none;border-top:2.5px solid var(--dc)} .fin-legend i.linea.rayas{border-top:2px dashed var(--dc)}
 .fin-chart{position:relative;width:100%;touch-action:pan-y}
 .fin-chart svg{display:block;overflow:visible}
 .fin-chart text{fill:var(--ink-3);font-size:11px;font-family:inherit;font-variant-numeric:tabular-nums}

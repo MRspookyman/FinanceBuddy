@@ -119,9 +119,11 @@ function tablaActivos(p, I) {
 }
 
 function tarjetaAportaciones(p) {
-  const A = aportacionesMes(12);
+  let A = aportacionesMes(12);
   const conAlgo = A.filter((x) => x.compras || x.ventas);
   if (!conAlgo.length) { vacio(p, "Sin compras en el último año", ""); return; }
+  // Sin columnas vacías antes de la primera compra (se enseñan al menos 6 meses)
+  A = A.slice(Math.max(0, Math.min(A.indexOf(conAlgo[0]), A.length - 6)));
   const racha = constancia();
   const meses = A.filter((x) => x.compras > 0);
   const t = p.createDiv({ cls: "fb-total" });
@@ -194,7 +196,7 @@ function queHayDentro(padre, I) {
     if (filas.length > max && resto > 0.5) b.createDiv({ cls: "fin-note", text: `Resto: ${nf(resto, 1, 1)} %` });
   };
   if (D.paises && D.paises.length) barras(bloque("Países (de las acciones)"), D.paises, SERIES[0], 5);
-  if (D.sectores && D.sectores.length) barras(bloque("Sectores"), D.sectores, SERIES[5], 6);
+  if (D.sectores && D.sectores.length) barras(bloque("Sectores"), D.sectores, SERIES[4], 6);
   if (D.top && D.top.length) {
     const b = bloque(`Las ${D.top.length} mayores empresas · ${nf(sum(D.top.map((x) => x.peso || 0)), 1, 1)} %`);
     const l = b.createDiv({ cls: "fb-lista fb-top" });
