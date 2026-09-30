@@ -24,11 +24,17 @@ Solo para **Windows**. Todo en español y en euros.
    Si prefieres verla antes, pulsa **«Probar con datos de ejemplo»**.
 3. **Importa** el extracto de tu banco: pestaña *Importar* → arrastra el Excel o CSV.
    - La primera vez con un banco nuevo te pregunta qué columna es la fecha, el concepto y el importe. Solo esa vez.
-4. **Por revisar**: lo que la app no sabe clasificar sola te lo pregunta.
-   - Marca «recordar» y la próxima vez se clasifica solo (y también las demás dudas iguales).
+4. **Por revisar**: lo que la app no sabe clasificar sola te lo pregunta, agrupado por comercio.
+   - Un clic en la categoría (la más probable sale la primera, marcada con ✨) resuelve el grupo entero y lo recuerda.
+   - **Aprende sola**: lo que ya clasificaste antes de un comercio se usa la siguiente vez, aunque no marques «recordar».
+   - Si una categoría está mal, pulsa el movimiento y elige otra: puedes cambiar a la vez todos los del mismo comercio.
 5. Una vez al mes, *Ajustes → Actualizar saldos*: anotas lo que tienes en cada cuenta y el valor de tu inversión.
    - Así la app comprueba que no falta ningún movimiento.
 6. Con dos o más meses importados, *Ajustes → Detectar fijos*: la app encuentra tus nóminas, alquiler y recibos (lo que se repite cada mes) y te los propone; también te enseña **de dónde viene tu dinero**.
+
+**A tu gusto** (*Ajustes*): tema automático, claro u oscuro y color de acento; qué paneles ves en el Inicio y en qué orden;
+icono, color y presupuesto de cada categoría (con aviso si te pasas). En *Movimientos → Por categoría* ves cada una
+frente a tu media de los meses anteriores, y en el Inicio, el ritmo de gasto del mes frente a lo que sueles llevar.
 
 Cerrar la pestaña del navegador no cierra la app: para cerrarla, *Ajustes → Cerrar FinanceBuddy*. Si la vuelves a abrir, se reutiliza la que ya estaba en marcha.
 
@@ -74,6 +80,7 @@ python -m financebuddy                 :: arranca con tus datos (Documentos\Fina
 python -m financebuddy --ejemplo       :: con datos inventados en una carpeta temporal
 python -m unittest pruebas.test_importar pruebas.test_servidor
 python pruebas\run.py --tests          :: todas las pantallas en Chrome/Edge sin ventana + pruebas de cálculos
+                                       :: (otro navegador: variable FB_NAVEGADOR con la ruta de chrome)
 build.bat                              :: genera dist\FinanceBuddy.exe
 ```
 
@@ -87,7 +94,7 @@ financebuddy/
   modelo.py        tipos de registro, campos y validación
   importar.py      importación de extractos: formatos, cadena de saldos, duplicados, dudas
   lectura.py       lectura de Excel/CSV, fechas, importes y reconocimiento del formato
-  clasificar.py    clasificación automática (reglas, traspasos, Bizum, recurrentes)
+  clasificar.py    clasificación automática (reglas, traspasos, Bizum, recurrentes, lo aprendido de tu historial)
   detectar.py      fijos que se repiten cada mes y de dónde viene el dinero
   plantilla.py     categorías, reglas y formatos de serie
   ejemplo.py       datos de ejemplo

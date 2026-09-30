@@ -21,8 +21,10 @@ const FORMS = {
     campos: [
       { k: "nombre", l: "Nombre", req: true },
       { k: "grupo", l: "Grupo", t: "opc", opc: [["variable", "Gasto variable"], ["fijo", "Gasto fijo (alquiler, recibos…)"], ["ingreso", "Ingreso"]] },
-      { k: "presupuesto", l: "Presupuesto mensual (opcional)", t: "num", ayuda: "Si lo pones, verás una barra de lo gastado frente a este presupuesto." }],
-    fila: (r) => [r.nombre, { variable: "variable", fijo: "fijo", ingreso: "ingreso" }[r.grupo] || r.grupo, r.presupuesto ? eur(r.presupuesto, 0) : ""], cols: ["Nombre", "Grupo", "Presupuesto"] },
+      { k: "presupuesto", l: "Presupuesto mensual (opcional)", t: "num", ayuda: "Si lo pones, verás una barra de lo gastado frente a este presupuesto y un aviso si te pasas." },
+      { k: "icono", l: "Icono", t: "emoji" },
+      { k: "color", l: "Color", t: "color" }],
+    fila: (r) => [`${r.icono || catIcono(r.nombre)}  ${r.nombre}`, { variable: "variable", fijo: "fijo", ingreso: "ingreso" }[r.grupo] || r.grupo, r.presupuesto ? eur(r.presupuesto, 0) : ""], cols: ["Nombre", "Grupo", "Presupuesto"] },
   movimiento: { uno: "movimiento", plural: "Movimientos", ayuda: "Todo lo importado del banco y lo apuntado a mano.",
     campos: [
       { k: "fecha", l: "Fecha", t: "fecha", req: true, defecto: () => hoy.toISODate() },
@@ -128,6 +130,9 @@ const FORMS = {
     fila: (r) => [mesDT(r.mes).isValid ? mesLbl(r.mes) : r.mes, r.notas || ""], cols: ["Mes", "Notas"], orden: (a, b) => String(b.mes).localeCompare(String(a.mes)) },
 };
 
+const EMOJIS = ["🏠", "💡", "🛡️", "📺", "🛒", "🍽️", "☕", "🍺", "🎉", "🎬", "🎮", "🎾", "🏋️", "🚌", "🚗", "⛽", "✈️", "🏖️", "💊", "🦷", "🛍️", "👕", "🛋️", "🔧",
+  "📚", "🎓", "🎁", "💇", "🐾", "👶", "💶", "🏦", "📱", "💻", "🧾", "❤️", "💼", "💰", "📈", "🏷️"];
+
 // ───────────── editor ─────────────
 // opciones: { titulo, volver (ruta tras guardar), datosIniciales, alGuardar(id) }
 function formulario(padre, tipo, reg, opciones = {}) {
@@ -174,6 +179,22 @@ function formulario(padre, tipo, reg, opciones = {}) {
         el.checked = !!d[c.k];
         l.appendText(" sí");
         el.onchange = () => { d[c.k] = el.checked; };
+      } else if (c.t === "emoji") {
+        // Un emoji: escribirlo o elegir uno de la lista
+        el = form.createDiv({ cls: "fb-picker" });
+        const i = el.createEl("input", { cls: "mini", attr: { type: "text", maxlength: "8", placeholder: catIcono(d.nombre || "") } });
+        i.value = d[c.k] ?? "";
+        i.oninput = () => { d[c.k] = i.value.trim(); };
+        const g = el.createDiv({ cls: "fb-emojis" });
+        for (const e of EMOJIS) { const b = g.createEl("button", { text: e, attr: { type: "button" } }); if (e === d[c.k]) b.className = "act"; b.onclick = () => { d[c.k] = e; dibujar(); }; }
+      } else if (c.t === "color") {
+        el = form.createDiv({ cls: "fb-picker" });
+        const g = el.createDiv({ cls: "fb-colores" });
+        const actual = d[c.k] || "";
+        const b0 = g.createEl("button", { cls: "auto" + (actual ? "" : " act"), text: "auto", attr: { type: "button", title: "El de serie" } }); b0.onclick = () => { d[c.k] = ""; dibujar(); };
+        for (const col of PALETA) { const b = g.createEl("button", { cls: col.toLowerCase() === actual.toLowerCase() ? "act" : "", attr: { type: "button", title: col } }); b.style.background = col; b.onclick = () => { d[c.k] = col; dibujar(); }; }
+        const i = g.createEl("input", { attr: { type: "color", title: "Otro color" } }); i.value = actual || catColor(d.nombre || "x");
+        i.onchange = () => { d[c.k] = i.value.toUpperCase(); dibujar(); };
       } else if (c.t === "area") {
         el = form.createEl("textarea", { attr: { rows: "4" } });
         el.value = d[c.k] ?? "";

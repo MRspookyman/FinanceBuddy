@@ -25,13 +25,14 @@
     addClass(c) { this.classList.add(c); },
   });
 
-  // ── tema ──
-  const temaGuardado = (() => { try { return localStorage.getItem("fb-tema"); } catch (_) { return null; } })();
-  document.body.classList.toggle("theme-dark", temaGuardado ? temaGuardado === "oscuro" : matchMedia("(prefers-color-scheme: dark)").matches);
+  // ── tema: automático (el del sistema), claro u oscuro; se guarda en este navegador ──
+  const leerTema = () => { try { return localStorage.getItem("fb-tema") || "auto"; } catch (_) { return "auto"; } };
+  const oscuroSistema = matchMedia("(prefers-color-scheme: dark)");
+  const aplicarTema = () => { const t = leerTema(); document.body.classList.toggle("theme-dark", t === "auto" ? oscuroSistema.matches : t === "oscuro"); };
+  aplicarTema();
+  oscuroSistema.addEventListener && oscuroSistema.addEventListener("change", () => { if (leerTema() === "auto") { aplicarTema(); montar(); } });
   document.getElementById("tema").onclick = () => {
-    const o = !document.body.classList.contains("theme-dark");
-    document.body.classList.toggle("theme-dark", o);
-    try { localStorage.setItem("fb-tema", o ? "oscuro" : "claro"); } catch (_) {}
+    FB.tema(document.body.classList.contains("theme-dark") ? "claro" : "oscuro");
     montar();
   };
 
@@ -52,6 +53,7 @@
     async recargar() {
       const d = await FB.api("/api/datos");
       if (d.registros) FB.DB = d; else FB.aviso(d.mensaje || "No se han podido cargar los datos", true);
+      if (d.config) document.body.dataset.acento = d.config.acento || "violeta";
       barra();
     },
     // Recarga los datos y vuelve a dibujar la pantalla actual sin perder la posición (las pantallas leen FB.DB al montarse).
@@ -60,6 +62,12 @@
       await FB.recargar();
       montar();
       window.scrollTo(0, y);
+    },
+    // Sin argumento: el tema elegido (auto | claro | oscuro). Con argumento: lo cambia.
+    tema(t) {
+      if (t === undefined) return leerTema();
+      try { localStorage.setItem("fb-tema", t); } catch (_) {}
+      aplicarTema();
     },
     estado: {},
     ir(ruta) {

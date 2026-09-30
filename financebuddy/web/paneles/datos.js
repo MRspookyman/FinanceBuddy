@@ -76,7 +76,7 @@ let mes = estado0.mes || "";
 if (!mesDT(mes).isValid) mes = hoyKey;
 const cambiarMes = (key) => { mes = key; guardarEstado({ mes }); render(); };
 // Filtro de categoría en Gastos (se puede fijar desde el Resumen antes de abrir Gastos; se consume una vez).
-let filtroCat = vista === "gastos" && estado0.filtroCat ? estado0.filtroCat : null;
+let filtroCat = (vista === "gastos" || vista === "movimientos") && estado0.filtroCat ? estado0.filtroCat : null;
 if (filtroCat) guardarEstado({ filtroCat: null });
 let busqueda = "";
 

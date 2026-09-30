@@ -72,4 +72,12 @@ const AV = F.avisos();
 caso("Aviso del recordatorio de la renta", AV.some((a) => /renta/i.test(a.texto)), AV.map((a) => a.texto));
 caso("Sin avisos de «no cuadra»", !AV.some((a) => /No cuadra/.test(a.texto)), AV.map((a) => a.texto));
 
+// 10. Por categoría y ritmo del mes
+const RC = F.resumenCategorias("2026-09");
+caso("Categorías: la suma es el gasto del mes", cerca(suma(RC.map((c) => c.valor)), F.finMes("2026-09").gastos), suma(RC.map((c) => c.valor)));
+caso("Categorías: Vivienda 700 € (fijo, media 700 €)", RC.some((c) => c.nombre === "Vivienda" && cerca(c.valor, 700) && c.grupo === "fijo" && cerca(c.media, 700)), JSON.stringify(RC[0]));
+const RM = F.ritmoMes();
+caso("Ritmo: acumulado hasta el día 29 = gasto variable", RM.dia === 29 && cerca(RM.hoyV, F.gastoVariable(F.finMes("2026-09"))) && RM.actual[29] === null, [RM.dia, RM.hoyV]);
+caso("Ritmo: media de 3 meses, creciente", RM.nMeses === 3 && RM.media.every((v, i) => !i || v >= RM.media[i - 1] - 1e-9), RM.nMeses);
+
 return casos;

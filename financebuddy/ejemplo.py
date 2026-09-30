@@ -21,6 +21,14 @@ VARIABLES = [  # concepto, categoría, importe mínimo, máximo, veces al mes
     ("Amazon", "Compras", 12, 60, 1), ("Farmacia", "Salud", 5, 25, 1),
 ]
 
+DESCONOCIDO = "Comercio o recibo desconocido: ¿qué categoría es?"
+PENDIENTES = [  # días antes de hoy, texto del extracto, importe, clase, categoría propuesta, concepto, duda
+    (8, "Pago Movil En Kiosko Ana, Madrid ES, Tarj. :*1234", -3.5, "gasto", "Otros", "Kiosko Ana", DESCONOCIDO),
+    (4, "Pago Movil En Kiosko Ana, Madrid ES, Tarj. :*1234", -4.2, "gasto", "Otros", "Kiosko Ana", DESCONOCIDO),
+    (6, "Recibo Academia Oxford Idiomas SL", -65.0, "gasto", "Otros", "Academia Oxford Idiomas SL", DESCONOCIDO),
+    (3, "Transferencia de Juan Perez Garcia", 50.0, "ingreso", "Otros ingresos", "Transferencia de Juan Perez Garcia", "Ingreso sin identificar: ¿qué es?"),
+]
+
 def crear(raiz, hoy=None, meses=5, reemplazar=True):
     """Crea (o recrea) una carpeta de datos de ejemplo. hoy: AAAA-MM-DD (por defecto, hoy)."""
     if reemplazar and os.path.exists(os.path.join(raiz, "datos.db")):
@@ -97,5 +105,10 @@ def crear(raiz, hoy=None, meses=5, reemplazar=True):
         for f, a in aport: alm.guardar("aportacion", {"fecha": f.isoformat(), **a})
         for a in alm.todos("activo"):
             alm.guardar("activo", {**a, "valor": valores[a["nombre"]], "fecha_valor": hoy.isoformat()}, a["id"])
+        # Unas dudas «por revisar», como las que deja una importación (no cuentan en los cálculos hasta resolverlas)
+        for dias, texto, imp, clase, cat, concepto, duda in PENDIENTES:
+            f = (hoy - datetime.timedelta(days=dias)).isoformat()
+            alm.guardar("pendiente", {"tipo_import": "banco", "cuenta": CORRIENTE, "archivo": "ejemplo.xlsx", "perfil": "Santander", "duda": duda,
+                                      "fila": {"op": f, "texto": texto, "importe": imp, "clase": clase, "cat": cat, "concepto": concepto, "duda": duda}})
     alm.cerrar()
     return raiz

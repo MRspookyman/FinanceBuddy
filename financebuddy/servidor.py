@@ -1,11 +1,12 @@
 # Servidor local de la app: sirve las pantallas (web/) y una API JSON sobre la base de datos.
 # Solo escucha en 127.0.0.1 y cada arranque genera una clave que la página envía en la cabecera X-FB-Token.
 import base64, datetime, http.server, io, json, mimetypes, os, re, secrets, socketserver, tempfile, threading, traceback, urllib.parse
-from . import VERSION, detectar, importar as IM, modelo, plantilla, rutas
+from . import VERSION, clasificar as C, detectar, importar as IM, modelo, plantilla, rutas
 from .almacen import Almacen
 
 MODULOS = ["datos", "calculos", "componentes", "graficos", "inicio", "formularios", "pantallas"]
 MAX_SUBIDA = 25 * 1024 * 1024
+ACENTOS = ["violeta", "azul", "verde", "coral", "rosa", "grafito"]  # colores de acento (estilos.css: body[data-acento])
 
 def leer(p):
     with io.open(p, "rb") as fh: return fh.read()
@@ -30,6 +31,12 @@ class App:
     def datos(self):
         regs = self.alm.todos_por_tipo()
         pend = regs.pop("pendiente", [])
+        if pend:  # la categoría más probable de cada duda del banco (por tu historial)
+            mem = C.memoria(regs.get("movimiento", []))
+            for p in pend:
+                f = p.get("fila") or {}
+                if p.get("tipo_import") == "banco" and f.get("clase") != "transferencia":
+                    p["sugerencia"] = C.sugerir(f.get("texto", ""), f.get("importe", 0), mem, f.get("cat", ""))
         regs.pop("ignorado", None)
         return {"registros": regs, "pendientes": pend, "config": self.alm.config(),
                 "info": {"version": VERSION, "carpeta": self.carpeta.raiz, "hoy": self.hoy, "ejemplo": self.ejemplo,
@@ -174,7 +181,12 @@ class App:
         if ruta == "/api/config":
             for k, v in (d or {}).items():
                 if k in ("limite_variable",): a.set_config(k, modelo.numero(v) or 0)
+                elif k == "acento": a.set_config(k, v if v in ACENTOS else ACENTOS[0])
+                elif k in ("inicio", "inicio_ocultos"):  # paneles de Inicio visibles (en orden) y ocultos
+                    a.set_config(k, [x for x in (v if isinstance(v, list) else []) if isinstance(x, str) and re.fullmatch(r"[a-z]{2,20}", x)][:20])
             return {"ok": True}
+        if ruta == "/api/recategorizar": return {"ok": True, "mensaje": IM.recategorizar(a, int(d["id"]), d)}
+        if ruta == "/api/parecidos": return {"ok": True, **IM.parecidos(a, int(d["id"]))}
         if ruta == "/api/importar/carpeta": return self.importar_carpeta()
         if ruta == "/api/importar/subir": return self.subir(d)
         if ruta == "/api/importar/reintentar": return self.reintentar(d)

@@ -166,6 +166,65 @@ class TestBanco(Base):
         self.assertEqual(r["nuevas"], 2)
         self.assertEqual(sorted((m["clase"], m["importe"]) for m in self.movs()), [("gasto", 23.1), ("ingreso", 1500.0)])
 
+class TestAprender(Base):
+    """Lo que la app aprende sola: tu historial, los grupos de «Por revisar» y los cambios de categoría."""
+    def test_limpia_tarjetas_enmascaradas(self):
+        from financebuddy import clasificar as C
+        self.assertEqual(C.patron_sugerido("COMPRA TARJ. 5540XXXXXXXX1234 MERCADONA VALENCIA"), "mercadona valencia")
+        self.assertEqual(C.patron_sugerido("RECIBO /VODAFONE ESPANA SAU"), "vodafone espana sau")
+        self.assertEqual(C.comercio("TRANSACCION CONTACTLESS EN BAR PEPE 00123, MADRID ES"), "Bar Pepe")
+
+    def test_recuerda_sin_regla(self):
+        # La primera vez es duda; se resuelve SIN «recordar»; la siguiente vez ya no pregunta (lo saca del historial)
+        self.importar(self.extracto([("2026-09-05", "Pago Movil En Ferreteria Lopez, Madrid", -12.5)]))
+        p = self.a.todos("pendiente")[0]
+        IM.resolver(self.a, p["id"], {"accion": "guardar", "clase": "gasto", "categoria": "Hogar"})
+        r = self.importar(self.extracto([("2026-09-05", "Pago Movil En Ferreteria Lopez, Madrid", -12.5), ("2026-09-20", "Pago Movil En Ferreteria Lopez, Madrid", -8.0)], nombre="b.xlsx"))
+        self.assertEqual((r["nuevas"], r["dudas"], r["aprendidas"]), (1, 0, 1))
+        self.assertEqual([m["categoria"] for m in self.movs() if m["fecha"] == "2026-09-20"], ["Hogar"])
+        self.assertFalse(any(x.get("origen") == "usuario" for x in self.a.todos("regla")))  # no ha hecho falta una regla
+
+    def test_sugerencia_por_parecido(self):
+        from financebuddy import clasificar as C
+        mem = C.memoria([{"clase": "gasto", "categoria": "Hogar", "ext_texto": "Pago Movil En Ferreteria Lopez, Madrid"}])
+        s = C.sugerir("Pago Movil En Ferreteria Lopes, Getafe", -9.0, mem)
+        self.assertEqual((s["categoria"], s["clase"]), ("Hogar", "gasto"))
+        self.assertIn("parecido", s["motivo"])
+        self.assertIsNone(C.sugerir("Pago Movil En Joyeria Sol", -9.0, mem))
+        s = C.sugerir("Pago Movil En Ferreteria Lopez, Madrid", 9.0, mem)  # te lo devuelven
+        self.assertEqual(s["clase"], "reembolso")
+
+    def test_resolver_un_grupo(self):
+        filas = [("2026-09-01", "Pago Movil En Kiosko Ana, Madrid", -2.0), ("2026-09-02", "Pago Movil En Kiosko Ana, Madrid", -3.0),
+                 ("2026-09-03", "Pago Movil En Joyeria Sol, Madrid", -30.0)]
+        self.importar(self.extracto(filas))
+        P = self.a.todos("pendiente")
+        kiosko = [p["id"] for p in P if "Kiosko" in p["fila"]["texto"]]
+        msg = IM.resolver(self.a, kiosko[0], {"accion": "guardar", "clase": "gasto", "categoria": "Ocio", "ids": kiosko})
+        self.assertIn("1 más", msg)
+        self.assertEqual([p["fila"]["texto"] for p in self.a.todos("pendiente")], ["Pago Movil En Joyeria Sol, Madrid"])
+
+    def test_recategorizar_parecidos_y_recordar(self):
+        filas = [("2026-09-01", "Compra Mercadona, Madrid", -10.0), ("2026-09-08", "Compra Mercadona, Madrid", -20.0), ("2026-09-09", "Compra Lidl, Madrid", -5.0)]
+        self.importar(self.extracto(filas))
+        m = next(x for x in self.movs() if x["importe"] == 10.0)
+        self.assertEqual(IM.parecidos(self.a, m["id"])["n"], 1)
+        msg = IM.recategorizar(self.a, m["id"], {"categoria": "Hogar", "parecidos": True, "recordar": True})
+        self.assertIn("1 más", msg)
+        self.assertEqual(sorted((x["ext_texto"][:14], x["categoria"]) for x in self.movs()),
+                         [("Compra Lidl, M", "Supermercado"), ("Compra Mercado", "Hogar"), ("Compra Mercado", "Hogar")])
+        regla = next(x for x in self.a.todos("regla") if x.get("origen") == "usuario")
+        self.assertEqual((regla["patron"], regla["categoria"]), ("mercadona", "Hogar"))
+        r = self.importar(self.extracto(filas + [("2026-09-20", "Compra Mercadona, Madrid", -7.0)], nombre="c.xlsx"))
+        self.assertEqual(r["nuevas"], 1)
+        self.assertEqual([x["categoria"] for x in self.movs() if x["fecha"] == "2026-09-20"], ["Hogar"])
+        with self.assertRaises(ValueError): IM.recategorizar(self.a, m["id"], {"categoria": "No existe"})
+
+    def test_categoria_icono_y_color(self):
+        i = self.a.guardar("categoria", {"nombre": "Pádel", "grupo": "variable", "icono": "🎾", "color": "#12AB34"})
+        self.assertEqual(self.a.obtener("categoria", i)["color"], "#12AB34")
+        with self.assertRaises(ValueError): self.a.guardar("categoria", {"nombre": "X", "color": "red;}"})
+
 class TestInversion(Base):
     CSV = ("Fecha de operación;Fecha valor;Concepto;Importe\n"
            "01/09/2026;01/09/2026;Ahorro;200,00\n"

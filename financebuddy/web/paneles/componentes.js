@@ -27,8 +27,10 @@ const CAT_ICONO = { Vivienda: "🏠", Suministros: "💡", Seguros: "🛡️", S
   Mascotas: "🐾", Efectivo: "💶", Comisiones: "🏦", Otros: "📦", "Nómina": "💼", "Otros ingresos": "💰", Apuestas: "🎲", Videojuegos: "🎮", Deporte: "🏀" };
 const PALETA = ["#5B3DF5", "#FF7A59", "#0FA876", "#E59400", "#E0559B", "#2E90FA", "#8E7CC3", "#14B8A6", "#F97316", "#64748B"];
 const hashTxt = (s) => [...String(s)].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7);
-const catColor = (n) => PALETA[hashTxt(n) % PALETA.length];
-const catIcono = (n) => CAT_ICONO[n] || "🏷️";
+// El icono y el color se pueden elegir en cada categoría (Ajustes → Categorías); si no, los de serie.
+const catReg = (n) => categorias().find((c) => c.nombre === n);
+const catColor = (n) => ((catReg(n) || {}).p || {}).color || PALETA[hashTxt(n) % PALETA.length];
+const catIcono = (n) => ((catReg(n) || {}).p || {}).icono || CAT_ICONO[n] || "🏷️";
 const ICONO_CLASE = { transferencia: "🔁", ingreso: "💰", reembolso: "↩️" };
 function avatar(padre, { cat, clase, icono, sm } = {}) {
   const a = padre.createDiv({ cls: "fb-av" + (sm ? " sm" : "") });

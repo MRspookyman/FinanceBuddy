@@ -96,26 +96,35 @@ function anillo(padre, { frac, marca, c1, c2, tam = 150 }) {
     + `${mk}<text class="c1" x="75" y="78" text-anchor="middle">${esc(c1)}</text><text class="c2" x="75" y="97" text-anchor="middle">${esc(c2 || "")}</text></svg>`;
   return d;
 }
-// Dona: partes [{ nombre, valor, color }], con el total en el centro.
-function dona(padre, partes, { c1, c2, tam = 170 } = {}) {
-  const tot = sum(partes.map((p) => Math.max(0, p.valor)));
-  const R = 70, r = 46, cx = 85, cy = 85;
-  const s = [`<svg class="dona" width="${tam}" height="${tam}" viewBox="0 0 170 170" role="img">`];
-  if (tot <= 0) s.push(`<circle cx="${cx}" cy="${cy}" r="${(R + r) / 2}" fill="none" stroke="var(--surface-2)" stroke-width="${R - r}"/>`);
-  let a0 = -Math.PI / 2;
-  for (const p of partes.filter((p) => p.valor > 0)) {
-    const a1 = a0 + (p.valor / tot) * Math.PI * 2 - (partes.length > 1 ? 0.025 : 0);
-    const large = a1 - a0 > Math.PI ? 1 : 0;
-    const P = (rad, a) => `${(cx + rad * Math.cos(a)).toFixed(2)},${(cy + rad * Math.sin(a)).toFixed(2)}`;
-    const d = p.valor >= tot ? `M${cx - R},${cy}a${R},${R} 0 1,0 ${2 * R},0a${R},${R} 0 1,0 ${-2 * R},0M${cx - r},${cy}a${r},${r} 0 1,1 ${2 * r},0a${r},${r} 0 1,1 ${-2 * r},0`
-      : `M${P(R, a0)}A${R},${R} 0 ${large},1 ${P(R, a1)}L${P(r, a1)}A${r},${r} 0 ${large},0 ${P(r, a0)}Z`;
-    s.push(`<path d="${d}" fill="${p.color}" fill-rule="evenodd"><title>${esc(`${p.nombre}: ${eur(p.valor, 0)}`)}</title></path>`);
-    a0 = a1 + (partes.length > 1 ? 0.025 : 0);
-  }
-  s.push(`<text class="c1" x="${cx}" y="${cy + 4}" text-anchor="middle">${esc(c1 || "")}</text><text class="c2" x="${cx}" y="${cy + 20}" text-anchor="middle">${esc(c2 || "")}</text></svg>`);
-  const d = padre.createDiv();
-  d.innerHTML = s.join("");
-  return d;
+// Líneas sobre los días de un mes (gasto acumulado). series: [{ nombre, color, valores (null = sin dato), discontinua, area }].
+// etiquetas: texto de cada punto para el tooltip; marcas: índices con etiqueta en el eje X.
+function lineas(padre, { etiquetas, series, marcas, alto = 200 }) {
+  chart(padre, (W) => {
+    const H = alto, L = 46, R = 10, T = 12, B = 24;
+    const todos = series.flatMap((s) => s.valores.filter((v) => v != null));
+    const { lo, hi, ticks } = niceTicks(0, Math.max(1, ...todos));
+    const n = etiquetas.length;
+    const X = (i) => L + (n > 1 ? i * (W - L - R) / (n - 1) : 0), Y = (v) => T + (hi - v) * (H - T - B) / (hi - lo);
+    const s = [`<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img">`];
+    ejeY(s, ticks.filter((v) => v !== 0), Y, L, W, R);
+    s.push(`<line class="base" x1="${L}" x2="${W - R}" y1="${Y(0).toFixed(1)}" y2="${Y(0).toFixed(1)}"/>`);
+    for (const se of series) {
+      const pts = se.valores.map((v, i) => (v == null ? null : [X(i), Y(v)])).filter(Boolean);
+      if (pts.length < 2) continue;
+      const d = pts.map(([x, y], i) => `${i ? "L" : "M"}${x.toFixed(1)},${y.toFixed(1)}`).join("");
+      if (se.area) s.push(`<path d="${d}L${pts[pts.length - 1][0].toFixed(1)},${Y(0).toFixed(1)}L${pts[0][0].toFixed(1)},${Y(0).toFixed(1)}Z" style="fill:${se.color};opacity:.1"/>`);
+      s.push(`<path d="${d}" style="fill:none;stroke:${se.color};stroke-width:${se.discontinua ? 1.6 : 2.6};stroke-linejoin:round;stroke-linecap:round${se.discontinua ? ";stroke-dasharray:5 5" : ""}"/>`);
+      if (!se.discontinua) { const [x, y] = pts[pts.length - 1]; s.push(`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="4.5" style="fill:${se.color};stroke:var(--surface);stroke-width:2.5"/>`); }
+    }
+    const gw = (W - L - R) / Math.max(1, n - 1);
+    etiquetas.forEach((et, i) => {
+      const tip = et + "\n" + series.filter((se) => se.valores[i] != null).map((se) => `${se.nombre}: ${eur(se.valores[i], 0)}`).join("\n");
+      s.push(`<g class="col" data-tip="${esc(tip)}"><rect class="band" x="${(X(i) - gw / 2).toFixed(1)}" y="${T}" width="${gw.toFixed(1)}" height="${H - T - B}"/>`
+        + `<line class="xh" x1="${X(i).toFixed(1)}" x2="${X(i).toFixed(1)}" y1="${T}" y2="${H - B}"/></g>`);
+    });
+    for (const i of marcas || []) s.push(`<text x="${X(i).toFixed(1)}" y="${H - 6}" text-anchor="middle">${esc(String(i + 1))}</text>`);
+    return s.join("") + "</svg>";
+  });
 }
 // Barras de los 7 días de una semana. dias: [{ etiqueta, valor, futuro, hoy }], meta: gasto por día de referencia.
 function barrasSemana(padre, dias, meta) {

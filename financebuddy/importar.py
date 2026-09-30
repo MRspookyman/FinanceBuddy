@@ -101,9 +101,10 @@ def importar_banco(alm, ruta, cuenta=None, perfil_nombre=None):
     if error: return {"ok": False, "mensaje": error}
     reglas = C.ordenar_reglas(alm.todos("regla"))
     recs = alm.todos("recurrente")
+    mem = C.memoria(alm.todos("movimiento"))
     # Clasificar de la más antigua a la más reciente (los Bizums recibidos miran los gastos de antes)
     for f in reversed(filas):
-        f.update(C.clasificar_fila(f, filas, reglas, cuentas, recs, cuenta))
+        f.update(C.clasificar_fila(f, filas, reglas, cuentas, recs, cuenta, mem=mem))
     huellas = huellas_existentes(alm, cuenta)
     # Movimientos apuntados a mano (sin huella) en esa cuenta: mismo importe y sentido, fecha a ±3 días (el banco
     # suele cargarlo un par de días después). Al casar, el apunte manual se queda con la huella del extracto.
@@ -134,9 +135,11 @@ def importar_banco(alm, ruta, cuenta=None, perfil_nombre=None):
             if filas[0]["op"] >= prev.get("fecha", ""): alm.set_config(f"saldo_extracto:{cuenta}", {"fecha": filas[0]["op"], "saldo": filas[0]["saldo"]})
         if not perfil.get("cuenta"):  # recordar la cuenta de este formato
             alm.guardar("perfil", {**perfil, "cuenta": cuenta}, perfil["id"])
+    aprendidas = sum(1 for f in nuevas if f.get("aprendido"))
     return {"ok": True, "tipo": "banco", "cuenta": cuenta, "perfil": perfil["nombre"], "filas": len(filas), "nuevas": len(nuevas),
-            "existentes": existentes, "dudas": len(dudas), "desde": filas[-1]["op"], "hasta": filas[0]["op"],
-            "mensaje": f"{cuenta}: {len(nuevas)} movimientos nuevos" + (f", {len(dudas)} por revisar" if dudas else "")
+            "existentes": existentes, "dudas": len(dudas), "aprendidas": aprendidas, "desde": filas[-1]["op"], "hasta": filas[0]["op"],
+            "mensaje": f"{cuenta}: {len(nuevas)} movimientos nuevos" + (f" ({aprendidas} clasificados por lo que ya sabía de ti)" if aprendidas else "")
+                       + (f", {len(dudas)} por revisar" if dudas else "")
                        + (f" ({existentes} ya estaban)" if existentes else "") + f" · del {fmt(filas[-1]['op'])} al {fmt(filas[0]['op'])}"}
 
 def movimiento_de(f, cuenta, **cambios):
@@ -281,14 +284,15 @@ def resolver(alm, pid, d):
             clase = d.get("clase")
             alm.guardar("regla", {"patron": patron, "categoria": d.get("categoria") if clase != "transferencia" else "", "clase": clase,
                                   "cuenta_otra": d.get("cuenta_otra") if clase == "transferencia" else "", "origen": "usuario"})
-        # Las demás dudas iguales
+        # Las demás dudas iguales (con «recordar») y las que se han elegido a la vez (`ids`: un grupo de «Por revisar»)
         otras = 0
-        if recordar:
-            for q in alm.todos("pendiente"):
-                if q["tipo_import"] == p["tipo_import"] and q["cuenta"] == p["cuenta"] and C.aplica(patron, q["fila"]["texto"]):
-                    dq = {**d, "concepto": None} if p["tipo_import"] == "banco" else d
-                    if p["tipo_import"] == "banco" and d.get("clase") == "transferencia" and (q["fila"]["importe"] < 0) != (p["fila"]["importe"] < 0): continue
-                    _resolver_uno(alm, q, dq); otras += 1
+        ids = {int(x) for x in d.get("ids") or [] if str(x).isdigit()} - {pid}
+        for q in alm.todos("pendiente"):
+            if q["tipo_import"] != p["tipo_import"]: continue
+            if not (q["id"] in ids or (recordar and q["cuenta"] == p["cuenta"] and C.aplica(patron, q["fila"]["texto"]))): continue
+            dq = {**d, "concepto": None} if p["tipo_import"] == "banco" else d
+            if p["tipo_import"] == "banco" and d.get("clase") == "transferencia" and (q["fila"]["importe"] < 0) != (p["fila"]["importe"] < 0): continue
+            _resolver_uno(alm, q, dq); otras += 1
     return msg + (f" · y {otras} más iguales" if otras else "")
 
 def _resolver_uno(alm, p, d):
@@ -333,3 +337,44 @@ def _accion_perfil(alm, perfil_nombre, patron, accion):
     if not p: return
     acc = [a for a in (p.get("acciones") or []) if a.get("patron") != patron] + [{"patron": patron, "accion": accion}]
     alm.guardar("perfil", {**p, "acciones": acc}, p["id"])
+
+# ───────────── cambiar la categoría de un movimiento (y de los parecidos) ─────────────
+def _parecidos(alm, m):
+    """Otros movimientos importados del mismo comercio y sentido que `m` (mismo patrón que usaría una regla)."""
+    patron = C.clave(m.get("ext_texto") or m.get("concepto") or "")
+    if len(patron) < 3: return patron, []
+    entra = m["clase"] == "ingreso"
+    out = [x for x in alm.todos("movimiento") if x["id"] != m["id"] and x.get("clase") in ("gasto", "ingreso", "reembolso")
+           and (x["clase"] == "ingreso") == entra and C.aplica(patron, x.get("ext_texto") or x.get("concepto") or "")]
+    return patron, out
+
+def parecidos(alm, mid):
+    m = alm.obtener("movimiento", mid)
+    if not m: raise ValueError("Ese movimiento ya no existe.")
+    patron, otros = _parecidos(alm, m)
+    return {"patron": patron, "n": len(otros), "distintos": sum(1 for x in otros if x.get("categoria") != m.get("categoria"))}
+
+def recategorizar(alm, mid, d):
+    """d: {categoria, parecidos: bool, recordar: bool}. Cambia la categoría del movimiento; con `parecidos`, también la de
+    los demás del mismo comercio y las dudas pendientes iguales; con `recordar`, crea (o actualiza) la regla."""
+    m = alm.obtener("movimiento", mid)
+    if not m: raise ValueError("Ese movimiento ya no existe.")
+    if m.get("clase") not in ("gasto", "ingreso", "reembolso"): raise ValueError("Solo se puede cambiar la categoría de gastos e ingresos.")
+    cat = str(d.get("categoria") or "").strip()
+    if not any(c["nombre"] == cat for c in alm.todos("categoria")): raise ValueError("Elige una categoría.")
+    n = 0
+    with alm.transaccion():
+        alm.guardar("movimiento", {**m, "categoria": cat}, m["id"])
+        patron, otros = _parecidos(alm, m)
+        if d.get("parecidos") and patron:
+            for x in otros:
+                if x.get("categoria") != cat: alm.guardar("movimiento", {**x, "categoria": cat}, x["id"]); n += 1
+            clase = "ingreso" if m["clase"] == "ingreso" else "gasto"
+            for q in alm.todos("pendiente"):
+                if q["tipo_import"] == "banco" and (q["fila"]["importe"] > 0) == (clase == "ingreso") and C.aplica(patron, q["fila"]["texto"]):
+                    _resolver_uno(alm, q, {"accion": "guardar", "clase": clase, "categoria": cat}); n += 1
+        if d.get("recordar") and patron:
+            clase = "ingreso" if m["clase"] == "ingreso" else "gasto"
+            r = next((x for x in alm.todos("regla") if x.get("origen") != "plantilla" and L.norm(x["patron"]) == patron), None)
+            alm.guardar("regla", {**(r or {}), "patron": patron, "categoria": cat, "clase": clase, "origen": "usuario"}, r["id"] if r else None)
+    return f"Ahora es {cat}" + (f" · y {n} más de «{C.titulo(patron)}»" if n else "") + (" · lo recordaré" if d.get("recordar") and patron else "")

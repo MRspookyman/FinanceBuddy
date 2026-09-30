@@ -212,6 +212,40 @@ function presupuestoSemana() {
   };
 }
 
+// ───────────── por categoría ─────────────
+// Gasto neto (gastos − lo que te devolvieron) de cada categoría en un mes, solo lo ya ocurrido.
+function gastoPorCategoria(key) {
+  const out = new Map();
+  for (const m of finMes(key).real) if (m.gasto) out.set(m.categoria || "Otros", (out.get(m.categoria || "Otros") || 0) + m.gasto);
+  return out;
+}
+// Meses de referencia para comparar un mes: los 3 anteriores con movimientos propios.
+const mesesReferencia = (key) => mesesHasta(mesAnterior(key), 6).filter(conDatos).slice(-3);
+// Categorías del mes con su media de los meses de referencia y su presupuesto: [{ nombre, grupo, valor, media, presupuesto }].
+function resumenCategorias(key) {
+  const act = gastoPorCategoria(key), ref = mesesReferencia(key).map(gastoPorCategoria);
+  const nombres = new Set([...act.keys(), ...categorias().filter((c) => c.presupuesto > 0 && c.grupo !== "ingreso").map((c) => c.nombre)]);
+  return [...nombres].map((n) => ({
+    nombre: n, grupo: grupoDe(n), valor: act.get(n) || 0, presupuesto: (categorias().find((c) => c.nombre === n) || {}).presupuesto || 0,
+    media: ref.length ? media(ref.map((m) => m.get(n) || 0)) : NaN,
+  })).filter((c) => c.valor > 0.5 || c.presupuesto > 0).sort((a, b) => b.valor - a.valor);
+}
+// Ritmo del gasto variable del mes en curso: acumulado día a día frente a la media de los meses de referencia.
+function ritmoMes() {
+  const dm = hoy.daysInMonth, fd = fechaDatos();
+  const dia = fd && keyDe(fd) === hoyKey ? fd.day : hoy.day;
+  const acumulado = (key, hasta) => {
+    const d0 = mesDT(key), por = new Array(d0.daysInMonth).fill(0);
+    for (const m of finMes(key).real) if (m.gasto && grupoDe(m.categoria) !== "fijo") por[m.fecha.day - 1] += m.gasto;
+    let a = 0;
+    return Array.from({ length: hasta }, (_, i) => (a += por[Math.min(i, por.length - 1)] || 0));
+  };
+  const actual = acumulado(hoyKey, dm).map((v, i) => (i < dia ? v : null));
+  const refs = mesesReferencia(hoyKey);
+  const med = refs.length ? Array.from({ length: dm }, (_, i) => media(refs.map((k) => { const a = acumulado(k, dm); return a[Math.min(i, mesDT(k).daysInMonth - 1)]; }))) : null;
+  return { dm, dia, actual, media: med, nMeses: refs.length, hoyV: actual[dia - 1] || 0, mediaHoy: med ? med[dia - 1] : NaN };
+}
+
 // ───────────── qué hacer con tu dinero (plan de reparto) ─────────────
 // Colchón en la cuenta corriente = un mes de gasto (fijos mensuales + límite de gasto variable, redondeado a 50 €)
 // + el déficit de los meses negativos de la previsión en los próximos 6 meses. Lo que sobre, por orden:
@@ -332,6 +366,11 @@ function avisos() {
       if ((med > 0 && v >= 2 * med && v - med >= 50) || (med === 0 && v >= 150))
         add("info", `${cat}: ${eur(v, 0)} este mes, ${med > 0 ? `${nf(v / med, 1, 1)}× tu media (${eur(med, 0)})` : "sin gasto los meses anteriores"}`, "#movimientos");
     }
+  }
+  // Presupuestos por categoría del mes en curso.
+  for (const c of resumenCategorias(hoyKey).filter((c) => c.presupuesto > 0)) {
+    if (c.valor > c.presupuesto) add("warn", `${c.nombre}: llevas ${eur(c.valor, 0)} de un presupuesto de ${eur(c.presupuesto, 0)}`, "#movimientos/categorias");
+    else if (c.valor >= 0.9 * c.presupuesto && d < dm - 3) add("info", `${c.nombre}: ya llevas el ${Math.round((100 * c.valor) / c.presupuesto)} % de su presupuesto`, "#movimientos/categorias");
   }
   // Recordatorios con fecha.
   for (const r of recordatorios().filter((r) => r.estado !== "hecho" && r.fecha.minus({ days: r.avisar }) <= finHoy)) {

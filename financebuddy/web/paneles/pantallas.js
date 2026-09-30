@@ -85,8 +85,8 @@ function vistaImportar() {
   const g = rejilla();
   const pS = panel(g, "Sube un archivo");
   const tipoSel = pS.createDiv({ cls: "fb-fila" });
-  let tipo = "banco";
-  const radios = [["banco", "Extracto del banco"], ["inversion", "Movimientos del bróker"]].map(([v, t]) => {
+  let tipo = "";
+  const radios = [["", "Detectar solo"], ["banco", "Extracto del banco"], ["inversion", "Movimientos del bróker"]].map(([v, t]) => {
     const l = tipoSel.createEl("label"); const r = l.createEl("input", { attr: { type: "radio", name: "tipoimp" } }); r.checked = v === tipo; r.onchange = () => (tipo = v); l.appendText(t); return r;
   });
   const zona = pS.createDiv({ cls: "fb-zona", text: "Arrastra aquí el Excel o CSV, o pulsa para elegirlo" });
@@ -96,7 +96,7 @@ function vistaImportar() {
     for (const f of files) {
       zona.textContent = `Importando ${f.name}…`;
       const b64 = await new Promise((ok) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(",")[1] || ""); r.readAsDataURL(f); });
-      const r = await FB.api("/api/importar/subir", { nombre: f.name, tipo, contenido: b64 });
+      const r = await FB.api("/api/importar/subir", { nombre: f.name, tipo: tipo || null, contenido: b64 });
       guardarImport([r, ...resultadosImport]);
     }
     await FB.refrescar();
@@ -220,13 +220,104 @@ function configurarFormato(card, r) {
 }
 
 // ───────────── por revisar ─────────────
+// Las dudas del banco se agrupan por comercio (mismo patrón, cuenta y sentido): una decisión resuelve el grupo entero.
+// Cada grupo ofrece la categoría más probable (por tu historial) y las que más usas, a un clic.
 function vistaRevisar() {
-  titulo("Por revisar", "Movimientos que la app no ha sabido clasificar sola");
   const P = DB.pendientes || [];
-  if (!P.length) { mensaje(root, "Todo revisado ✓ No hay movimientos pendientes.", "ok"); return; }
-  root.createDiv({ cls: "fin-note", text: "Marca «recordar» y la próxima vez se clasificarán solos. Si no quieres registrar un movimiento, descártalo." });
-  const cont = root.createDiv();
-  for (const p of [...P].sort((a, b) => String(a.fila.op).localeCompare(String(b.fila.op)))) (p.tipo_import === "inversion" ? tarjetaInversion : tarjetaBanco)(cont, p);
+  titulo("Por revisar", P.length ? `${P.length} movimiento${P.length > 1 ? "s" : ""} que la app no ha sabido clasificar sola` : "");
+  if (!P.length) {
+    const ok = root.createDiv({ cls: "fb-hecho" });
+    ok.createDiv({ cls: "i", text: "✓" });
+    ok.createEl("b", { text: "Todo revisado" });
+    ok.createDiv({ text: "Lo que elijas aquí se recuerda: cada vez tendrás menos que revisar." });
+    enlace(ok, "Ir al inicio →", "#inicio");
+    return;
+  }
+  const banco = P.filter((p) => p.tipo_import !== "inversion"), inv = P.filter((p) => p.tipo_import === "inversion");
+  const grupos = new Map();
+  for (const p of [...banco].sort((a, b) => String(a.fila.op).localeCompare(String(b.fila.op)))) {
+    const k = [p.cuenta, p.fila.patron || sugerirPatron(p.fila.texto), p.fila.importe < 0 ? "-" : "+", p.fila.clase === "transferencia" ? "t" : ""].join("|");
+    if (!grupos.has(k)) grupos.set(k, []);
+    grupos.get(k).push(p);
+  }
+  const G = [...grupos.values()].sort((a, b) => b.length - a.length || sum(b.map((p) => Math.abs(p.fila.importe))) - sum(a.map((p) => Math.abs(p.fila.importe))));
+  if (G.length) root.createDiv({ cls: "fin-note fb-pista", text: "Pulsa la categoría y listo: se aplica a todo el grupo y la próxima vez se clasificará solo." });
+  const cont = root.createDiv({ cls: "fb-grupos" });
+  for (const g of G) tarjetaGrupo(cont, g);
+  if (inv.length) {
+    const pi = panel(root, "Movimientos del bróker");
+    for (const p of inv) tarjetaInversion(pi, p);
+  }
+}
+// Categorías que más usas (por número de movimientos), para ofrecerlas a un clic.
+function catsFrecuentes(entra, n = 6) {
+  const c = new Map();
+  for (const m of movimientos()) if (!m.auto && m.categoria && m.clase !== "transferencia" && (m.clase === "ingreso") === entra) c.set(m.categoria, (c.get(m.categoria) || 0) + 1);
+  const validas = new Set(catSegunClase({ clase: entra ? "ingreso" : "gasto" }).map(([v]) => v));
+  return [...c].filter(([k]) => validas.has(k)).sort((a, b) => b[1] - a[1]).map(([k]) => k).slice(0, n);
+}
+function tarjetaGrupo(padre, g) {
+  const p = g[0], f = p.fila, entra = f.importe > 0, esTr = f.clase === "transferencia";
+  const sug = p.sugerencia;
+  const card = padre.createDiv({ cls: "fb-grupo" });
+  const cab = card.createDiv({ cls: "cab" });
+  avatar(cab, sug ? { cat: sug.categoria } : { icono: esTr ? "🔁" : entra ? "💰" : "❔" });
+  const n = cab.createDiv({ cls: "n" });
+  n.createDiv({ cls: "t", text: f.concepto || C_titulo(sugerirPatron(f.texto)) });
+  n.createDiv({ cls: "s", text: g.length > 1 ? `${g.length} movimientos · del ${fmtISO(g[0].fila.op)} al ${fmtISO(g[g.length - 1].fila.op)} · ${p.cuenta}` : `${fmtISO(f.op)} · ${p.cuenta}` });
+  const tot = sum(g.map((x) => x.fila.importe));
+  cab.createDiv({ cls: "v " + (entra ? "pos" : ""), text: eurS(tot) });
+  card.createDiv({ cls: "ext", text: f.texto + (g.length > 1 ? `  (${g.map((x) => eur(Math.abs(x.fila.importe))).join(" · ")})` : "") });
+  if (p.duda) card.createDiv({ cls: "duda", text: p.duda });
+  const ids = g.map((x) => x.id);
+  let recordar = true, patron = f.patron || sugerirPatron(f.texto), concepto = f.concepto || "";
+  const hecho = async (datos, btn) => {
+    btn.disabled = true;
+    const r = await FB.api("/api/resolver", { id: p.id, ids, recordar, patron, concepto: g.length === 1 ? concepto : null, ...datos });
+    if (!r.ok) { btn.disabled = false; mensaje(card, r.mensaje || "Error", "err"); return; }
+    card.classList.add("fuera");
+    FB.aviso(r.mensaje);
+    setTimeout(() => FB.refrescar(), 220);
+  };
+  const chips = card.createDiv({ cls: "fb-cats" });
+  const chip = (texto, datos, cls) => { const b = chips.createEl("button", { text: texto, cls: cls || "" }); b.onclick = () => hecho(datos, b); return b; };
+  const claseCat = (cat) => (grupoDe(cat) === "ingreso" ? "ingreso" : "gasto");
+  if (esTr) for (const c of cuentas().filter((c) => c.nombre !== p.cuenta)) chip(`🔁 ${entra ? "Desde" : "A"} ${c.nombre}`, { accion: "guardar", clase: "transferencia", cuenta_otra: c.nombre }, "sug");
+  const vistas = new Set();
+  if (sug && sug.categoria) {
+    const b = chip(`✨ ${catIcono(sug.categoria)} ${sug.categoria}`, { accion: "guardar", clase: sug.clase, categoria: sug.categoria }, "sug");
+    b.title = `Sugerida: ${sug.motivo}`;
+    vistas.add(sug.categoria);
+  }
+  for (const c of catsFrecuentes(entra)) if (!vistas.has(c)) { vistas.add(c); chip(`${catIcono(c)} ${c}`, { accion: "guardar", clase: claseCat(c), categoria: c }); }
+  // Cualquier otra categoría (o gasto/ingreso cruzado: un ingreso que en realidad te devuelve un gasto)
+  const sOtra = chips.createEl("select", { cls: "otra" });
+  const o0 = sOtra.createEl("option", { text: "Otra…" }); o0.value = "";
+  for (const [grupo, lbl] of [["gasto", entra ? "Te devuelven un gasto de…" : "Gasto"], ["ingreso", "Ingreso"]]) {
+    const og = sOtra.createEl("optgroup"); og.label = lbl;
+    for (const [v] of catSegunClase({ clase: grupo })) { const o = og.createEl("option", { text: `${catIcono(v)} ${v}` }); o.value = v; }
+  }
+  sOtra.onchange = () => { if (sOtra.value) hecho({ accion: "guardar", clase: claseCat(sOtra.value), categoria: sOtra.value }, sOtra); };
+  if (!esTr && cuentas().length > 1) {
+    const sTr = chips.createEl("select", { cls: "otra" });
+    const t0 = sTr.createEl("option", { text: "Entre mis cuentas…" }); t0.value = "";
+    for (const c of cuentas().filter((c) => c.nombre !== p.cuenta)) { const o = sTr.createEl("option", { text: `${entra ? "← desde" : "→ a"} ${c.nombre}` }); o.value = c.nombre; }
+    sTr.onchange = () => { if (sTr.value) hecho({ accion: "guardar", clase: "transferencia", cuenta_otra: sTr.value }, sTr); };
+  }
+  const bD = chips.createEl("button", { cls: "desc", text: g.length > 1 ? "Descartar todos" : "Descartar" });
+  bD.title = "No registrar " + (g.length > 1 ? "estos movimientos" : "este movimiento");
+  bD.onclick = () => hecho({ accion: "ignorar" }, bD);
+  plegable(card, "Opciones", (c) => {
+    const f1 = c.createDiv({ cls: "fb-fila" });
+    const lab = f1.createEl("label"); const chk = lab.createEl("input", { attr: { type: "checkbox" } }); chk.checked = recordar; chk.onchange = () => (recordar = chk.checked);
+    lab.appendText("Recordar para la próxima vez los que contengan:");
+    const iPat = f1.createEl("input", { attr: { type: "text" } }); iPat.value = patron; iPat.oninput = () => (patron = iPat.value);
+    if (g.length === 1) {
+      const f2 = c.createDiv({ cls: "fb-fila" });
+      f2.createSpan({ cls: "fb-et", text: "Nombre para mostrar" });
+      const iC = f2.createEl("input", { attr: { type: "text" } }); iC.value = concepto; iC.oninput = () => (concepto = iC.value);
+    }
+  });
 }
 function cabeceraTarjeta(card, p) {
   const f = p.fila;
@@ -243,29 +334,6 @@ async function resolverPendiente(card, p, datos, boton) {
   if (!r.ok) { mensaje(card, r.mensaje || "Error", "err"); return; }
   FB.aviso(r.mensaje);
   await FB.refrescar();
-}
-function tarjetaBanco(padre, p) {
-  const f = p.fila, card = padre.createDiv({ cls: "fb-card" });
-  cabeceraTarjeta(card, p);
-  const fila = card.createDiv({ cls: "fb-fila" });
-  const sClase = fila.createEl("select"); for (const [k, t] of Object.entries(CLASE_MOV)) { const o = sClase.createEl("option", { text: t }); o.value = k; }
-  sClase.value = f.clase in CLASE_MOV ? f.clase : f.importe < 0 ? "gasto" : "ingreso";
-  const sCat = fila.createEl("select");
-  const llenarCat = () => { sCat.innerHTML = ""; for (const [v, t] of catSegunClase({ clase: sClase.value })) { const o = sCat.createEl("option", { text: t }); o.value = v; } if ([...sCat.options].some((o) => o.value === f.cat)) sCat.value = f.cat; };
-  const sOtra = fila.createEl("select");
-  for (const c of cuentas().filter((c) => c.nombre !== p.cuenta)) { const o = sOtra.createEl("option", { text: (f.importe < 0 ? "→ a " : "← desde ") + c.nombre }); o.value = c.nombre; }
-  const iCon = fila.createEl("input", { attr: { type: "text", placeholder: "Concepto" } }); iCon.value = f.concepto || "";
-  const fila2 = card.createDiv({ cls: "fb-fila" });
-  const lab = fila2.createEl("label"); const chk = lab.createEl("input", { attr: { type: "checkbox" } }); lab.appendText("Recordar para la próxima vez:");
-  const iPat = fila2.createEl("input", { attr: { type: "text", placeholder: "texto que lo identifica" } }); iPat.value = f.patron || sugerirPatron(f.texto);
-  chk.checked = true;
-  const bG = fila2.createEl("button", { cls: "fb-btn", text: "Guardar" });
-  const bD = fila2.createEl("button", { cls: "fb-btn sec", text: "Descartar" });
-  bD.title = "No registrar este movimiento";
-  const sync = () => { const t = sClase.value === "transferencia"; llenarCat(); sCat.style.display = t ? "none" : ""; sOtra.style.display = t ? "" : "none"; if (t && !sOtra.options.length) sOtra.style.display = "none"; };
-  sClase.onchange = sync; sync();
-  bG.onclick = () => resolverPendiente(card, p, { accion: "guardar", clase: sClase.value, categoria: sCat.value, concepto: iCon.value, cuenta_otra: sOtra.value, recordar: chk.checked, patron: iPat.value }, bG);
-  bD.onclick = () => resolverPendiente(card, p, { accion: "ignorar" }, bD);
 }
 function tarjetaInversion(padre, p) {
   const f = p.fila, card = padre.createDiv({ cls: "fb-card" });
@@ -476,6 +544,7 @@ function vistaAjustes() {
   const bL = f.createEl("button", { cls: "fb-btn", text: "Guardar" });
   bL.onclick = async () => { await FB.api("/api/config", { limite_variable: iL.value }); FB.aviso("Guardado ✓"); await FB.refrescar(); };
 
+  apariencia(panel(g, "Apariencia"));
   const pG = panel(g, "Lo más usado");
   const cnt = (t) => (DB.registros[t] || []).length;
   const accesos = (padre, lista) => {
@@ -490,6 +559,10 @@ function vistaAjustes() {
     ["🔍", "Detectar fijos", "nóminas, alquiler, recibos y de dónde viene tu dinero", "#fijos"],
     ["🧾", "Actualizar saldos", "cierra el mes: lo que tienes en cada cuenta", "#cerrar"],
   ]);
+  const pI = panel(root, "Tu inicio", null, "Elige qué ves en la pantalla de inicio y en qué orden. Se guarda al momento.");
+  pI.id = "tu-inicio";
+  personalizarInicio(pI);
+  if (params[0] === "inicio") setTimeout(() => { pI.scrollIntoView({ block: "start" }); pI.classList.add("resalta"); }, 30);
   const pD = panel(root, "Tus datos");
   accesos(pD, [
     ["🔁", "Fijos", `${cnt("recurrente")} ingresos y gastos que se repiten`, "#gestionar/recurrente"],
@@ -534,6 +607,48 @@ function vistaAjustes() {
   bS.onclick = async () => { await FB.api("/api/salir", {}); document.body.innerHTML = "<p style='padding:40px;font-family:sans-serif'>FinanceBuddy se ha cerrado. Puedes cerrar esta pestaña.</p>"; };
 }
 
+// Tema (en este navegador) y color de acento (en tus datos).
+const ACENTOS = [["violeta", "#5B3DF5"], ["azul", "#2563EB"], ["verde", "#0E9F6E"], ["coral", "#F0643C"], ["rosa", "#D6336C"], ["grafito", "#3F3F46"]];
+function apariencia(p) {
+  const f1 = p.createDiv({ cls: "fb-fila" });
+  f1.createSpan({ cls: "fb-et", text: "Tema" });
+  const seg = f1.createDiv({ cls: "fb-seg mini" });
+  for (const [k, t] of [["auto", "Automático"], ["claro", "Claro"], ["oscuro", "Oscuro"]]) {
+    const b = seg.createEl("button", { text: t, cls: FB.tema() === k ? "act" : "" });
+    b.onclick = () => { FB.tema(k); render(); };
+  }
+  const f2 = p.createDiv({ cls: "fb-fila" });
+  f2.createSpan({ cls: "fb-et", text: "Color" });
+  const g = f2.createDiv({ cls: "fb-colores" });
+  const actual = cfg.acento || "violeta";
+  for (const [k, col] of ACENTOS) {
+    const b = g.createEl("button", { cls: k === actual ? "act" : "", attr: { type: "button", title: cap(k), "aria-label": cap(k) } });
+    b.style.background = col;
+    b.onclick = async () => { document.body.dataset.acento = k; await FB.api("/api/config", { acento: k }); await FB.refrescar(); };
+  }
+  p.createDiv({ cls: "fin-note", text: "Los colores e iconos de cada categoría se cambian en Tus datos → Categorías." });
+}
+function personalizarInicio(p) {
+  const lista = panelesInicio();
+  const guardar = async () => {
+    await FB.api("/api/config", { inicio: lista.filter((x) => x.visible).map((x) => x.id), inicio_ocultos: lista.filter((x) => !x.visible).map((x) => x.id) });
+    await FB.recargar();
+  };
+  const box = p.createDiv({ cls: "fb-orden" });
+  const pintar = () => {
+    box.innerHTML = "";
+    lista.forEach((x, i) => {
+      const r = box.createDiv({ cls: "r" + (x.visible ? "" : " off") });
+      const l = r.createEl("label"); const c = l.createEl("input", { attr: { type: "checkbox" } }); c.checked = x.visible;
+      l.appendText(x.t);
+      c.onchange = () => { x.visible = c.checked; pintar(); guardar(); };
+      const mover = (d, t, title) => { const b = r.createEl("button", { text: t, attr: { type: "button", title, "aria-label": title } }); b.disabled = !lista[i + d]; b.onclick = () => { [lista[i], lista[i + d]] = [lista[i + d], lista[i]]; pintar(); guardar(); }; };
+      mover(-1, "↑", "Subir"); mover(1, "↓", "Bajar");
+    });
+  };
+  pintar();
+}
+
 // ───────────── listas y edición de registros ─────────────
 function vistaGestionar() {
   const tipo = params[0];
@@ -573,8 +688,41 @@ function vistaEditar() {
   titulo(reg ? `Editar ${F.uno}` : `Nuevo: ${F.uno}`, F.ayuda || "");
   if (id !== "nuevo" && !reg) { vacio(root, "Ese registro ya no existe"); return; }
   const volver = FB.anterior && !FB.anterior.startsWith("#editar") ? FB.anterior : `#gestionar/${tipo}`;
+  if (tipo === "movimiento" && reg && ["gasto", "ingreso", "reembolso"].includes(reg.clase)) cambioCategoria(root, reg, volver);
   formulario(root, tipo, reg, { volver });
   if (tipo === "movimiento" && reg && reg.ext_texto) root.createDiv({ cls: "fin-note", text: `Del extracto: «${reg.ext_texto}» (${eurS(num(reg.ext_importe))}, ${fmtISO(reg.ext_fecha)})` });
+}
+
+// Cambiar la categoría a un clic; si viene del extracto, también la de los parecidos (mismo comercio) y recordarlo.
+function cambioCategoria(padre, reg, volver) {
+  const p = panel(padre, "Cambiar la categoría");
+  const chips = p.createDiv({ cls: "fb-cats" });
+  const opciones = p.createDiv({ cls: "fb-fila fb-opciones" });
+  let parecidos = true, recordar = true;
+  const conExtracto = !!reg.ext_texto;
+  if (conExtracto) {
+    const l1 = opciones.createEl("label"); const c1 = l1.createEl("input", { attr: { type: "checkbox" } }); c1.checked = true; c1.onchange = () => (parecidos = c1.checked);
+    const t1 = l1.createSpan({ text: "Cambiar también los parecidos" });
+    const l2 = opciones.createEl("label"); const c2 = l2.createEl("input", { attr: { type: "checkbox" } }); c2.checked = true; c2.onchange = () => (recordar = c2.checked);
+    l2.appendText("y recordarlo para los próximos");
+    FB.api("/api/parecidos", { id: reg.id }).then((r) => {
+      if (!r.ok) return;
+      if (!r.n) { l1.style.display = "none"; parecidos = false; }
+      t1.textContent = `Cambiar también ${r.n === 1 ? "el otro movimiento" : `los otros ${r.n} movimientos`} de «${C_titulo(r.patron)}»`;
+    });
+  }
+  const grupo = reg.clase === "ingreso" ? "ingreso" : "gasto";
+  for (const [c] of catSegunClase({ clase: grupo })) {
+    const b = chips.createEl("button", { text: `${catIcono(c)} ${c}`, cls: c === reg.categoria ? "act" : "" });
+    b.onclick = async () => {
+      b.disabled = true;
+      const r = await FB.api("/api/recategorizar", { id: reg.id, categoria: c, parecidos: conExtracto && parecidos, recordar: conExtracto && recordar });
+      if (!r.ok) { b.disabled = false; mensaje(p, r.mensaje || "Error", "err"); return; }
+      FB.aviso(r.mensaje);
+      await FB.recargar();
+      FB.ir(volver);
+    };
+  }
 }
 
 // ───────────── render ─────────────
@@ -594,5 +742,5 @@ render();
 if (input && input.exponer) {
   window.__fin = { finMes, repartoAhorro, estimacion, conciliacion, prevision, resumenInversion, fondoEmergencia, gastoVariable, tasa12,
     movimientos, aportaciones, objetivos, patrimonio, avisos, categorias, grupoDe, limiteVar, mesesHasta, mesAnterior, hoyKey,
-    fechaDatos, presupuestoSemana, planReparto, cuentas, proyectar };
+    fechaDatos, presupuestoSemana, planReparto, cuentas, proyectar, resumenCategorias, ritmoMes };
 }
