@@ -25,8 +25,8 @@
     addClass(c) { this.classList.add(c); },
   });
 
-  // ── tema: automático (el del sistema), claro u oscuro; se guarda en este navegador ──
-  const leerTema = () => { try { return localStorage.getItem("fb-tema") || "auto"; } catch (_) { return "auto"; } };
+  // ── tema: claro (de serie), oscuro o automático (el del sistema); se guarda en este navegador ──
+  const leerTema = () => { try { return localStorage.getItem("fb-tema") || "claro"; } catch (_) { return "claro"; } };  // claro cálido de serie
   const oscuroSistema = matchMedia("(prefers-color-scheme: dark)");
   const aplicarTema = () => { const t = leerTema(); document.body.classList.toggle("theme-dark", t === "auto" ? oscuroSistema.matches : t === "oscuro"); };
   aplicarTema();

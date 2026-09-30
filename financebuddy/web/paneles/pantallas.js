@@ -667,12 +667,12 @@ function vistaAjustes() {
 }
 
 // Tema (en este navegador) y color de acento (en tus datos).
-const ACENTOS = [["salvia", "#5E8266"], ["violeta", "#5B3DF5"], ["azul", "#2563EB"], ["verde", "#0E9F6E"], ["coral", "#C9603F"], ["rosa", "#B84A6E"], ["grafito", "#3F3A34"]];
+const ACENTOS = [["salvia", "#5E8266"], ["violeta", "#6A5AA8"], ["azul", "#44688A"], ["verde", "#3E7558"], ["coral", "#C9603F"], ["rosa", "#B84A6E"], ["grafito", "#3F3A34"]];
 function apariencia(p) {
   const f1 = p.createDiv({ cls: "fb-fila" });
   f1.createSpan({ cls: "fb-et", text: "Tema" });
   const seg = f1.createDiv({ cls: "fb-seg mini" });
-  for (const [k, t] of [["auto", "Automático"], ["claro", "Claro"], ["oscuro", "Oscuro"]]) {
+  for (const [k, t] of [["claro", "Claro"], ["oscuro", "Oscuro"], ["auto", "Automático"]]) {
     const b = seg.createEl("button", { text: t, cls: FB.tema() === k ? "act" : "" });
     b.onclick = () => { FB.tema(k); render(); };
   }
