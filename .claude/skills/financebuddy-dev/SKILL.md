@@ -28,9 +28,11 @@ Corregir la cartera: `cartera.py` (API `/api/activo/unir|borrar|cuadrar`): unir 
 
 Personalización: `categoria.icono`/`categoria.color` (los usan `catIcono`/`catColor`); `config.acento` (lista `ACENTOS` en servidor.py y pantallas.js → `body[data-acento]` en estilos.css); el tema (auto/claro/oscuro) vive en `localStorage` (`FB.tema()`).
 
+Asistente Jev (`jev.py`, opcional): cliente de la API de TypeSafe (`POST https://api.typesafe.ai/v1/systemone`, Bearer; preguntas `choice` con `criteria` {opción: descripción} → `answers[q].choice/confidence`). Usos: `revisar()` (grupos de dudas del banco sin sugerencia del historial → `pendiente.jev`; se integra en `datos()` como sugerencia `fuente: "jev"` con `confianza`; en el bloque, marcada desde `SEGURA` = 0,85) y `mapear_columnas()` (propuesta en `NecesitaPerfil`). Clave en `config.jev` (o `TYPESAFE_API_KEY`); `datos()` solo expone `config_publica()`. `saneado()` quita nombres de Bizum y de transferencias a personas, tarjetas, IBAN y correos. `FB_JEV_URL` apunta a otro servidor (pruebas: servidor falso en `pruebas/test_jev.py`). `pruebas/evaluar_jev.py` mide aciertos con los datos reales del usuario. Descripciones de categorías: `plantilla.DESCRIPCIONES` o `categoria.descripcion`.
+
 ## Probar (siempre tras un cambio)
 ```bat
-python -m unittest pruebas.test_importar pruebas.test_servidor      :: importación, API y seguridad
+python -m unittest pruebas.test_importar pruebas.test_servidor pruebas.test_jev   :: importación, API, seguridad y Jev (sin red)
 python pruebas\run.py --tests                                       :: todas las pantallas sin errores + pruebas de cálculos
 python pruebas\run.py inicio,movimientos --shot [--tema=oscuro]     :: capturas en %TEMP%\fb-pruebas (mirarlas con Read)
 ```

@@ -171,6 +171,7 @@ const reemplazar = async (viejo, nuevo) => { guardarImport(resultadosImport.map(
 function configurarFormato(card, r) {
   card.createDiv({ cls: "top", text: `${r.archivo}: formato nuevo` });
   card.createDiv({ cls: "txt", text: "Dime qué columna es cada cosa (solo esta vez: la próxima se reconocerá solo)." });
+  if (r.propuesta && Object.keys(r.propuesta).length) card.createDiv({ cls: "fin-note", text: "✨ El asistente Jev ha elegido las columnas: revísalas antes de guardar." });
   const cab = (r.cabecera || []).map((c, i) => [c, c || `(columna ${i + 1})`]).filter(([c]) => c);
   const tw = card.createDiv({ cls: "fin-tablewrap" });
   const t = tw.createEl("table", { cls: "fin-table fb-muestra" });
@@ -195,7 +196,8 @@ function configurarFormato(card, r) {
       const s = form.createEl("select"); const o0 = s.createEl("option", { text: "—" }); o0.value = "";
       for (const [v, et] of cab) { const o = s.createEl("option", { text: et }); o.value = v; }
       const adivina = cab.find(([c]) => ({ fecha: /^fecha( de)? ?(operaci|contable)?/i, concepto: /concepto|descripci|detalle|movimiento/i, importe: /importe|cantidad|monto/i, saldo: /saldo/i, fecha_valor: /valor/i, cargo: /cargo|debe/i, abono: /abono|haber/i }[k] || /^$/).test(c));
-      s.value = sel[k] ?? (adivina && !(k === "fecha" && /valor/i.test(adivina[0])) ? adivina[0] : "");
+      const deJev = (r.propuesta || {})[k];
+      s.value = sel[k] ?? (deJev && cab.some(([c]) => c === deJev) ? deJev : adivina && !(k === "fecha" && /valor/i.test(adivina[0])) ? adivina[0] : "");
       sel[k] = s.value; s.onchange = () => (sel[k] = s.value);
     }
     form.createDiv({ cls: "et", text: "Nombre de este formato" });
@@ -255,6 +257,7 @@ function vistaRevisar() {
   const fil = root.createDiv({ cls: "fb-chips fb-filtro-rev" });
   for (const [k, t, n] of F) { const b = fil.createEl("button", { text: `${t} · ${n}`, cls: k === filtroRev ? "act" : "" }); b.onclick = () => { FB.estado.filtroRev = k; render(); }; }
   if (conProp.length) panelSugerencias(root, conProp);
+  botonJev(root, G);
   const ver = (g, tipo) => filtroRev === "todo" || filtroRev === tipo || (filtroRev === "sug" && conSug.has(g));
   const Gv = G.filter((g) => ver(g, "banco")), GIv = GI.filter((g) => ver(g, "broker"));
   if (Gv.length) {
@@ -268,6 +271,28 @@ function vistaRevisar() {
     for (const g of GIv) tarjetaGrupoInversion(ci, g);
   }
 }
+// Asistente Jev (opcional): pedir categoría para los grupos del banco que no tienen sugerencia.
+const JEV_SEGURA = 0.85;  // igual que jev.SEGURA: desde aquí, la sugerencia sale marcada al aceptar en bloque
+function botonJev(padre, G) {
+  const J = (DB.config || {}).jev || {};
+  const sin = G.filter((g) => !g[0].sugerencia && !g[0].jev && g[0].fila.clase !== "transferencia");
+  if (!sin.length) return;
+  const f = padre.createDiv({ cls: "fb-fila fb-bloque-sug" });
+  if (!J.activo) {
+    const n = f.createSpan({ cls: "fin-note" });
+    n.appendText(`${sin.length} grupo${sin.length > 1 ? "s" : ""} sin sugerencia. `);
+    enlace(n, "Activa el asistente Jev para que proponga su categoría →", "#ajustes/jev");
+    return;
+  }
+  const b = f.createEl("button", { cls: "fb-btn sec", text: `✨ Pedir a Jev la categoría de ${sin.length} grupo${sin.length > 1 ? "s" : ""}` });
+  f.createSpan({ cls: "fin-note", text: "Solo se envía el concepto (sin nombres de Bizum ni números de tarjeta) y el importe." });
+  b.onclick = async () => {
+    b.disabled = true; b.textContent = "Preguntando a Jev…";
+    const r = await FB.api("/api/jev/revisar", {});
+    FB.aviso(r.mensaje || (r.ok ? "Hecho" : "Error"), !r.ok);
+    await FB.refrescar();
+  };
+}
 const nombreGrupo = (g) => { const f = g[0].fila, s = g[0].sugerencia || {}; return g[0].tipo_import === "inversion" ? s.nuevo || s.activo || C_titulo(sugerirPatron(f.texto)) : f.concepto || C_titulo(sugerirPatron(f.texto)); };
 // Lo que la app propone para un grupo (o null): { texto, datos, motivo, segura }. «segura»: sale marcada al aceptar en bloque.
 function propuestaBanco(g) {
@@ -277,7 +302,8 @@ function propuestaBanco(g) {
     return otras.length === 1 ? { texto: `🔁 ${entra ? "Desde" : "A"} ${otras[0].nombre}`, datos: { accion: "guardar", clase: "transferencia", cuenta_otra: otras[0].nombre }, motivo: "a tu nombre", segura: true } : null;
   }
   const s = p.sugerencia;
-  return s && s.categoria ? { texto: `${catIcono(s.categoria)} ${s.categoria}`, datos: { accion: "guardar", clase: s.clase, categoria: s.categoria }, motivo: s.motivo, segura: !/^parecido/.test(s.motivo || "") } : null;
+  return s && s.categoria ? { texto: `${catIcono(s.categoria)} ${s.categoria}`, datos: { accion: "guardar", clase: s.clase, categoria: s.categoria }, motivo: s.motivo,
+    segura: s.fuente === "jev" ? num(s.confianza) >= JEV_SEGURA : !/^parecido/.test(s.motivo || "") } : null;
 }
 function propuestaBroker(g) {
   const f = g[0].fila, entra = f.importe > 0, s = g[0].sugerencia || {};
@@ -406,7 +432,7 @@ function tarjetaGrupo(padre, g) {
   }
   const vistas = new Set();
   if (sug && sug.categoria) {
-    const b = chip(`✨ ${catIcono(sug.categoria)} ${sug.categoria}`, { accion: "guardar", clase: sug.clase, categoria: sug.categoria }, "sug");
+    const b = chip(`✨ ${catIcono(sug.categoria)} ${sug.categoria}${sug.fuente === "jev" ? ` · ${sug.motivo}` : ""}`, { accion: "guardar", clase: sug.clase, categoria: sug.categoria }, "sug");
     b.title = `Sugerida: ${sug.motivo}`;
     vistas.add(sug.categoria);
   }
@@ -695,10 +721,12 @@ function vistaAjustes() {
   const iT = fT.createEl("input", { attr: { type: "text", placeholder: "p. ej. GARCÍA LÓPEZ ANA" } }); iT.value = (cfg.titulares || []).join("; ");
   const bT = fT.createEl("button", { cls: "fb-btn", text: "Guardar" });
   bT.onclick = async () => { await FB.api("/api/titulares", { titulares: iT.value.split(";") }); FB.aviso("Guardado ✓"); await FB.refrescar(); };
+  panelJev(root);
   const pI = panel(root, "Tu inicio", null, "Elige qué ves en la pantalla de inicio y en qué orden. Se guarda al momento.");
   pI.id = "tu-inicio";
   personalizarInicio(pI);
   if (params[0] === "inicio") setTimeout(() => { pI.scrollIntoView({ block: "start" }); pI.classList.add("resalta"); }, 30);
+  if (params[0] === "jev") setTimeout(() => { const e = document.getElementById("jev"); if (e) { e.scrollIntoView({ block: "start" }); e.classList.add("resalta"); } }, 30);
   const pD = panel(root, "Tus datos");
   accesos(pD, [
     ["🔁", "Fijos", `${cnt("recurrente")} ingresos y gastos que se repiten`, "#gestionar/recurrente"],
@@ -745,6 +773,38 @@ function vistaAjustes() {
 
 // Tema (en este navegador) y color de acento (en tus datos).
 const ACENTOS = [["salvia", "#5E8266"], ["violeta", "#6A5AA8"], ["azul", "#44688A"], ["verde", "#3E7558"], ["coral", "#C9603F"], ["rosa", "#B84A6E"], ["grafito", "#3F3A34"]];
+// Asistente Jev (TypeSafe AI), opcional: la clave se guarda solo en tu carpeta de datos y nunca vuelve a la página.
+function panelJev(padre) {
+  const J = (DB.config || {}).jev || {};
+  const p = panel(padre, "Asistente Jev (opcional)", { text: J.activo ? "activado" : J.hay_clave ? "desactivado" : "sin clave" },
+    "Jev es un modelo de TypeSafe AI que elige entre opciones y dice con qué confianza. Aquí propone la categoría de lo que la app no sabe clasificar y qué columna es cada cosa en el extracto de un banco nuevo. Solo sugiere: nunca guarda nada por su cuenta.");
+  p.id = "jev";
+  p.createDiv({ cls: "fin-note", text: "Se envía a TypeSafe (EE. UU.) solo el concepto del movimiento —sin nombres de los Bizum, números de tarjeta, IBAN ni correos— y el importe. Nada de saldos, cuentas ni fechas. Sin clave, la app funciona igual." });
+  const f = p.createDiv({ cls: "fb-fila" });
+  const i = f.createEl("input", { attr: { type: "password", autocomplete: "off", placeholder: J.hay_clave ? `Clave guardada (…${J.fin_clave})` : "Pega aquí tu clave de Jev", "aria-label": "Clave de Jev" } });
+  const bG = f.createEl("button", { cls: "fb-btn", text: "Guardar" });
+  const bP = f.createEl("button", { cls: "fb-btn sec", text: "Probar" });
+  const msg = p.createDiv();
+  // El resultado de «Probar» se guarda en FB.estado: la pantalla se redibuja al guardar y el mensaje sobrevive
+  if (FB.estado.jevPrueba) mensaje(msg, FB.estado.jevPrueba.texto, FB.estado.jevPrueba.ok ? "ok" : "err");
+  const enviar = async (d) => { const r = await FB.api("/api/jev/config", d); if (!r.ok) { msg.empty(); mensaje(msg, r.mensaje || "Error", "err"); } return r.ok; };
+  const guardar = async (d, aviso) => { if (!(await enviar(d))) return false; FB.aviso(aviso); await FB.refrescar(); return true; };
+  bG.onclick = () => { if (i.value.trim()) guardar({ clave: i.value.trim(), activo: true }, "Clave guardada ✓"); };
+  bP.onclick = async () => {
+    if (i.value.trim() && !(await enviar({ clave: i.value.trim(), activo: true }))) return;
+    bP.disabled = true; msg.empty(); mensaje(msg, "Probando…");
+    const r = await FB.api("/api/jev/probar", {});
+    FB.estado.jevPrueba = { texto: r.mensaje || "Error", ok: !!r.ok };
+    await FB.refrescar();
+  };
+  if (J.hay_clave) {
+    const o = p.createDiv({ cls: "fb-fila fb-opciones" });
+    const chk = (texto, k, v) => { const l = o.createEl("label"); const c = l.createEl("input", { attr: { type: "checkbox" } }); c.checked = v; c.onchange = () => guardar({ [k]: c.checked }, "Guardado ✓"); l.appendText(" " + texto); };
+    chk("Activado", "activo", !!J.activo);
+    chk("Pedir sugerencias al importar", "al_importar", !!J.al_importar);
+    if (!J.de_entorno) { const q = o.createEl("button", { cls: "fin-link", text: "Quitar la clave" }); q.onclick = () => guardar({ clave: "", activo: false }, "Clave quitada"); }
+  }
+}
 function apariencia(p) {
   const f1 = p.createDiv({ cls: "fb-fila" });
   f1.createSpan({ cls: "fb-et", text: "Tema" });

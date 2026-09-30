@@ -51,6 +51,14 @@ activo**: todas sus operaciones con su precio y de dónde vienen (extracto, órd
 con otro activo**; y «Era dinero traspasado desde mi banco» o borrar el activo con sus operaciones (no reaparecen al
 reimportar el mismo extracto).
 
+**Asistente Jev (opcional)**: con tu clave de [Jev](https://typesafe.ai) (TypeSafe AI) en *Ajustes → Asistente Jev*, la
+app le pregunta la categoría de lo que queda en «Por revisar» sin sugerencia (y, si entra dinero, si es un ingreso o te
+devuelven algo que pagaste) y qué columna es cada cosa en el extracto de un banco nuevo. Solo sugiere, con su
+confianza («Jev · 91 %»; desde el 85 % sale marcada al aceptar en bloque). Se envía solo el concepto saneado —sin
+nombres de personas en Bizums y transferencias, números de tarjeta, IBAN ni correos— y el importe; la clave se guarda
+solo en tu carpeta de datos. Para medir cuánto acierta con tus movimientos antes de fiarte:
+`python pruebas\evaluar_jev.py` (con `--mostrar` enseña lo que se enviaría sin enviar nada). Sin clave, todo igual.
+
 **Por revisar**: filtros (banco, bróker, con sugerencia) y **Revisar y aceptar las sugerencias** de una vez, con una
 casilla por grupo (las dudosas, sin marcar). Las entradas de dinero al bróker con un concepto tuyo («ahorro», «Inicio»)
 se proponen como traspaso desde tu banco, no como la venta de un activo.
@@ -123,6 +131,7 @@ financebuddy/
   detectar.py      fijos que se repiten cada mes y de dónde viene el dinero
   operaciones.py   órdenes y operaciones del bróker con participaciones (ISIN, traspasos entre fondos)
   cartera.py       arreglos a mano: unir activos, deshacer un traspaso tomado por venta, cuadrar participaciones
+  jev.py           asistente opcional Jev (TypeSafe AI): categoría de lo dudoso y columnas de un formato nuevo
   plantilla.py     categorías, reglas y formatos de serie
   ejemplo.py       datos de ejemplo
   web/             la interfaz: index.html, nucleo.js, estilos.css y paneles/*.js

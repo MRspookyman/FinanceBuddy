@@ -84,6 +84,21 @@ REGLAS = [
     ("pull and", "Compras", "gasto"), ("bershka", "Compras", "gasto"), ("stradivarius", "Compras", "gasto"), ("mango", "Compras", "gasto"),
     ("lefties", "Compras", "gasto"), ("sprinter", "Compras", "gasto"), ("druni", "Cuidado personal", "gasto"), ("primor", "Cuidado personal", "gasto"),
 ]
+# Qué entra en cada categoría de serie: se lo explica al asistente Jev (jev.py) para que elija bien. Las tuyas pueden
+# tener su propia descripción (campo «descripcion»).
+DESCRIPCIONES = {
+    "Vivienda": "alquiler, hipoteca, comunidad, IBI", "Suministros": "luz, agua, gas, internet, teléfono móvil",
+    "Seguros": "seguros de coche, hogar, salud o vida", "Suscripciones": "plataformas de vídeo o música, gimnasio, apps y servicios mensuales",
+    "Supermercado": "comida y productos de casa: supermercados, fruterías, carnicerías, panaderías, tiendas de alimentación",
+    "Comer fuera": "restaurantes, bares, cafeterías, comida a domicilio, copas", "Ocio": "cine, conciertos, museos, deporte, videojuegos, salir",
+    "Transporte": "transporte público, taxi, tren, bicicleta o patinete compartido", "Coche": "gasolina, parking, peajes, taller, ITV",
+    "Salud": "farmacia, médico, dentista, óptica, fisioterapia", "Compras": "ropa, calzado, tecnología, tiendas online, regalos para ti",
+    "Hogar": "muebles, decoración, bricolaje, electrodomésticos, limpieza", "Viajes": "vuelos, hoteles, alojamientos, excursiones",
+    "Formación": "cursos, libros, academias, matrículas", "Regalos": "regalos para otras personas", "Cuidado personal": "peluquería, cosmética, estética",
+    "Mascotas": "veterinario, comida y cosas para animales", "Efectivo": "retiradas de dinero en el cajero", "Comisiones": "comisiones del banco",
+    "Apuestas": "apuestas deportivas, casinos, loterías", "Otros": "lo que no encaja en ninguna otra",
+    "Nómina": "sueldo o pensión", "Intereses": "intereses o dividendos", "Otros ingresos": "ventas, premios, ayudas y otros ingresos",
+}
 VERSION = 3  # sube al cambiar CATEGORIAS, REGLAS o PERFILES: las instalaciones existentes reciben lo nuevo (sin tocar lo del usuario)
 
 # Formatos de archivo reconocidos de serie. columnas: {campo: texto de la cabecera (sin tildes, en minúsculas)}.

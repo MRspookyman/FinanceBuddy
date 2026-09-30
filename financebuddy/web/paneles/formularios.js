@@ -23,6 +23,7 @@ const FORMS = {
       { k: "nombre", l: "Nombre", req: true },
       { k: "grupo", l: "Grupo", t: "opc", opc: [["variable", "Gasto variable"], ["fijo", "Gasto fijo (alquiler, recibos…)"], ["ingreso", "Ingreso"]] },
       { k: "presupuesto", l: "Presupuesto mensual (opcional)", t: "num", ayuda: "Si lo pones, verás una barra de lo gastado frente a este presupuesto y un aviso si te pasas." },
+      { k: "descripcion", l: "Qué entra aquí (opcional)", ph: "p. ej. clases de pádel y material deportivo", ayuda: "Si usas el asistente Jev, le ayuda a proponer esta categoría." },
       { k: "icono", l: "Icono", t: "emoji" },
       { k: "color", l: "Color", t: "color" }],
     fila: (r) => [`${r.icono || catIcono(r.nombre)}  ${r.nombre}`, { variable: "variable", fijo: "fijo", ingreso: "ingreso" }[r.grupo] || r.grupo, r.presupuesto ? eur(r.presupuesto, 0) : ""], cols: ["Nombre", "Grupo", "Presupuesto"] },
