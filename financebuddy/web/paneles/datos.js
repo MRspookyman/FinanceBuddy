@@ -28,9 +28,9 @@ const media = (a) => (a.length ? sum(a) / a.length : NaN);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 const nf = (n, min, max) => n.toLocaleString("es-ES", { minimumFractionDigits: min, maximumFractionDigits: max, useGrouping: "always" });
-const eur = (n, dec = 2) => (n == null || !isFinite(n)) ? "—" : (n < 0 ? "−" : "") + nf(Math.abs(n), dec, dec) + " €";
+const eur = (n, dec = 2) => (n == null || !isFinite(n)) ? "—" : (n < 0 ? "−" : "") + nf(Math.abs(n), dec, dec) + "\u00a0€";  // espacio duro: la cifra y el € nunca se separan
 const eurS = (n, dec = 2) => (n > 0 ? "+" : "") + eur(n, dec);
-const pct = (n, signo = false) => (n == null || !isFinite(n)) ? "—" : (signo && n > 0 ? "+" : "") + (n < 0 ? "−" : "") + nf(Math.abs(n * 100), 1, 1) + " %";
+const pct = (n, signo = false) => (n == null || !isFinite(n)) ? "—" : (signo && n > 0 ? "+" : "") + (n < 0 ? "−" : "") + nf(Math.abs(n * 100), 1, 1) + "\u00a0%";
 const compact = (n) => {
   const a = Math.abs(n);
   const s = a >= 10000 ? nf(a / 1000, 0, 0) + "k" : a >= 1000 ? nf(a / 1000, 0, 1) + "k" : nf(a, 0, 0);

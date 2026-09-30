@@ -93,7 +93,7 @@ const unAño = (f) => !!(f.desde && hoy.diff(f.desde, "days").days >= 365);
 function tablaActivos(p, I) {
   // Participaciones y precio medio solo si algún activo los tiene (el extracto del bróker los trae como «@ N»).
   const conPart = I.filas.some((f) => f.participaciones != null);
-  const cols = [{ t: "Activo" }, conPart && { t: "Particip.", num: true, opt: true }, conPart && { t: "Precio medio", num: true, opt: true }, { t: "Metido", num: true },
+  const cols = [{ t: "Activo" }, conPart && { t: "Particip.", num: true, opt: true }, conPart && { t: "Precio medio", num: true, opt: true }, { t: "Metido", num: true, opt: true },
     { t: "Vale", num: true }, { t: "Ganancia", num: true }, { t: "Anual", num: true, opt: true }, { t: "Peso", num: true, opt: true }];
   const filas = [...I.filas].sort((a, b) => b.valor - a.valor).map((f) => [
     { text: f.nombre, ruta: `#activo/${f.p.id}`, dot: colorActivo(f.nombre), badge: { metido: "sin valor", precio: "estimado" }[f.fuente] || "" },

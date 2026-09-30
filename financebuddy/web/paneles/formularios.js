@@ -102,7 +102,7 @@ const FORMS = {
       { k: "cuenta", l: "Cuenta donde lo guardas", t: "opc", opc: opcCuentas(), vacio: "— ninguna (lo apunto yo) —" },
       { k: "ahorrado", l: "Ahorrado hasta ahora (€)", t: "num", si: (d) => !d.cuenta },
       { k: "fecha_limite", l: "Para cuándo (opcional)", t: "fecha" },
-      { k: "prioridad", l: "Prioridad", t: "opc", opc: [["alta", "Alta"], ["media", "Media"], ["baja", "Baja"]] },
+      { k: "prioridad", l: "Prioridad", t: "opc", opc: [["alta", "Alta"], ["media", "Media"], ["baja", "Baja"]], defecto: () => "media" },
       { k: "estado", l: "Estado", t: "opc", opc: [["activo", "En marcha"], ["conseguido", "Conseguido"]] }],
     fila: (r) => [r.nombre, r.meta_meses ? `${r.meta_meses} meses de gasto` : eur(r.meta, 0), r.cuenta || "", r.estado === "conseguido" ? "conseguido" : ""], cols: ["Nombre", "Meta", "Cuenta", ""] },
   recordatorio: { uno: "recordatorio", plural: "Recordatorios", ayuda: "Cosas con fecha sin importe fijo (renta, ITV, seguro anual…). Salen en el Resumen unos días antes.",
@@ -171,11 +171,12 @@ function formulario(padre, tipo, reg, opciones = {}) {
       if (c.t === "opc") {
         el = form.createEl("select");
         const ops = typeof c.opc === "function" ? c.opc(d) : c.opc;
-        if (c.vacio || !c.req) { const o = el.createEl("option", { text: c.vacio || "—" }); o.value = ""; }
+        const conVacio = !!c.vacio || (!c.req && typeof c.opc === "function");  // una lista cerrada (tipo, estado…) siempre tiene valor
+        if (conVacio) { const o = el.createEl("option", { text: c.vacio || "—" }); o.value = ""; }
         for (const [v, t] of ops) { const o = el.createEl("option", { text: t }); o.value = v; }
         if (d[c.k] != null && d[c.k] !== "" && !ops.some(([v]) => v === d[c.k])) { const o = el.createEl("option", { text: d[c.k] }); o.value = d[c.k]; }
-        el.value = d[c.k] ?? (c.vacio || !c.req ? "" : (ops[0] || [""])[0]);
-        if (el.value === "" && !(c.vacio || !c.req) && ops.length) el.value = ops[0][0];
+        el.value = d[c.k] ?? (conVacio ? "" : (ops[0] || [""])[0]);
+        if (el.value === "" && !conVacio && ops.length) el.value = ops[0][0];
         d[c.k] = el.value;
         el.onchange = () => { d[c.k] = el.value; dibujar(); };
       } else if (c.t === "bool") {
@@ -206,12 +207,14 @@ function formulario(padre, tipo, reg, opciones = {}) {
         el.oninput = () => { d[c.k] = el.value; };
       } else {
         const tipoInput = c.t === "fecha" ? "date" : c.t === "num" || c.t === "int" ? "number" : "text";
-        el = form.createEl("input", { attr: { type: tipoInput, step: c.paso || (c.t === "int" ? "1" : "0.01"), placeholder: c.ph || "" } });
+        el = form.createEl("input", { attr: { type: tipoInput, placeholder: c.ph || "" } });
+        if (tipoInput === "number") el.setAttribute("step", c.paso || (c.t === "int" ? "1" : "0.01"));
         el.value = Array.isArray(d[c.k]) ? d[c.k].join(", ") : d[c.k] ?? "";
         el.oninput = () => { d[c.k] = el.value; };
         if (c.t === "num") el.onblur = () => { if (["meta", "meta_meses", "cuenta"].includes(c.k)) dibujar(); };
       }
     }
+    etiquetar(form);
   };
   dibujar();
   const botones = p.createDiv({ cls: "fb-fila fb-botones" });

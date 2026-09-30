@@ -7,7 +7,7 @@
 *{box-sizing:border-box}
 body{margin:0;font-family:"Segoe UI Variable Text","Segoe UI",system-ui,-apple-system,sans-serif;font-size:15px;line-height:1.45;-webkit-font-smoothing:antialiased;
  --serif:"Fraunces","Sitka Heading",Georgia,"Times New Roman",serif;
- --bg:#F4EFE7;--surface:#FCFAF6;--surface-2:#F4EEE5;--line:#E8E0D3;--ink:#2A2119;--ink-2:#6B6056;--ink-3:#A3978A;
+ --bg:#F4EFE7;--surface:#FCFAF6;--surface-2:#F4EEE5;--line:#E8E0D3;--ink:#2A2119;--ink-2:#6B6056;--ink-3:#7D7063;
  --brand:#5E8266;--brand-soft:#E4ECE1;--coral:#D2775F;--mint:#4F9A6A;--rose:#C8574B;--amber:#D69A3A;
  --sand:#EAD7B4;--sand-soft:#F1E7D6;--hero:#F1E7D8;
  --aurora:linear-gradient(135deg,#5E8266 0%,#8FAF91 55%,#D9BE8C 100%);
@@ -22,7 +22,7 @@ body{margin:0;font-family:"Segoe UI Variable Text","Segoe UI",system-ui,-apple-s
  --fin-good:var(--mint);--fin-bad:var(--rose);--fin-warn:var(--amber);--fin-up:#3F8A5A;--fin-down:#B9523F;
  background:var(--bg) var(--textura);color:var(--ink)}
 body.theme-dark{color-scheme:dark;
- --bg:#15120E;--surface:#1E1A15;--surface-2:#28231C;--line:#352E25;--ink:#F1EADF;--ink-2:#BCB0A0;--ink-3:#857A6B;
+ --bg:#15120E;--surface:#1E1A15;--surface-2:#28231C;--line:#352E25;--ink:#F1EADF;--ink-2:#BCB0A0;--ink-3:#9A8E7E;
  --brand:#9CC2A0;--brand-soft:#26332A;--coral:#E79A80;--mint:#86C79A;--rose:#E58372;--amber:#E8B870;
  --sand:#5A4A33;--sand-soft:#2E271E;--hero:#2A2419;
  --aurora:linear-gradient(135deg,#4E6E56 0%,#6F8F73 55%,#9C8157 100%);
@@ -483,3 +483,7 @@ body.theme-dark .fb-grupo{border-color:transparent}
 .fb-sug-l .v{font-weight:700;font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}.fb-sug-l .v.pos{color:var(--fin-up)}
 .fb-sug-l .pr{font-size:.88em;font-weight:600;color:var(--ink-2)}
 @media (max-width:560px){.fb-sug-l .r{grid-template-columns:22px 1fr auto}.fb-sug-l .pr{grid-column:2/-1}}
+/* ── foco visible con teclado (los botones usan all:unset, que quita el contorno) ── */
+button:focus-visible,a:focus-visible,summary:focus-visible,[tabindex]:focus-visible,label:focus-within>input[type=checkbox]{outline:2px solid var(--brand)!important;outline-offset:2px}
+@media (max-width:560px){.fin .fin-table .fin-badge{display:table;margin:3px 0 0}.fin .fin-table td{white-space:normal;padding:10px 6px}.fin .fin-table td.num{min-width:64px}.fin .fin-table td:first-child{min-width:110px}}
+.fin button.fin-link{all:unset;cursor:pointer;color:var(--brand);font-weight:650;border-bottom:1px dashed currentColor}

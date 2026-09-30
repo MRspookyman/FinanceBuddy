@@ -6,7 +6,7 @@ const titulo = (t, sub, conNav = true) => cabecera(t, false, sub);
 function vistaBienvenida() {
   const intro = root.createDiv({ cls: "fb-bienvenida" });
   intro.createEl("h2", { text: "Hola, soy FinanceBuddy 👋" });
-  intro.createEl("p", { text: "Importas los extractos de tu banco (Excel o CSV) y te digo cuánto puedes gastar, a dónde va tu dinero y qué hacer con lo que sobra. Todo se queda en tu ordenador." });
+  intro.createEl("p", { text: "Importas los extractos de tu banco (Excel o CSV) y te digo cuánto puedes gastar, a dónde va tu dinero y cómo va tu inversión. Todo se queda en tu ordenador." });
   const pe = intro.createDiv();
   pe.appendText("¿Prefieres verla antes con datos inventados? ");
   accion(pe, "Probar con datos de ejemplo", async () => { const r = await FB.api("/api/ejemplo", { activar: true }); if (r.ok) { await FB.recargar(); FB.ir("#inicio"); } else FB.aviso(r.mensaje, true); });
@@ -32,7 +32,7 @@ function vistaBienvenida() {
   bAdd.onclick = () => { cs.push({ nombre: "", tipo: "corriente", extracto: true, saldo: "" }); pintar(); };
 
   const p2 = panel(root, "2 · Tu límite de gasto variable al mes (opcional)");
-  p2.createDiv({ cls: "fin-note", text: "Lo que te quieres permitir en comer fuera, compras, ocio… (sin contar alquiler ni recibos). Con él verás cuánto te queda cada semana." });
+  p2.createDiv({ cls: "fin-note", text: "Lo que te quieres permitir en comer fuera, compras, ocio… (sin contar alquiler ni recibos). Con él verás cuánto te queda cada mes." });
   const iL = p2.createEl("input", { cls: "corto", attr: { type: "number", step: "10", placeholder: "p. ej. 500" } });
 
   const p3 = panel(root, "3 · Ingresos y gastos fijos (opcional)");
@@ -500,7 +500,7 @@ function pintarFijos(cont, r) {
     for (const f of sel) {
       const card = p1.createDiv({ cls: "fb-card" });
       const top = card.createDiv({ cls: "top" });
-      top.createSpan({ text: `${f.clase === "ingreso" ? "Entra" : "Sale"} · ${GRUPO_TXT[f.grupo] || f.grupo}` });
+      top.createSpan({ text: f.clase === "ingreso" ? "Ingreso que se repite" : f.grupo === "variable" ? "Se repite, pero es gasto variable (¿fijo?)" : "Gasto fijo" });
       top.createSpan({ cls: "imp " + (f.clase === "ingreso" ? "pos" : "neg"), text: eurS(f.clase === "ingreso" ? f.importe : -f.importe) });
       card.createDiv({ cls: "txt", text: `«${f.ejemplo}» · ${f.meses} meses: ${f.importes.map((x) => eur(x)).join(" · ")}` });
       const fila = card.createDiv({ cls: "fb-fila" });
@@ -689,7 +689,7 @@ function vistaAjustes() {
     ["🔍", "Detectar fijos", "nóminas, alquiler, recibos y de dónde viene tu dinero", "#fijos"],
     ["🧾", "Actualizar saldos", "cierra el mes: lo que tienes en cada cuenta", "#cerrar"],
   ]);
-  const pT = panel(root, "Tú", null, "Tu nombre tal y como sale en el banco. Con él, el dinero que mueves entre cuentas a tu nombre se reconoce como traspaso y no como gasto o ingreso.");
+  const pT = panel(g, "Tú", null, "Tu nombre tal y como sale en el banco. Con él, el dinero que mueves entre cuentas a tu nombre se reconoce como traspaso y no como gasto o ingreso.");
   pT.createDiv({ cls: "fin-note", text: "Se rellena solo con el titular del primer extracto que lo traiga. Si hay más titulares (cuenta conjunta), sepáralos con «;»." });
   const fT = pT.createDiv({ cls: "fb-fila" });
   const iT = fT.createEl("input", { attr: { type: "text", placeholder: "p. ej. GARCÍA LÓPEZ ANA" } }); iT.value = (cfg.titulares || []).join("; ");
@@ -720,20 +720,20 @@ function vistaAjustes() {
   const bCopia = fc.createEl("button", { cls: "fb-btn sec", text: "Hacer una copia ahora" }); bCopia.onclick = async () => { const r = await FB.api("/api/copia", {}); FB.aviso(r.mensaje || "Hecho"); };
   const det = pC.createEl("details"); det.createEl("summary", { text: "Restaurar una copia" });
   const fr = det.createDiv({ cls: "fb-fila" });
-  const sCop = fr.createEl("select");
+  const sCop = fr.createEl("select", { attr: { "aria-label": "Copia de seguridad" } });
   FB.api("/api/copias").then((r) => { for (const n of r.copias || []) { const o = sCop.createEl("option", { text: n }); o.value = n; } });
   const bRes = fr.createEl("button", { cls: "fb-btn sec", text: "Restaurar" });
   bRes.onclick = async () => { if (!sCop.value || !confirm(`¿Volver a los datos de «${sCop.value}»? Lo de ahora se guarda antes en otra copia.`)) return; const r = await FB.api("/api/restaurar", { copia: sCop.value }); FB.aviso(r.mensaje || "Hecho", !r.ok); await FB.refrescar(); };
   const det2 = pC.createEl("details"); det2.createEl("summary", { text: "Usar otra carpeta de datos" });
   const fr2 = det2.createDiv({ cls: "fb-fila" });
-  const iC = fr2.createEl("input", { attr: { type: "text", placeholder: "C:\\Users\\…\\FinanceBuddy" } }); iC.value = DB.info.carpeta;
+  const iC = fr2.createEl("input", { attr: { type: "text", placeholder: "C:\\Users\\…\\FinanceBuddy", "aria-label": "Carpeta de datos" } }); iC.value = DB.info.carpeta;
   const bC = fr2.createEl("button", { cls: "fb-btn sec", text: "Cambiar" });
   bC.onclick = async () => { const r = await FB.api("/api/carpeta", { carpeta: iC.value }); FB.aviso(r.mensaje || "Hecho", !r.ok); await FB.recargar(); FB.ir("#inicio"); };
   det2.createDiv({ cls: "fin-note", text: "Si la carpeta no tiene datos, se empieza de cero allí (tus datos actuales siguen en la carpeta de antes)." });
   const det3 = pC.createEl("details"); det3.createEl("summary", { text: "Borrar todos los datos" });
   det3.createDiv({ cls: "fin-note", text: "Se guarda una copia antes. Escribe BORRAR para confirmar." });
   const fr3 = det3.createDiv({ cls: "fb-fila" });
-  const iB = fr3.createEl("input", { attr: { type: "text" } });
+  const iB = fr3.createEl("input", { attr: { type: "text", placeholder: "BORRAR", "aria-label": "Escribe BORRAR para confirmar" } });
   const bB = fr3.createEl("button", { cls: "fb-btn sec peligro", text: "Borrar todo" });
   bB.onclick = async () => { const r = await FB.api("/api/vaciar", { confirmar: iB.value }); FB.aviso(r.mensaje || "Hecho", !r.ok); if (r.ok) { await FB.recargar(); FB.ir("#bienvenida"); } };
 
@@ -799,11 +799,20 @@ function vistaGestionar() {
   const cont = root.createDiv({ cls: "fin-panel" });
   let todos = [...(DB.registros[tipo] || [])];
   if (F.orden) todos.sort(F.orden);
-  let verTodos = false;
+  let verTodos = false, deSerie = false;
   const pintar = () => {
     cont.innerHTML = "";
     const q = norm(inp.value.trim());
-    const filas = todos.filter((r) => !q || norm(JSON.stringify(r)).includes(q));
+    let filas = todos.filter((r) => !q || norm(JSON.stringify(r)).includes(q));
+    const ocultas = tipo === "regla" && !q && !deSerie ? filas.filter((r) => r.origen === "plantilla").length : 0;
+    if (ocultas) {
+      filas = filas.filter((r) => r.origen !== "plantilla");
+      const n = cont.createDiv({ cls: "fin-note" });
+      n.appendText(filas.length ? "Tus reglas: se crean solas cuando clasificas algo en «Por revisar» y marcas «Recordar». " : "Aún no tienes reglas propias: se crean solas cuando clasificas algo en «Por revisar» y marcas «Recordar». ");
+      const b = n.createEl("button", { cls: "fin-link", text: `Ver también las ${ocultas} de serie` });
+      b.onclick = () => { deSerie = true; pintar(); };
+      if (!filas.length) return;
+    }
     if (!filas.length) { vacio(cont, q ? "Nada coincide" : `Aún no hay ${F.plural.toLowerCase()}`); return; }
     const vis = verTodos ? filas : filas.slice(0, 200);
     tabla(cont, F.cols.map((t, i) => ({ t, num: t === "Importe" || t === "Valor" || t === "Cuentas" || t === "Inversión" })), vis.map((r) => {
@@ -878,6 +887,7 @@ function render() {
   root.empty();
   const sinConfigurar = !cuentas().length && !["bienvenida", "ajustes", "gestionar", "editar"].includes(vista);
   (sinConfigurar ? vistaBienvenida : TODAS[vista] || vistaInicio)();
+  etiquetar(root);
   document.title = "FinanceBuddy · " + (TITULOS[sinConfigurar ? "bienvenida" : vista] || "Inicio");
 }
 render();
