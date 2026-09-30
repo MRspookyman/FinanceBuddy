@@ -1,6 +1,6 @@
 # Pruebas del asistente Jev (jev.py) contra un servidor Jev falso en local: mismo formato que la API documentada
 # (POST /v1/systemone). No hace falta red ni clave real. Uso: python -m unittest pruebas.test_jev -v
-import http.server, json, os, shutil, sys, tempfile, threading, unittest
+import http.server, json, os, shutil, sys, tempfile, threading, time, unittest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from financebuddy import jev, servidor
 from pruebas.test_importar import excel_santander
@@ -21,17 +21,25 @@ class JevFalso(http.server.BaseHTTPRequestHandler):
         estado = str(cuerpo["state"]).lower()
         answers = {}
         for nombre, q in cuerpo["questions"].items():
+            if q["type"] == "noul":  # ¿es una cuota fija?
+                answers[nombre] = {"type": "noul", "noul": 0.9 if "academia" in estado else 0.1}; continue
             crit = q["criteria"]
             elegir = lambda *palabras: next((k for k in crit if any(p in (k + " " + crit[k]).lower() for p in palabras)), None)
             if estado.startswith("extracto bancario"):  # formato nuevo: la columna cuyo nombre lo dice
                 claves = {"fecha": ("operaci",), "concepto": ("concepto",), "importe": ("importe",), "saldo": ("saldo",)}
-                ch = elegir(*claves[nombre]) if nombre in claves else "ninguna"
+                ch = "banco" if nombre == "_tipo" else elegir(*claves[nombre]) if nombre in claves else "ninguna"
             elif nombre == "tipo":
                 ch = "reembolso" if "bizum recibido" in estado else "ingreso"
+            elif nombre == "accion":  # bróker
+                ch = "comision" if "custodia" in estado else "compra" if "apple" in estado else None
+            elif nombre == "clase":
+                ch = "accion" if "apple" in estado else None
             elif any(p in estado for p in ("brunch", "desayuno", "restaurante")):
                 ch = elegir("comer fuera")
             elif "academia" in estado:
                 ch = elegir("formación")
+            elif "mercadona" in estado:
+                ch = elegir("supermercado")
             else:
                 ch = None
             conf = 0.93 if ch else 0.3
@@ -104,6 +112,7 @@ class TestJev(unittest.TestCase):
         p = P["Recibo Academia Oxford Idiomas SL"]
         self.app.manejar("/api/resolver", {"id": p["id"], "accion": "guardar", "clase": "gasto", "categoria": "Formación", "recordar": True, "patron": "academia oxford"})
         self.assertTrue(any(m["categoria"] == "Formación" for m in self.app.datos()["registros"]["movimiento"]))
+        self.assertGreater(self.app.datos()["config"]["jev"]["revision"]["preguntados"], 0)  # y repasa lo que se clasificó solo
         # Lo ya preguntado no se vuelve a preguntar
         n = len(RECIBIDO)
         self.app.manejar("/api/jev/revisar", {})
@@ -119,6 +128,23 @@ class TestJev(unittest.TestCase):
         JevFalso.estado_http = 200
         self.assertTrue(self.app.manejar("/api/jev/revisar", {})["ok"])  # la próxima vez, sí
 
+    def test_sin_conexion_no_se_queda_esperando(self):
+        self.app.manejar("/api/jev/config", {"clave": CLAVE, "activo": True, "al_importar": False})
+        self.importar()
+        for i in range(30): self.mov("2026-09-10", f"Comercio {chr(65 + i % 26)}{i} prueba", 5 + i, "Otros")
+        url = os.environ["FB_JEV_URL"]
+        os.environ["FB_JEV_URL"] = "http://127.0.0.1:9/v1/systemone"  # nadie escucha: sin conexión
+        try:
+            t = time.monotonic()
+            r = self.app.manejar("/api/jev/auditar", {})
+            self.assertFalse(r["ok"]); self.assertIn("conectar", r["mensaje"])
+            self.assertLess(time.monotonic() - t, 5)
+            self.assertFalse(self.app.manejar("/api/jev/revisar", {})["ok"])
+        finally: os.environ["FB_JEV_URL"] = url
+        self.assertFalse(any(p.get("jev") for p in self.app.alm.todos("pendiente")))
+        self.assertEqual(self.app.datos()["config"]["jev"]["revision"]["preguntados"], 0)
+        self.assertTrue(self.app.manejar("/api/jev/auditar", {})["ok"])  # con conexión, sí
+
     def test_probar(self):
         self.assertFalse(self.app.manejar("/api/jev/probar", {})["ok"])
         self.app.manejar("/api/jev/config", {"clave": CLAVE})
@@ -132,7 +158,83 @@ class TestJev(unittest.TestCase):
             fh.write("F.Operación;F.Valor;Concepto del movimiento;Importe EUR;Saldo EUR\n01/09/2026;01/09/2026;Compra Lidl;-12,30;500,00\n02/09/2026;02/09/2026;Nomina;1500,00;2000,00\n")
         r = self.app._importar(ruta, "banco")
         self.assertEqual(r["necesita"], "perfil")
-        self.assertEqual(r["propuesta"], {"fecha": "F.Operación", "concepto": "Concepto del movimiento", "importe": "Importe EUR", "saldo": "Saldo EUR"})
+        self.assertEqual(r["propuesta"], {"_tipo": "banco", "fecha": "F.Operación", "concepto": "Concepto del movimiento", "importe": "Importe EUR", "saldo": "Saldo EUR"})
+
+    def mov(self, fecha, concepto, importe, categoria):
+        r = self.app.manejar("/api/guardar", {"tipo": "movimiento", "datos": {"fecha": fecha, "clase": "gasto", "importe": importe, "concepto": concepto,
+                                                                             "categoria": categoria, "cuenta": "Nómina"}})
+        self.assertTrue(r["ok"], r)
+
+    def test_apuntar_sugiere_categoria(self):
+        # Sin Jev: tus reglas siguen funcionando (y no sale nada hacia fuera)
+        self.assertEqual(self.app.manejar("/api/jev/categoria", {"texto": "Mercadona Jaén", "importe": -20})["categoria"], "Supermercado")
+        self.assertNotIn("categoria", self.app.manejar("/api/jev/categoria", {"texto": "Brunch con amigos", "importe": -4}))
+        self.assertEqual(RECIBIDO, [])
+        self.app.manejar("/api/jev/config", {"clave": CLAVE, "activo": True})
+        r = self.app.manejar("/api/jev/categoria", {"texto": "Brunch con amigos", "importe": -4})
+        self.assertEqual((r["categoria"], r["fuente"]), ("Comer fuera", "jev"))
+        self.assertEqual(self.app.manejar("/api/jev/categoria", {"texto": "Mercadona Jaén", "importe": -20})["fuente"], "regla")
+        self.assertEqual(len(RECIBIDO), 1)  # lo que reconocen tus reglas no se pregunta
+        self.mov("2026-09-10", "Brunch con amigos", 4, "Ocio")
+        self.assertEqual(self.app.manejar("/api/jev/categoria", {"texto": "Brunch con amigos", "importe": -4})["fuente"], "historial")
+        self.assertNotIn("categoria", self.app.manejar("/api/jev/categoria", {"texto": "Pago raro", "importe": -4}))  # Jev no está seguro
+
+    def test_broker(self):
+        self.app.manejar("/api/guardar", {"tipo": "cuenta", "datos": {"nombre": "Bróker", "tipo": "broker", "extracto": True}})
+        self.app.manejar("/api/jev/config", {"clave": CLAVE, "activo": True})
+        ruta = os.path.join(self.app.carpeta.inversion, "mi.csv")
+        with open(ruta, "w", encoding="utf-8") as fh:
+            fh.write("Fecha de operación;Fecha valor;Concepto;Importe\n10/09/2026;10/09/2026;COMPRA APPLE INC;-150,00\n"
+                     "15/09/2026;15/09/2026;CUOTA CUSTODIA TRIMESTRAL;-3,00\n")
+        r = self.app._importar(ruta, "inversion", "Bróker")
+        self.assertIn("Jev", r["mensaje"], r)
+        P = {p["fila"]["texto"]: p for p in self.app.datos()["pendientes"]}
+        s = P["COMPRA APPLE INC"]["sugerencia"]
+        self.assertEqual((s["accion"], s["clase"], s["fuente"]), ("activo", "accion", "jev"))
+        self.assertEqual((P["CUOTA CUSTODIA TRIMESTRAL"]["sugerencia"]["accion"], P["CUOTA CUSTODIA TRIMESTRAL"]["sugerencia"]["fuente"]), ("interes", "jev"))
+        # Crear el activo con el tipo que proponía Jev
+        p = P["COMPRA APPLE INC"]
+        self.app.manejar("/api/resolver", {"id": p["id"], "accion": "activo", "nuevo_activo": s["nuevo"], "clase": s["clase"]})
+        self.assertEqual(next(a for a in self.app.alm.todos("activo") if a["nombre"] == s["nuevo"])["clase"], "accion")
+        n = len(RECIBIDO)
+        self.app.manejar("/api/jev/revisar", {})
+        self.assertEqual(len(RECIBIDO), n)  # ya preguntado
+
+    def test_revisar_categorias(self):
+        self.importar()
+        self.mov("2026-09-05", "Clases academia de inglés", 40, "Otros")      # en «Otros»: Jev ve Formación
+        self.mov("2026-09-06", "Desayuno cafetería centro", 4, "Ocio")         # Jev muy seguro de que es Comer fuera
+        self.mov("2026-09-07", "Desayuno cafetería centro", 5, "Ocio")
+        self.assertFalse(self.app.manejar("/api/jev/auditar", {})["ok"])     # sin Jev
+        self.app.manejar("/api/jev/config", {"clave": CLAVE, "activo": True, "al_importar": False})
+        r = self.app.manejar("/api/jev/auditar", {})
+        self.assertTrue(r["ok"], r)
+        H = {h["actual"]: h for h in self.app.datos()["config"]["jev"]["revision"]["hallazgos"]}
+        self.assertEqual(set(H), {"Otros", "Ocio"})  # Mercadona (Supermercado) está bien
+        self.assertEqual((H["Otros"]["propuesta"], H["Ocio"]["propuesta"], H["Ocio"]["n"]), ("Formación", "Comer fuera", 2))
+        self.assertNotIn("Ruiz", json.dumps(RECIBIDO, ensure_ascii=False))
+        # Aplicar: cambia todo el comercio y lo recuerda; descartar: se queda como está
+        self.app.manejar("/api/jev/hallazgo", {"clave": H["Ocio"]["clave"], "accion": "aplicar"})
+        self.assertEqual({m["categoria"] for m in self.app.alm.todos("movimiento") if "Desayuno" in m["concepto"]}, {"Comer fuera"})
+        self.app.manejar("/api/jev/hallazgo", {"clave": H["Otros"]["clave"], "accion": "descartar"})
+        self.assertEqual(self.app.datos()["config"]["jev"]["revision"]["hallazgos"], [])
+        with self.assertRaises(ValueError): self.app.manejar("/api/jev/hallazgo", {"clave": H["Otros"]["clave"], "accion": "aplicar"})
+        n = len(RECIBIDO)
+        self.app.manejar("/api/jev/auditar", {})
+        self.assertEqual(len(RECIBIDO), n)  # lo ya repasado no se vuelve a preguntar
+        u = self.app.datos()["config"]["jev"]["uso"]
+        self.assertEqual((u["consultas"], u["tokens"]), (n, 100 * n)); self.assertGreater(u["coste"], 0)
+
+    def test_fijos(self):
+        for mes in ("07", "08", "09"):
+            self.mov(f"2026-{mes}-03", "Recibo Academia Oxford", 65, "Formación")
+            self.mov(f"2026-{mes}-04", "Compra Mercadona", 40, "Supermercado")
+        self.app.manejar("/api/jev/config", {"clave": CLAVE, "activo": True})
+        f = {x["ejemplo"]: x for x in self.app.manejar("/api/detectar", {})["fijos"]}
+        self.assertEqual((f["Recibo Academia Oxford"]["jev_fijo"], f["Compra Mercadona"]["jev_fijo"]), (0.9, 0.1))
+        n = len(RECIBIDO)
+        self.app.manejar("/api/detectar", {})
+        self.assertEqual(len(RECIBIDO), n)  # se recuerda
 
 if __name__ == "__main__":
     unittest.main()

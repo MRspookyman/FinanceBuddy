@@ -52,9 +52,21 @@ con otro activo**; y «Era dinero traspasado desde mi banco» o borrar el activo
 reimportar el mismo extracto).
 
 **Asistente Jev (opcional)**: con tu clave de [Jev](https://typesafe.ai) (TypeSafe AI) en *Ajustes → Asistente Jev*, la
-app le pregunta la categoría de lo que queda en «Por revisar» sin sugerencia (y, si entra dinero, si es un ingreso o te
-devuelven algo que pagaste) y qué columna es cada cosa en el extracto de un banco nuevo. Solo sugiere, con su
-confianza («Jev · 91 %»; desde el 85 % sale marcada al aceptar en bloque). Se envía solo el concepto saneado —sin
+app le pregunta:
+- **Por revisar (banco)**: la categoría de lo que tu historial no reconoce (y, si entra dinero, si es un ingreso o te
+  devuelven algo que pagaste).
+- **Por revisar (bróker)**: qué es un texto que la app no reconoce —compra, venta, intereses, comisión o traspaso— y
+  qué tipo de activo es (fondo, ETF, acción, cripto…), para crearlo con su tipo.
+- **Revisar tus categorías** (*Ajustes → Revisar tus categorías*): repasa lo ya clasificado, un comercio cada vez, y
+  avisa de lo que está en «Otros» o de lo que cree con ≥ 85 % que es de otra categoría. «Cambiar» lo aplica a todo el
+  comercio y lo recuerda como regla. Al importar el banco repasa también lo nuevo que se ha clasificado solo.
+- **Apuntar**: al escribir el concepto propone la categoría (tus reglas y tu historial primero; Jev si no lo saben).
+- **Fijos**: si algo que se repite en una categoría de gasto variable parece una cuota (academia, clases…) o solo coincide.
+- **Un banco nuevo**: si el archivo es del banco o del bróker y qué columna es cada cosa.
+
+Solo sugiere, con su confianza («Jev · 91 %»; desde el 85 % sale marcada al aceptar en bloque). Si no hay conexión o la
+clave falla, deja de preguntar y no marca nada (se reintenta la próxima vez). En Ajustes ves las consultas del mes y
+lo que cuestan (céntimos). Se envía solo el concepto saneado —sin
 nombres de personas en Bizums y transferencias, números de tarjeta, IBAN ni correos— y el importe; la clave se guarda
 solo en tu carpeta de datos. Para medir cuánto acierta con tus movimientos antes de fiarte:
 `python pruebas\evaluar_jev.py` (con `--mostrar` enseña lo que se enviaría sin enviar nada). Sin clave, todo igual.
@@ -131,7 +143,7 @@ financebuddy/
   detectar.py      fijos que se repiten cada mes y de dónde viene el dinero
   operaciones.py   órdenes y operaciones del bróker con participaciones (ISIN, traspasos entre fondos)
   cartera.py       arreglos a mano: unir activos, deshacer un traspaso tomado por venta, cuadrar participaciones
-  jev.py           asistente opcional Jev (TypeSafe AI): categoría de lo dudoso y columnas de un formato nuevo
+  jev.py           asistente opcional Jev (TypeSafe AI): dudas del banco y del bróker, repaso de categorías, apuntar, fijos y formatos nuevos
   plantilla.py     categorías, reglas y formatos de serie
   ejemplo.py       datos de ejemplo
   web/             la interfaz: index.html, nucleo.js, estilos.css y paneles/*.js

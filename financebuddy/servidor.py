@@ -37,7 +37,7 @@ class App:
             activos = regs.get("activo", [])
             for p in pend:
                 f = p.get("fila") or {}
-                if p.get("tipo_import") == "inversion": p["sugerencia"] = IM.sugerencia_inversion(p, activos)
+                if p.get("tipo_import") == "inversion": p["sugerencia"] = jev.sugerencia_broker(IM.sugerencia_inversion(p, activos), p.get("jev"))
                 elif f.get("clase") != "transferencia":
                     s = C.sugerir(f.get("texto", ""), f.get("importe", 0), mem, f.get("cat", ""))
                     j = p.get("jev") or {}
@@ -65,12 +65,17 @@ class App:
         nombre = os.path.basename(ruta)
         try:
             r = IM.importar_archivo(self.alm, self.carpeta, ruta, tipo, cuenta, perfil)
-            if r.get("ok") and r.get("tipo") == "banco" and r.get("dudas"):
-                c = jev.config(self.alm)
-                if c["activo"] and c["al_importar"]:  # el asistente Jev propone la categoría de lo que queda por revisar
+            c, fallo = jev.config(self.alm), None
+            if r.get("ok") and r.get("dudas") and c["activo"] and c["al_importar"]:  # el asistente Jev propone qué es lo que queda por revisar
+                if r.get("tipo") == "banco":
                     n, total, error = jev.revisar(self.alm)
                     if n: r["mensaje"] += f" · ✨ Jev propone categoría para {n} de {total} grupos por revisar"
-                    elif error: r["mensaje"] += f" · Jev no ha podido ayudar: {error}"
+                    elif error: r["mensaje"] += f" · Jev no ha podido ayudar: {error}"; fallo = error
+                elif r.get("tipo") == "inversion" and jev.revisar_broker(self.alm):
+                    r["mensaje"] += " · ✨ Jev ha mirado lo que la app no reconocía"
+            if r.get("ok") and r.get("tipo") == "banco" and r.get("nuevas") and c["activo"] and c["al_importar"] and not fallo:
+                _, h, _ = jev.auditar(self.alm, limite=40)  # y repasa lo que se ha clasificado solo (lo nuevo)
+                if h: r.update(jev_hallazgos=h, mensaje=r["mensaje"] + f" · ✨ Jev cree que {h} comercio{'s' if h > 1 else ''} {'están' if h > 1 else 'está'} en otra categoría")
             return {**r, "archivo": nombre}
         except IM.NecesitaPerfil as e:
             propuesta = jev.mapear_columnas(self.alm, e.info.get("cabecera") or [], e.info.get("ejemplos") or []) if jev.config(self.alm)["activo"] else {}
@@ -212,7 +217,7 @@ class App:
         if ruta == "/api/importar/subir": return self.subir(d)
         if ruta == "/api/importar/reintentar": return self.reintentar(d)
         if ruta == "/api/resolver": return {"ok": True, "mensaje": IM.resolver(a, int(d["id"]), d)}
-        if ruta == "/api/detectar": return {"ok": True, "fijos": detectar.fijos(a), "origenes": detectar.origenes(a)}
+        if ruta == "/api/detectar": return {"ok": True, "fijos": jev.fijos(a, detectar.fijos(a)), "origenes": detectar.origenes(a)}
         if ruta == "/api/fijos": return {"ok": True, "mensaje": detectar.crear(a, d.get("fijos") or [])}
         if ruta == "/api/bienvenida": return self.bienvenida(d)
         if ruta == "/api/cierre": return self.cierre(d)
@@ -227,8 +232,19 @@ class App:
         if ruta == "/api/jev/revisar":
             if not jev.config(a)["activo"]: return {"ok": False, "mensaje": "Activa el asistente Jev en Ajustes (con tu clave)."}
             n, total, error = jev.revisar(a)
+            nb = jev.revisar_broker(a)
             if error: return {"ok": False, "mensaje": error}
-            return {"ok": True, "n": n, "mensaje": f"✨ Jev propone categoría para {n} de {total} grupos" if total else "No queda nada sin sugerencia"}
+            partes = [f"categoría para {n} de {total} grupos"] if total else []
+            if nb: partes.append(f"qué son {nb} textos del bróker")
+            return {"ok": True, "n": n + nb, "mensaje": "✨ Jev propone " + " y ".join(partes) if partes else "No queda nada sin sugerencia"}
+        if ruta == "/api/jev/categoria": return {"ok": True, **jev.sugerir_categoria(a, d.get("texto"), modelo.numero(d.get("importe")) or 0)}
+        if ruta == "/api/jev/auditar":
+            if not jev.config(a)["activo"]: return {"ok": False, "mensaje": "Activa el asistente Jev en Ajustes (con tu clave)."}
+            n, h, error = jev.auditar(a)
+            if error: return {"ok": False, "mensaje": error}
+            if not n: return {"ok": True, "mensaje": f"Jev ya lo había repasado todo: {h} para revisar" if h else "Jev ya lo había repasado todo: está en orden"}
+            return {"ok": True, "mensaje": f"Jev ha repasado {n} comercios: {h} para revisar" if h else f"Jev ha repasado {n} comercios: todo en orden"}
+        if ruta == "/api/jev/hallazgo": return {"ok": True, "mensaje": jev.resolver_hallazgo(a, str(d.get("clave") or ""), d.get("accion"))}
         if ruta == "/api/config/descartar_aviso":  # avisos de la revisión de la cartera que el usuario da por buenos
             k = str(d.get("clave") or "")[:120]
             if k: a.set_config("avisos_descartados", list(dict.fromkeys((a.config("avisos_descartados") or []) + [k]))[-200:])
