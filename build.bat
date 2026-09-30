@@ -25,12 +25,18 @@ if errorlevel 1 (
   exit /b 1
 )
 
-rem 3) El .exe
+rem 3) El .exe (si FinanceBuddy sigue abierto, Windows no deja reemplazarlo: se cierra antes)
+tasklist /fi "imagename eq FinanceBuddy.exe" 2>nul | find /i "FinanceBuddy.exe" >nul
+if not errorlevel 1 (
+  echo FinanceBuddy esta abierto: cerrandolo para poder generar el .exe nuevo...
+  taskkill /im FinanceBuddy.exe /f >nul 2>&1
+  timeout /t 2 /nobreak >nul
+)
 python -m PyInstaller --noconfirm --clean --onefile --windowed --name FinanceBuddy ^
   --icon recursos\icono.ico ^
   --add-data "financebuddy\web;financebuddy\web" ^
   --hidden-import openpyxl --hidden-import xlrd --hidden-import pypdf ^
-  --exclude-module tkinter --exclude-module PIL --exclude-module cryptography ^
+  --exclude-module tkinter --exclude-module PIL --exclude-module cryptography --exclude-module numpy ^
   lanzar.py
 if errorlevel 1 (
   pause
