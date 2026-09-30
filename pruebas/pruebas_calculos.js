@@ -87,5 +87,8 @@ caso("Evolución: lo metido crece mes a mes", EVI && EVI.aportado.every((v, i) =
 const AM = F.aportacionesMes(12);
 caso("Aportaciones de septiembre: 150 + 50 €", cerca(AM[AM.length - 1].compras, 200), AM[AM.length - 1]);
 caso("Constancia: 5 meses seguidos aportando", F.constancia() === 5, F.constancia());
+const SA = F.saludInversion();
+caso("Revisa tu inversión: sin errores con los datos de ejemplo", !SA.some((x) => x.nivel === "error"), SA.map((x) => x.texto));
+caso("Valor: los activos de ejemplo tienen su valor anotado (no estimado)", RI.filas.every((f) => f.fuente === "anotado"), RI.filas.map((f) => f.fuente));
 
 return casos;

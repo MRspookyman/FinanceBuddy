@@ -1,7 +1,7 @@
 # Servidor local de la app: sirve las pantallas (web/) y una API JSON sobre la base de datos.
 # Solo escucha en 127.0.0.1 y cada arranque genera una clave que la página envía en la cabecera X-FB-Token.
 import base64, datetime, http.server, io, json, mimetypes, os, re, secrets, socketserver, tempfile, threading, traceback, urllib.parse
-from . import VERSION, clasificar as C, detectar, importar as IM, modelo, plantilla, rutas
+from . import VERSION, cartera, clasificar as C, detectar, importar as IM, modelo, plantilla, rutas
 from .almacen import Almacen
 
 mimetypes.add_type("font/woff2", ".woff2")
@@ -202,6 +202,13 @@ class App:
         if ruta == "/api/bienvenida": return self.bienvenida(d)
         if ruta == "/api/cierre": return self.cierre(d)
         if ruta == "/api/valores": return self.valores(d)
+        if ruta == "/api/activo/unir": return {"ok": True, "mensaje": cartera.unir(a, d["origen"], d["destino"])}
+        if ruta == "/api/activo/borrar": return {"ok": True, "mensaje": cartera.borrar(a, d["id"], bool(d.get("era_traspaso")))}
+        if ruta == "/api/activo/cuadrar": return {"ok": True, "mensaje": cartera.cuadrar(a, d["id"], d.get("participaciones"), d.get("fecha"), d.get("valor"))}
+        if ruta == "/api/config/descartar_aviso":  # avisos de la revisión de la cartera que el usuario da por buenos
+            k = str(d.get("clave") or "")[:120]
+            if k: a.set_config("avisos_descartados", list(dict.fromkeys((a.config("avisos_descartados") or []) + [k]))[-200:])
+            return {"ok": True}
         if ruta == "/api/carpeta": return self.cambiar_carpeta(d)
         if ruta == "/api/ejemplo": return self.modo_ejemplo(bool(d.get("activar")))
         if ruta == "/api/abrir_carpeta":

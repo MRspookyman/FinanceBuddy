@@ -77,9 +77,11 @@ const FORMS = {
       { k: "fecha", l: "Fecha", t: "fecha", req: true, defecto: () => hoy.toISODate() },
       { k: "activo", l: "Activo", t: "opc", opc: opcActivos, req: true },
       { k: "importe", l: "Importe (€): + compra, − venta", t: "num", req: true },
-      { k: "participaciones", l: "Participaciones (opcional)", t: "num", ayuda: "Las que compras (+) o vendes (−). Con ellas la app calcula tu precio medio." },
+      { k: "participaciones", l: "Participaciones (opcional)", t: "num", paso: "any", ayuda: "Las que compras (+) o vendes (−). Con ellas la app calcula tu precio medio y estima lo que vale." },
       { k: "cuenta", l: "Cuenta del bróker", t: "opc", opc: opcCuentas((c) => c.tipo === "broker"), vacio: "— la del activo —" },
-      { k: "recurrente", l: "Aportación periódica", t: "opc", opc: opcRecurrentes("aportacion"), vacio: "— ninguna —" }],
+      { k: "recurrente", l: "Aportación periódica", t: "opc", opc: opcRecurrentes("aportacion"), vacio: "— ninguna —" },
+      { k: "nota", l: "Nota" }],
+    antes: (d) => { d.supuesta = ""; },  // al guardarla a mano, la compra/venta ya no es supuesta
     fila: (r) => [fechaCorta(r.fecha), r.activo, { text: eurS(r.importe), cls: r.importe < 0 ? "neg" : "" }], cols: ["Fecha", "Activo", "Importe"],
     orden: (a, b) => String(b.fecha).localeCompare(String(a.fecha)) },
   patrimonio: { uno: "registro de saldos", plural: "Registros de saldos", ayuda: "El saldo de cada cuenta y el valor de cada activo en una fecha (se crean al cerrar el mes).",
@@ -204,7 +206,7 @@ function formulario(padre, tipo, reg, opciones = {}) {
         el.oninput = () => { d[c.k] = el.value; };
       } else {
         const tipoInput = c.t === "fecha" ? "date" : c.t === "num" || c.t === "int" ? "number" : "text";
-        el = form.createEl("input", { attr: { type: tipoInput, step: c.t === "int" ? "1" : "0.01", placeholder: c.ph || "" } });
+        el = form.createEl("input", { attr: { type: tipoInput, step: c.paso || (c.t === "int" ? "1" : "0.01"), placeholder: c.ph || "" } });
         el.value = Array.isArray(d[c.k]) ? d[c.k].join(", ") : d[c.k] ?? "";
         el.oninput = () => { d[c.k] = el.value; };
         if (c.t === "num") el.onblur = () => { if (["meta", "meta_meses", "cuenta"].includes(c.k)) dibujar(); };

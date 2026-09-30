@@ -236,27 +236,93 @@ function vistaRevisar() {
     return;
   }
   const banco = P.filter((p) => p.tipo_import !== "inversion"), inv = P.filter((p) => p.tipo_import === "inversion");
-  const grupos = new Map();
-  for (const p of [...banco].sort((a, b) => String(a.fila.op).localeCompare(String(b.fila.op)))) {
-    const k = [p.cuenta, p.fila.patron || sugerirPatron(p.fila.texto), p.fila.importe < 0 ? "-" : "+", p.fila.clase === "transferencia" ? "t" : ""].join("|");
-    if (!grupos.has(k)) grupos.set(k, []);
-    grupos.get(k).push(p);
-  }
-  const G = [...grupos.values()].sort((a, b) => b.length - a.length || sum(b.map((p) => Math.abs(p.fila.importe))) - sum(a.map((p) => Math.abs(p.fila.importe))));
-  if (G.length) root.createDiv({ cls: "fin-note fb-pista", text: "Pulsa la categoría y listo: se aplica a todo el grupo y la próxima vez se clasificará solo." });
-  const cont = root.createDiv({ cls: "fb-grupos" });
-  for (const g of G) tarjetaGrupo(cont, g);
-  if (inv.length) {
-    root.createEl("h3", { cls: "fb-sec", text: "Tu bróker" });
-    const gi = new Map();
-    for (const p of [...inv].sort((a, b) => String(a.fila.op).localeCompare(String(b.fila.op)))) {
-      const k = [p.cuenta, p.fila.patron || sugerirPatron(p.fila.texto), p.fila.importe < 0 ? "-" : "+"].join("|");
-      if (!gi.has(k)) gi.set(k, []);
-      gi.get(k).push(p);
+  const agrupar = (lista, conClase) => {
+    const m = new Map();
+    for (const p of [...lista].sort((a, b) => String(a.fila.op).localeCompare(String(b.fila.op)))) {
+      const k = [p.cuenta, p.fila.patron || sugerirPatron(p.fila.texto), p.fila.importe < 0 ? "-" : "+", conClase && p.fila.clase === "transferencia" ? "t" : ""].join("|");
+      if (!m.has(k)) m.set(k, []);
+      m.get(k).push(p);
     }
-    const ci = root.createDiv({ cls: "fb-grupos" });
-    for (const g of [...gi.values()].sort((a, b) => b.length - a.length)) tarjetaGrupoInversion(ci, g);
+    return [...m.values()].sort((a, b) => b.length - a.length || sum(b.map((p) => Math.abs(p.fila.importe))) - sum(a.map((p) => Math.abs(p.fila.importe))));
+  };
+  const G = agrupar(banco, true), GI = agrupar(inv, false);
+  const conProp = [...G.map((g) => [g, propuestaBanco(g)]), ...GI.map((g) => [g, propuestaBroker(g)])].filter(([, pr]) => pr);
+  const conSug = new Set(conProp.map(([g]) => g));
+  // Filtros (como en Lunch Money o Monarch): lo del banco, lo del bróker o solo lo que ya trae sugerencia
+  const F = [["todo", "Todo", G.length + GI.length], ["banco", "Banco", G.length], ["broker", "Bróker", GI.length], ["sug", "Con sugerencia", conProp.length]].filter(([k, , n]) => k === "todo" || n);
+  let filtroRev = FB.estado.filtroRev || "todo";  // FB.estado: sobrevive a refrescar la pantalla, no a cambiar de pantalla
+  if (!F.some(([k]) => k === filtroRev)) filtroRev = "todo";
+  const fil = root.createDiv({ cls: "fb-chips fb-filtro-rev" });
+  for (const [k, t, n] of F) { const b = fil.createEl("button", { text: `${t} · ${n}`, cls: k === filtroRev ? "act" : "" }); b.onclick = () => { FB.estado.filtroRev = k; render(); }; }
+  if (conProp.length) panelSugerencias(root, conProp);
+  const ver = (g, tipo) => filtroRev === "todo" || filtroRev === tipo || (filtroRev === "sug" && conSug.has(g));
+  const Gv = G.filter((g) => ver(g, "banco")), GIv = GI.filter((g) => ver(g, "broker"));
+  if (Gv.length) {
+    root.createDiv({ cls: "fin-note fb-pista", text: "Pulsa la categoría y listo: se aplica a todo el grupo y la próxima vez se clasificará solo." });
+    const cont = root.createDiv({ cls: "fb-grupos" });
+    for (const g of Gv) tarjetaGrupo(cont, g);
   }
+  if (GIv.length) {
+    if (Gv.length) root.createEl("h3", { cls: "fb-sec", text: "Tu bróker" });
+    const ci = root.createDiv({ cls: "fb-grupos" });
+    for (const g of GIv) tarjetaGrupoInversion(ci, g);
+  }
+}
+const nombreGrupo = (g) => { const f = g[0].fila, s = g[0].sugerencia || {}; return g[0].tipo_import === "inversion" ? s.nuevo || s.activo || C_titulo(sugerirPatron(f.texto)) : f.concepto || C_titulo(sugerirPatron(f.texto)); };
+// Lo que la app propone para un grupo (o null): { texto, datos, motivo, segura }. «segura»: sale marcada al aceptar en bloque.
+function propuestaBanco(g) {
+  const p = g[0], f = p.fila, entra = f.importe > 0;
+  if (f.clase === "transferencia") {
+    const otras = cuentas().filter((c) => c.nombre !== p.cuenta);
+    return otras.length === 1 ? { texto: `🔁 ${entra ? "Desde" : "A"} ${otras[0].nombre}`, datos: { accion: "guardar", clase: "transferencia", cuenta_otra: otras[0].nombre }, motivo: "a tu nombre", segura: true } : null;
+  }
+  const s = p.sugerencia;
+  return s && s.categoria ? { texto: `${catIcono(s.categoria)} ${s.categoria}`, datos: { accion: "guardar", clase: s.clase, categoria: s.categoria }, motivo: s.motivo, segura: !/^parecido/.test(s.motivo || "") } : null;
+}
+function propuestaBroker(g) {
+  const f = g[0].fila, entra = f.importe > 0, s = g[0].sugerencia || {};
+  if (s.accion === "ignorar") return { texto: entra ? "🔁 Traspaso desde mi banco" : "🔁 Traspaso a mi banco", datos: { accion: "ignorar" }, motivo: "dinero entre tus cuentas", segura: true };
+  if (s.accion === "interes") return { texto: entra ? "💰 Intereses" : "🏦 Comisión", datos: { accion: "interes" }, motivo: "de la cuenta del bróker", segura: true };
+  if (s.accion === "activo" && s.activo) return { texto: `📈 ${entra ? "Venta" : "Compra"} de ${s.activo}`, datos: { accion: "activo", activo: s.activo }, motivo: "lo reconoce el activo", segura: true };
+  if (s.accion === "activo" && s.nuevo && !entra) return { texto: `✨ Crear «${s.nuevo}»`, datos: { accion: "activo", nuevo_activo: s.nuevo }, motivo: "activo nuevo", segura: true };
+  return null;
+}
+// Aceptar en bloque lo que propone la app: una lista con casillas (las dudosas, sin marcar) y un botón.
+function panelSugerencias(padre, conProp) {
+  const nMov = sum(conProp.map(([g]) => g.length));
+  const cab = padre.createDiv({ cls: "fb-fila fb-bloque-sug" });
+  const b = cab.createEl("button", { cls: "fb-btn", text: `✨ Revisar y aceptar ${conProp.length === 1 ? "la sugerencia" : `las ${conProp.length} sugerencias`} (${nMov} movimiento${nMov > 1 ? "s" : ""})` });
+  cab.createSpan({ cls: "fin-note", text: "Ves lo que propone la app para cada grupo y lo aceptas de una vez." });
+  const caja = padre.createDiv({ cls: "fin-panel fb-sug-lista" }); caja.style.display = "none";
+  b.onclick = () => { caja.style.display = caja.style.display === "none" ? "" : "none"; };
+  const marcado = new Map(conProp.map(([g, pr]) => [g, pr.segura]));
+  const l = caja.createDiv({ cls: "fb-sug-l" });
+  for (const [g, pr] of conProp) {
+    const r = l.createEl("label", { cls: "r" });
+    const c = r.createEl("input", { attr: { type: "checkbox" } }); c.checked = pr.segura; c.onchange = () => marcado.set(g, c.checked);
+    const n = r.createDiv({ cls: "n" });
+    n.createDiv({ cls: "t", text: nombreGrupo(g) });
+    n.createDiv({ cls: "s", text: `${g.length > 1 ? `${g.length} movimientos · ` : ""}${g[0].cuenta}${pr.motivo ? " · " + pr.motivo : ""}` });
+    r.createDiv({ cls: "v " + (g[0].fila.importe > 0 ? "pos" : ""), text: eurS(sum(g.map((x) => x.fila.importe))) });
+    r.createDiv({ cls: "pr", text: "→ " + pr.texto });
+  }
+  const pie = caja.createDiv({ cls: "fb-fila" });
+  const ok = pie.createEl("button", { cls: "fb-btn", text: "Aceptar las marcadas" });
+  const est = pie.createSpan({ cls: "fin-note" });
+  ok.onclick = async () => {
+    const elegidos = conProp.filter(([g]) => marcado.get(g));
+    if (!elegidos.length) { est.setText("No hay ninguna marcada."); return; }
+    ok.disabled = true;
+    let hechos = 0;
+    for (const [g, pr] of elegidos) {
+      est.setText(`Guardando ${hechos + 1} de ${elegidos.length}…`);
+      const f = g[0].fila;
+      const r = await FB.api("/api/resolver", { id: g[0].id, ids: g.map((x) => x.id), recordar: true, patron: f.patron || sugerirPatron(f.texto), ...pr.datos });
+      if (r.ok) hechos++;  // si otro grupo ya lo resolvió («recordar» con el mismo patrón), no pasa nada
+    }
+    FB.aviso(`Aceptadas ${hechos} sugerencia${hechos === 1 ? "" : "s"} ✓`);
+    await FB.refrescar();
+  };
 }
 // Categorías que más usas (por número de movimientos), para ofrecerlas a un clic.
 function catsFrecuentes(entra, n = 6) {
@@ -274,7 +340,8 @@ function cabGrupo(card, g, av, nombre) {
   n.createDiv({ cls: "t", text: nombre });
   n.createDiv({ cls: "s", text: g.length > 1 ? `${g.length} movimientos · del ${fmtISO(g[0].fila.op)} al ${fmtISO(g[g.length - 1].fila.op)} · ${p.cuenta}` : `${fmtISO(f.op)} · ${p.cuenta}` });
   cab.createDiv({ cls: "v " + (entra ? "pos" : ""), text: eurS(sum(g.map((x) => x.fila.importe))) });
-  card.createDiv({ cls: "ext", text: f.texto + (g.length > 1 ? `  (${g.map((x) => eur(Math.abs(x.fila.importe))).join(" · ")})` : "") });
+  const ext = card.createDiv({ cls: "ext", text: f.texto + (g.length > 1 ? `  (${g.map((x) => eur(Math.abs(x.fila.importe))).join(" · ")})` : "") });
+  ext.title = ext.textContent;
   if (p.duda) card.createDiv({ cls: "duda", text: p.duda });
 }
 // Resolver un grupo entero (ids) con la misma decisión; la tarjeta se desliza fuera y la pantalla se refresca.
@@ -753,12 +820,19 @@ function vistaEditar() {
   const [tipo, id] = params;
   const F = FORMS[tipo];
   if (!F) { FB.ir("#ajustes"); return; }
-  const reg = id === "nuevo" ? null : (DB.registros[tipo] || []).find((r) => String(r.id) === String(id));
-  titulo(reg ? `Editar ${F.uno}` : `Nuevo: ${F.uno}`, F.ayuda || "");
+  let reg = id === "nuevo" ? null : (DB.registros[tipo] || []).find((r) => String(r.id) === String(id));
+  if (id === "nuevo" && tipo === "aportacion" && params[2]) { const act = (DB.registros.activo || []).find((r) => String(r.id) === params[2]); if (act) reg = { activo: act.nombre }; }
+  titulo(reg && reg.id ? `Editar ${F.uno}` : `Nuevo: ${F.uno}`, F.ayuda || "");
   if (id !== "nuevo" && !reg) { vacio(root, "Ese registro ya no existe"); return; }
   const volver = FB.anterior && !FB.anterior.startsWith("#editar") ? FB.anterior : `#gestionar/${tipo}`;
   if (tipo === "movimiento" && reg && ["gasto", "ingreso", "reembolso"].includes(reg.clase)) cambioCategoria(root, reg, volver);
   formulario(root, tipo, reg, { volver });
+  if (tipo === "aportacion" && reg && reg.id) {
+    const x = [reg.supuesta ? "La orden no decía si era compra o venta: se tomó como compra. Si fue una venta, pon el importe y las participaciones en negativo." : "",
+      reg.ext_texto ? `Del extracto: «${reg.ext_texto}» (${eurS(num(reg.ext_importe))}, ${fmtISO(reg.ext_fecha)}).` : "", reg.orden ? "Viene del archivo de órdenes del bróker." : "",
+      reg.ajuste ? "Ajuste para cuadrar las participaciones con tu bróker (sin dinero)." : ""].filter(Boolean);
+    for (const t of x) root.createDiv({ cls: "fin-note", text: t });
+  }
   if (tipo === "movimiento" && reg && reg.ext_texto) root.createDiv({ cls: "fin-note", text: `Del extracto: «${reg.ext_texto}» (${eurS(num(reg.ext_importe))}, ${fmtISO(reg.ext_fecha)})` });
 }
 
@@ -796,11 +870,11 @@ function cambioCategoria(padre, reg, volver) {
 
 // ───────────── render ─────────────
 const TODAS = { ...VISTAS, bienvenida: vistaBienvenida, importar: vistaImportar, revisar: vistaRevisar, apuntar: vistaApuntar, cerrar: vistaCerrar,
-  valores: vistaValores, ajustes: vistaAjustes, gestionar: vistaGestionar, editar: vistaEditar, fijos: vistaFijos };
+  valores: vistaValores, ajustes: vistaAjustes, gestionar: vistaGestionar, editar: vistaEditar, fijos: vistaFijos, activo: vistaActivo };
 const TITULOS = { inicio: "Inicio", movimientos: "Movimientos", inversion: "Inversión",
-  bienvenida: "Bienvenida", importar: "Importar", revisar: "Por revisar", apuntar: "Apuntar", cerrar: "Cerrar el mes", valores: "Valores", ajustes: "Ajustes", gestionar: "Ajustes", editar: "Editar", fijos: "Fijos" };
+  bienvenida: "Bienvenida", importar: "Importar", revisar: "Por revisar", apuntar: "Apuntar", cerrar: "Cerrar el mes", valores: "Valores", ajustes: "Ajustes", gestionar: "Ajustes", editar: "Editar", fijos: "Fijos", activo: "Inversión" };
 function render() {
-  _movs = _movsMes = _aports = _objs = _pat = _cuentas = _recs = _activos = _cats = undefined; _finMes = new Map();
+  _movs = _movsMes = _aports = _objs = _pat = _cuentas = _recs = _activos = _cats = undefined; _finMes = new Map(); _pos = new Map();
   root.empty();
   const sinConfigurar = !cuentas().length && !["bienvenida", "ajustes", "gestionar", "editar"].includes(vista);
   (sinConfigurar ? vistaBienvenida : TODAS[vista] || vistaInicio)();
@@ -811,5 +885,5 @@ render();
 if (input && input.exponer) {
   window.__fin = { finMes, repartoAhorro, estimacion, conciliacion, prevision, resumenInversion, fondoEmergencia, gastoVariable, tasa12,
     movimientos, aportaciones, objetivos, patrimonio, avisos, categorias, grupoDe, limiteVar, mesesHasta, mesAnterior, hoyKey,
-    fechaDatos, presupuestoSemana, planReparto, cuentas, proyectar, resumenCategorias, ritmoMes, evolucionInversion, aportacionesMes, constancia, interesesBroker };
+    fechaDatos, presupuestoSemana, planReparto, cuentas, proyectar, resumenCategorias, ritmoMes, evolucionInversion, aportacionesMes, constancia, interesesBroker, saludInversion, posicion, valorInfo };
 }

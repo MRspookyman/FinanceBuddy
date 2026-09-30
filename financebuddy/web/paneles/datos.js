@@ -156,10 +156,11 @@ const movsDelMes = (key) => {
 const categorias = () => (_cats ??= registros("categoria").map((p) => ({
   p, nombre: p.nombre, grupo: txt(p.grupo).toLowerCase() || "variable", presupuesto: num(p.presupuesto),
 })));
-const activos = () => (_activos ??= registros("activo").filter((p) => txt(p.estado).toLowerCase() !== "vendido").map((p) => ({
+const activoDe = (p) => ({
   p, nombre: p.nombre, clase: txt(p.clase) || "otro", cuenta: txt(p.cuenta), valor: num(p.valor), conValor: hasNum(p.valor), ter: hasNum(p.ter) ? num(p.ter) : null, fechaValor: toDate(p.fecha_valor),
   aportadoIni: hasNum(p.aportado_inicial) ? num(p.aportado_inicial) : null, fechaIni: toDate(p.fecha_inicio),
-})));
+});
+const activos = () => (_activos ??= registros("activo").filter((p) => txt(p.estado).toLowerCase() !== "vendido").map(activoDe));
 const esCripto = (a) => /cripto/i.test(a.clase);
 const claseActivo = (nombre) => ((registros("activo").find((a) => a.nombre === nombre) || {}).clase || "otro");
 // Registro de patrimonio: saldo de cada cuenta y valor de cada activo en una fecha. Se agrupa por tipo de cuenta:

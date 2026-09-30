@@ -367,14 +367,35 @@ def nombre_activo(texto):
         t = re.sub(rf"\b{re.escape(a)}\b", b, t)
     return t
 
+def del_catalogo(texto_norm):
+    """(ISIN, (nombre, clase, patrones)) del fondo conocido que nombra el texto del extracto, o None."""
+    from . import plantilla
+    return next(((isin, v) for isin, v in plantilla.ISIN.items() if any(C.casa(p, texto_norm) for p in v[2])), None)
+
+def parece_valor(texto):
+    """El texto es el de una compra/venta de un fondo, ETF o acción («… @ 2», un ISIN, o el nombre del producto en
+    mayúsculas con varias palabras: «FIDELITY S&P 500 INDEX P ACC E»), no un concepto que escribiste tú al pasar
+    dinero desde tu banco («ahorro», «Inicio», «SP500», «Bitcoin»)."""
+    t = str(texto or "").strip()
+    return "@" in t or bool(re.search(r"\b[A-Z]{2}[A-Z0-9]{9}\d\b", t)) or (t.isupper() and len(t.split()) >= 3) \
+        or bool(re.search(r"\b(compra|venta|suscripcion|reembolso|dividendo)\b", L.norm(t)))
+
 def sugerencia_inversion(p, activos):
     """Para «Por revisar» (bróker): el activo que parece, o el nombre y tipo del que habría que crear."""
     f = p.get("fila") or {}
     tn = L.norm(f.get("texto", ""))
-    if f.get("importe", 0) > 0 and RE_TRASPASO.search(tn) and not re.search(r"venta|reembolso", tn): return {"accion": "ignorar"}
+    entra = f.get("importe", 0) > 0
+    if entra and RE_TRASPASO.search(tn) and not re.search(r"venta|reembolso", tn): return {"accion": "ignorar"}
     if re.match(r"periodo|interes|remuneracion", tn): return {"accion": "interes"}
     for a in activos:
         if a.get("isin") and a["isin"].lower() in tn: return {"accion": "activo", "activo": a["nombre"]}
+    # Dinero que entra con un concepto tuyo (no el nombre de un producto): es un traspaso desde tu banco, no una venta
+    if entra and not parece_valor(f.get("texto", "")) and not any(C.casa(x, tn) for a in activos for x in (a.get("patrones") or [])): return {"accion": "ignorar"}
+    cat = del_catalogo(tn)
+    if cat:  # un fondo conocido: con su nombre de siempre (el mismo que le darán las órdenes por su ISIN)
+        isin, (nombre, clase, _) = cat
+        a = next((a for a in activos if (a.get("isin") or "").upper() == isin or L.norm(a["nombre"]) == L.norm(nombre)), None)
+        return {"accion": "activo", "activo": a["nombre"]} if a else {"accion": "activo", "nuevo": nombre, "clase": clase, "isin": isin}
     nombre = nombre_activo(f.get("texto", ""))
     clave = L.norm(nombre)[:14]
     parecido = next((a["nombre"] for a in activos if L.norm(a["nombre"]) in tn or L.norm(a["nombre"])[:14] == clave), None)
@@ -396,7 +417,10 @@ def resolver(alm, pid, d):
             nombre = str(d["nuevo_activo"]).strip()
             if not any(a["nombre"].lower() == nombre.lower() for a in alm.todos("activo")):
                 clase = clase_activo(p["fila"]["texto"] + " " + nombre)
-                alm.guardar("activo", {"nombre": nombre, "clase": clase, "cuenta": p["cuenta"], "fecha_inicio": p["fila"]["op"], "aportado_inicial": 0})
+                nuevo = {"nombre": nombre, "clase": clase, "cuenta": p["cuenta"], "fecha_inicio": p["fila"]["op"], "aportado_inicial": 0}
+                cat = del_catalogo(L.norm(p["fila"]["texto"]))
+                if cat and L.norm(cat[1][0]) == L.norm(nombre): nuevo.update(clase=cat[1][1], isin=cat[0], patrones=list(cat[1][2]))
+                alm.guardar("activo", nuevo)
             d = {**d, "activo": nombre}
         msg = _resolver_uno(alm, p, d)
         if recordar and d.get("accion") in ("ignorar", "activo", "interes") and p["tipo_import"] == "inversion":

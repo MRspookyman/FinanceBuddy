@@ -28,9 +28,10 @@ CAMPOS = {
     # importe: + compra, − venta · participaciones: las compradas (+) o vendidas (−), si el extracto las dice («… @ 2»).
     # orden: huella de la orden del bróker de la que sale (operaciones.py) · supuesta: «si», si la orden no decía si era
     # compra o venta y se ha supuesto (el extracto de la cuenta, si llega, lo corrige) · traspaso: «si», si es la mitad de
-    # un traspaso entre fondos (vender uno para comprar otro): no es dinero nuevo.
+    # un traspaso entre fondos (vender uno para comprar otro): no es dinero nuevo · ajuste: «si» en un ajuste de
+    # participaciones sin dinero (importe 0) para cuadrar con lo que dice el bróker (cartera.cuadrar).
     "aportacion": {"fecha": "fecha*", "activo": "texto*", "importe": "num*", "participaciones": "cant", "cuenta": "texto", "recurrente": "texto",
-                   "ext_texto": "texto", "ext_importe": "num", "ext_fecha": "fecha", "orden": "texto", "supuesta": "texto", "traspaso": "texto"},
+                   "ext_texto": "texto", "ext_importe": "num", "ext_fecha": "fecha", "orden": "texto", "supuesta": "texto", "traspaso": "texto", "ajuste": "texto", "nota": "texto"},
     # saldos: {cuenta: saldo} · valores: {activo: valor} a esa fecha.
     "patrimonio": {"fecha": "fecha*", "saldos": "mapa", "valores": "mapa", "otros": "num", "deudas": "num+", "nota": "texto"},
     # cuenta: lo ahorrado es el saldo de esa cuenta · meta_meses: la meta es N meses de gasto.
