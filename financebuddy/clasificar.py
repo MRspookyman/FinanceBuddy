@@ -44,10 +44,10 @@ def patron_sugerido(texto):
     c = comercio(texto)
     if c: return norm(c)
     t = limpio(texto)
-    t = re.sub(r"^(recibo|adeudo|transferencia|bizum|cargo|abono|pago)( a favor de| de| a)?\s+", "", t)
+    t = re.sub(r"^(recibo|adeudo|transferencia|bizum|cargo|abono|pago)( inmediata| recibida| emitida)?( a favor de| de| a)?\s+", "", t)
     t = re.sub(r"\b(concepto|ref|referencia)\b.*$", "", t)
-    t = re.sub(r"[\d/.,:-]{4,}.*$", "", t).strip()
-    return " ".join(t.split(" ")[:3])
+    t = re.sub(r"(^|\s)[\d/.,:-]{4,}.*$", "", t).strip()
+    return " ".join(t.split(" ")[:3]).strip(" ,.;:")
 
 # Palabras del concepto de un Bizum → categoría
 KW_BIZUM = [(r"\b(cena|comida|comi|comer|copa|copas|cerve|cerveza|desayun|bocata|pizza|tapas|vermu|burger|chiringo|tinto|cocacola|refresco|cafe|helado|kebab|sushi|bar\b)", "Comer fuera"),

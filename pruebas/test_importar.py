@@ -176,6 +176,56 @@ class TestInversion(Base):
         self.assertEqual((r["nuevas"], r["dudas"]), (0, 0))
         self.assertIn("ishares gold", next(a for a in self.a.todos("activo") if a["nombre"] == "Oro")["patrones"])
 
+    def test_sin_broker_no_ofrece_otras_cuentas(self):
+        self.a.borrar("cuenta", next(c for c in self.a.todos("cuenta") if c["tipo"] == "broker")["id"])
+        with self.assertRaises(IM.NecesitaCuenta) as e: IM.importar_archivo(self.a, self.c, self.csv(), "inversion")
+        self.assertEqual(e.exception.info["cuentas"], [])
+
+class TestDetectar(Base):
+    MESES = ["2026-07", "2026-08", "2026-09"]
+    def filas(self):
+        out = []
+        for i, m in enumerate(self.MESES):
+            out += [(f"{m}-01", "Transferencia inmediata a favor de Pedro Casero concepto Alquiler", -600.0),
+                    (f"{m}-03", "Compra Mercadona, Madrid", -40.0), (f"{m}-12", "Compra Mercadona, Madrid", -55.0 - i),
+                    (f"{m}-05", "Bizum a favor de Carlos Lopez concepto: wifi", -16.0),
+                    (f"{m}-{27 - i:02d}", "Transferencia de Empresa SL, concepto Nomina mes", 1800.0),
+                    (f"{m}-{29 - i:02d}", "Recibo Digi Spain Telecom, concepto: factura", -20.0 - i * 0.5)]
+        out.append(("2026-09-15", "Transferencia de Club Deportivo, concepto pago", 300.0))
+        return sorted(out)
+    def preparar(self):
+        self.importar(self.extracto(self.filas(), saldo_inicial=3000))
+        for p in self.a.todos("pendiente"):  # el alquiler por transferencia llega como duda
+            IM.resolver(self.a, p["id"], {"accion": "guardar", "clase": p["fila"]["clase"] if p["fila"]["importe"] > 0 else "gasto",
+                                          "categoria": "Vivienda" if "casero" in p["fila"]["texto"].lower() else "Otros ingresos" if p["fila"]["importe"] > 0 else "Otros"})
+    def test_detecta_fijos_y_origenes(self):
+        from financebuddy import detectar as D
+        self.preparar()
+        f = {x["patron"]: x for x in D.fijos(self.a)}
+        self.assertEqual(set(f), {"empresa sl", "pedro casero", "carlos lopez concepto: wifi", "digi spain telecom"})
+        self.assertEqual((f["empresa sl"]["categoria"], f["empresa sl"]["grupo"], f["empresa sl"]["importe"]), ("Nómina", "ingreso", 1800.0))
+        self.assertEqual((f["digi spain telecom"]["categoria"], f["digi spain telecom"]["grupo"]), ("Suministros", "fijo"))
+        self.assertEqual((f["pedro casero"]["dia"], f["pedro casero"]["desde"]), (1, "2026-09-01"))
+        o = {x["origen"]: x for x in D.origenes(self.a)}
+        self.assertEqual((o["Empresa SL"]["total"], o["Empresa SL"]["veces"], o["Empresa SL"]["media_mes"]), (5400.0, 3, 1800.0))
+        self.assertIn("Club Deportivo", o)
+
+    def test_crear_enlaza_y_no_repite(self):
+        from financebuddy import detectar as D
+        self.preparar()
+        props = [x for x in D.fijos(self.a) if x["patron"] in ("empresa sl", "carlos lopez concepto: wifi")]
+        self.assertIn("2 fijos creados", D.crear(self.a, props))
+        recs = {r["nombre"]: r for r in self.a.todos("recurrente")}
+        self.assertEqual(set(recs), {x["nombre"] for x in props})
+        enlazados = [m for m in self.movs() if m.get("recurrente")]
+        self.assertEqual(sorted(m["fecha"][:7] for m in enlazados), ["2026-09", "2026-09"])
+        self.assertEqual({x["patron"] for x in D.fijos(self.a)}, {"pedro casero", "digi spain telecom"})
+        with self.assertRaises(ValueError): D.crear(self.a, props[:1])
+        # El mes siguiente se reconoce solo y queda enlazado
+        self.importar(self.extracto(self.filas() + [("2026-10-27", "Transferencia de Empresa SL, concepto Nomina oct", 1850.0)], nombre="oct.xlsx", saldo_inicial=3000))
+        oct_ = next(m for m in self.movs() if m["fecha"] == "2026-10-27")
+        self.assertEqual((oct_["recurrente"], oct_["categoria"]), (props[0]["nombre"] if props[0]["patron"] == "empresa sl" else props[1]["nombre"], "Nómina"))
+
 class TestBase(Base):
     def test_renombrar_propaga(self):
         self.importar(self.extracto())

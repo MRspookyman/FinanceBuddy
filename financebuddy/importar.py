@@ -151,7 +151,7 @@ def importar_inversion(alm, ruta, cuenta=None, perfil_nombre=None):
     cuentas = alm.todos("cuenta")
     if not cuenta or not any(c["nombre"] == cuenta for c in cuentas):
         raise NecesitaCuenta({"archivo": os.path.basename(ruta), "tipo": "inversion", "perfil": perfil["nombre"],
-                              "cuentas": [c["nombre"] for c in cuentas if c.get("tipo") == "broker"] or [c["nombre"] for c in cuentas]})
+                              "cuentas": [c["nombre"] for c in cuentas if c.get("tipo") == "broker"]})
     activos = [a for a in alm.todos("activo")]
     acciones = perfil.get("acciones") or []
     signo = -1 if perfil.get("compras_negativas", True) else 1

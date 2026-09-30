@@ -27,6 +27,7 @@ Solo para **Windows**. Todo en español y en euros.
    - Marca «recordar» y la próxima vez se clasifica solo (y también las demás dudas iguales).
 5. Una vez al mes, **Cerrar el mes**: anotas el saldo de tus cuentas y el valor de tu inversión.
    - Así la app comprueba que no falta ningún movimiento y sigue tu patrimonio.
+6. Con dos o más meses importados, *Ajustes → Detectar fijos*: la app encuentra tus nóminas, alquiler y recibos (lo que se repite cada mes) y te los propone; también te enseña **de dónde viene tu dinero**.
 
 Cerrar la pestaña del navegador no cierra la app: para cerrarla, *Ajustes → Cerrar FinanceBuddy*. Si la vuelves a abrir, se reutiliza la que ya estaba en marcha.
 
@@ -86,6 +87,7 @@ financebuddy/
   importar.py      importación de extractos: formatos, cadena de saldos, duplicados, dudas
   lectura.py       lectura de Excel/CSV, fechas, importes y reconocimiento del formato
   clasificar.py    clasificación automática (reglas, traspasos, Bizum, recurrentes)
+  detectar.py      fijos que se repiten cada mes y de dónde viene el dinero
   plantilla.py     categorías, reglas y formatos de serie
   ejemplo.py       datos de ejemplo
   web/             la interfaz: index.html, nucleo.js, estilos.css y paneles/*.js

@@ -1,7 +1,7 @@
 # Servidor local de la app: sirve las pantallas (web/) y una API JSON sobre la base de datos.
 # Solo escucha en 127.0.0.1 y cada arranque genera una clave que la página envía en la cabecera X-FB-Token.
 import base64, datetime, http.server, io, json, mimetypes, os, re, secrets, socketserver, tempfile, threading, traceback, urllib.parse
-from . import VERSION, importar as IM, modelo, plantilla, rutas
+from . import VERSION, detectar, importar as IM, modelo, plantilla, rutas
 from .almacen import Almacen
 
 MODULOS = ["datos", "calculos", "componentes", "graficos", "bloques", "vistas", "formularios", "pantallas"]
@@ -179,6 +179,8 @@ class App:
         if ruta == "/api/importar/subir": return self.subir(d)
         if ruta == "/api/importar/reintentar": return self.reintentar(d)
         if ruta == "/api/resolver": return {"ok": True, "mensaje": IM.resolver(a, int(d["id"]), d)}
+        if ruta == "/api/detectar": return {"ok": True, "fijos": detectar.fijos(a), "origenes": detectar.origenes(a)}
+        if ruta == "/api/fijos": return {"ok": True, "mensaje": detectar.crear(a, d.get("fijos") or [])}
         if ruta == "/api/bienvenida": return self.bienvenida(d)
         if ruta == "/api/cierre": return self.cierre(d)
         if ruta == "/api/valores": return self.valores(d)

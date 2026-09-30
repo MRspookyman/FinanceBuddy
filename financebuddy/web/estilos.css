@@ -203,7 +203,7 @@ body.theme-dark .fin .fin-nav a.aviso{color:#f5a524}
 .fb-form{display:grid;grid-template-columns:minmax(150px,1fr) minmax(160px,300px);gap:9px 16px;align-items:center;max-width:620px}
 .fb-form .et{font-size:.9em}
 .fb-form .s{grid-column:1/-1;font-size:.76em;color:var(--text-muted);margin-top:-5px}
-.fb-form .sep{grid-column:1/-1;margin-top:10px;font-size:.8em;font-weight:650;color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em}
+.fb-form .sep,.fin-panel > div > .sep{grid-column:1/-1;margin-top:10px;font-size:.8em;font-weight:650;color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em}
 .fb-form textarea{grid-column:1/-1}
 @media (max-width:560px){.fb-form{grid-template-columns:1fr}}
 .fb-msg{white-space:pre-line;padding:10px 14px;border-radius:10px;margin:10px 0;font-size:.9em;background:var(--background-secondary)}
