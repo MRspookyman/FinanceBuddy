@@ -80,4 +80,12 @@ const RM = F.ritmoMes();
 caso("Ritmo: acumulado hasta el día 29 = gasto variable", RM.dia === 29 && cerca(RM.hoyV, F.gastoVariable(F.finMes("2026-09"))) && RM.actual[29] === null, [RM.dia, RM.hoyV]);
 caso("Ritmo: media de 3 meses, creciente", RM.nMeses === 3 && RM.media.every((v, i) => !i || v >= RM.media[i - 1] - 1e-9), RM.nMeses);
 
+// 11. Inversión
+const RI = F.resumenInversion(), EVI = F.evolucionInversion();
+caso("Evolución: el último valor es el de hoy", EVI && cerca(EVI.valor[EVI.valor.length - 1], RI.total), EVI && [EVI.valor[EVI.valor.length - 1], RI.total]);
+caso("Evolución: lo metido crece mes a mes", EVI && EVI.aportado.every((v, i) => !i || v >= EVI.aportado[i - 1] - 1e-9), EVI && EVI.aportado);
+const AM = F.aportacionesMes(12);
+caso("Aportaciones de septiembre: 150 + 50 €", cerca(AM[AM.length - 1].compras, 200), AM[AM.length - 1]);
+caso("Constancia: 5 meses seguidos aportando", F.constancia() === 5, F.constancia());
+
 return casos;

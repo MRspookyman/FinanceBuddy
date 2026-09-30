@@ -786,7 +786,7 @@ function cambioCategoria(padre, reg, volver) {
 // ───────────── render ─────────────
 const TODAS = { ...VISTAS, bienvenida: vistaBienvenida, importar: vistaImportar, revisar: vistaRevisar, apuntar: vistaApuntar, cerrar: vistaCerrar,
   valores: vistaValores, ajustes: vistaAjustes, gestionar: vistaGestionar, editar: vistaEditar, fijos: vistaFijos };
-const TITULOS = { inicio: "Inicio", movimientos: "Movimientos",
+const TITULOS = { inicio: "Inicio", movimientos: "Movimientos", inversion: "Inversión",
   bienvenida: "Bienvenida", importar: "Importar", revisar: "Por revisar", apuntar: "Apuntar", cerrar: "Cerrar el mes", valores: "Valores", ajustes: "Ajustes", gestionar: "Ajustes", editar: "Editar", fijos: "Fijos" };
 function render() {
   _movs = _movsMes = _aports = _objs = _pat = _cuentas = _recs = _activos = _cats = undefined; _finMes = new Map();
@@ -800,5 +800,5 @@ render();
 if (input && input.exponer) {
   window.__fin = { finMes, repartoAhorro, estimacion, conciliacion, prevision, resumenInversion, fondoEmergencia, gastoVariable, tasa12,
     movimientos, aportaciones, objetivos, patrimonio, avisos, categorias, grupoDe, limiteVar, mesesHasta, mesAnterior, hoyKey,
-    fechaDatos, presupuestoSemana, planReparto, cuentas, proyectar, resumenCategorias, ritmoMes };
+    fechaDatos, presupuestoSemana, planReparto, cuentas, proyectar, resumenCategorias, ritmoMes, evolucionInversion, aportacionesMes, constancia, interesesBroker };
 }

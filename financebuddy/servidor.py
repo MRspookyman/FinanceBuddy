@@ -4,7 +4,7 @@ import base64, datetime, http.server, io, json, mimetypes, os, re, secrets, sock
 from . import VERSION, clasificar as C, detectar, importar as IM, modelo, plantilla, rutas
 from .almacen import Almacen
 
-MODULOS = ["datos", "calculos", "componentes", "graficos", "inicio", "formularios", "pantallas"]
+MODULOS = ["datos", "calculos", "componentes", "graficos", "inicio", "inversion", "formularios", "pantallas"]
 MAX_SUBIDA = 25 * 1024 * 1024
 ACENTOS = ["violeta", "azul", "verde", "coral", "rosa", "grafito"]  # colores de acento (estilos.css: body[data-acento])
 

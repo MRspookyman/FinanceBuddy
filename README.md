@@ -7,7 +7,7 @@ Tus finanzas personales **en tu ordenador**. Importas los extractos de tu banco 
 - a dónde va tu dinero (gastos por categoría) y de dónde viene;
 - cuánto tienes en cada cuenta y cómo va tu **inversión**.
 
-Cuatro pantallas: **Inicio**, **Movimientos**, **Importar** y **Ajustes**.
+Pantallas: **Inicio**, **Movimientos**, **Inversión**, **Importar** y **Ajustes**.
 
 Nada sale de tu ordenador: no hay cuentas, ni nube, ni conexión con el banco. Los datos se guardan en un archivo de tu carpeta Documentos.
 
@@ -31,6 +31,11 @@ Solo para **Windows**. Todo en español y en euros.
 5. Una vez al mes, *Ajustes → Actualizar saldos*: anotas lo que tienes en cada cuenta y el valor de tu inversión.
    - Así la app comprueba que no falta ningún movimiento.
 6. Con dos o más meses importados, *Ajustes → Detectar fijos*: la app encuentra tus nóminas, alquiler y recibos (lo que se repite cada mes) y te los propone; también te enseña **de dónde viene tu dinero**.
+
+**Inversión**: lo que vale y lo que has metido en cada activo, ganancia y rentabilidad anual, evolución, cuánto
+aportas cada mes (y cuántos meses seguidos), reparto por tipo (fondos, ETF, cripto, materias primas), participaciones y
+precio medio (si el extracto del bróker las trae, como MyInvestor: «… @ 2»), gastos corrientes, intereses del dinero
+sin invertir y posiciones ya vendidas con su resultado.
 
 **A tu gusto** (*Ajustes*): tema automático, claro u oscuro y color de acento; qué paneles ves en el Inicio y en qué orden;
 icono, color y presupuesto de cada categoría (con aviso si te pasas). En *Movimientos → Por categoría* ves cada una
@@ -104,6 +109,6 @@ financebuddy/
 pruebas/           pruebas (Python y cálculos en el navegador)
 ```
 
-Los módulos de `web/paneles/` se concatenan y comparten ámbito, en este orden: `datos`, `calculos`, `componentes`, `graficos`, `inicio`, `formularios`, `pantallas`.
+Los módulos de `web/paneles/` se concatenan y comparten ámbito, en este orden: `datos`, `calculos`, `componentes`, `graficos`, `inicio`, `inversion`, `formularios`, `pantallas`.
 
 Con [Claude Code](https://claude.com/claude-code), la skill `.claude/skills/financebuddy-dev` explica la arquitectura y cómo probar y extender la app.

@@ -98,7 +98,7 @@ function anillo(padre, { frac, marca, c1, c2, tam = 150 }) {
 }
 // Líneas sobre los días de un mes (gasto acumulado). series: [{ nombre, color, valores (null = sin dato), discontinua, area }].
 // etiquetas: texto de cada punto para el tooltip; marcas: índices con etiqueta en el eje X.
-function lineas(padre, { etiquetas, series, marcas, alto = 200 }) {
+function lineas(padre, { etiquetas, series, marcas, etiquetasX, alto = 200 }) {
   chart(padre, (W) => {
     const H = alto, L = 46, R = 10, T = 12, B = 24;
     const todos = series.flatMap((s) => s.valores.filter((v) => v != null));
@@ -122,7 +122,7 @@ function lineas(padre, { etiquetas, series, marcas, alto = 200 }) {
       s.push(`<g class="col" data-tip="${esc(tip)}"><rect class="band" x="${(X(i) - gw / 2).toFixed(1)}" y="${T}" width="${gw.toFixed(1)}" height="${H - T - B}"/>`
         + `<line class="xh" x1="${X(i).toFixed(1)}" x2="${X(i).toFixed(1)}" y1="${T}" y2="${H - B}"/></g>`);
     });
-    for (const i of marcas || []) s.push(`<text x="${X(i).toFixed(1)}" y="${H - 6}" text-anchor="middle">${esc(String(i + 1))}</text>`);
+    for (const i of marcas || []) s.push(`<text x="${X(i).toFixed(1)}" y="${H - 6}" text-anchor="middle">${esc(etiquetasX ? etiquetasX[i] : String(i + 1))}</text>`);
     return s.join("") + "</svg>";
   });
 }

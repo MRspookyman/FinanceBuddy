@@ -51,7 +51,7 @@ def crear(raiz, hoy=None, meses=5, reemplazar=True):
         alm.set_config("limite_variable", 600)
         alm.set_config("configurado", True)
         alm.guardar("activo", {"nombre": "Fondo indexado MSCI World", "clase": "fondo", "cuenta": BROKER, "aportado_inicial": 4000,
-                               "fecha_inicio": (inicio - datetime.timedelta(days=400)).isoformat(), "patrones": ["msci world"]})
+                               "fecha_inicio": (inicio - datetime.timedelta(days=400)).isoformat(), "patrones": ["msci world"], "ter": 0.12})
         alm.guardar("activo", {"nombre": "Bitcoin", "clase": "cripto", "cuenta": BROKER, "aportado_inicial": 600,
                                "fecha_inicio": (inicio - datetime.timedelta(days=200)).isoformat(), "patrones": ["bitcoin"]})
         for n, cl, cat, imp, dia, ms in RECURRENTES:

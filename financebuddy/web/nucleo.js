@@ -87,18 +87,19 @@
     inicio: '<path d="M4 10.5 12 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5.5h-5V20H5a1 1 0 0 1-1-1z"/>',
     movimientos: '<path d="M5 7h11M5 7l3-3M5 7l3 3M19 17H8m11 0-3-3m3 3-3 3"/>',
     importar: '<path d="M12 4v11m0 0-4-4m4 4 4-4M5 19h14"/>',
+    inversion: '<path d="M4 19h16M6 15l4-4 3 3 5-6"/><path d="M15 8h3v3"/>',
     revisar: '<path d="M12 3.5 3.5 19h17zM12 10v4m0 2.6v.1"/>',
     ajustes: '<path d="M4 7h9m4 0h3M4 17h3m4 0h9"/><circle cx="15" cy="7" r="2.2"/><circle cx="9" cy="17" r="2.2"/>',
   };
-  const SECCION = { resumen: "inicio", gastos: "movimientos", prevision: "inicio", patrimonio: "inicio", inversion: "inicio", objetivos: "ajustes",
-    gestionar: "ajustes", editar: "ajustes", fijos: "ajustes", cerrar: "ajustes", valores: "ajustes" };
+  const SECCION = { resumen: "inicio", gastos: "movimientos", prevision: "inicio", patrimonio: "inicio", objetivos: "ajustes",
+    gestionar: "ajustes", editar: "ajustes", fijos: "ajustes", cerrar: "ajustes", valores: "inversion" };
   function barra() {
     const DB = FB.DB; if (!DB) return;
     const fechas = (DB.registros.movimiento || []).map((m) => m.fecha).sort();
     document.getElementById("datos").textContent = fechas.length ? `Movimientos hasta el ${fechas[fechas.length - 1].split("-").reverse().join("/")}` : "";
     document.getElementById("ejemplo").hidden = !(DB.info && DB.info.ejemplo);
     const n = (DB.pendientes || []).length;
-    const items = [["inicio", "Inicio"], ["movimientos", "Movimientos"], ["importar", "Importar"], n ? ["revisar", "Por revisar"] : null, ["ajustes", "Ajustes"]].filter(Boolean);
+    const items = [["inicio", "Inicio"], ["movimientos", "Movimientos"], ["inversion", "Inversión"], ["importar", "Importar"], n ? ["revisar", "Por revisar"] : null, ["ajustes", "Ajustes"]].filter(Boolean);
     const v = ruta()[0], act = SECCION[v] || v;
     const menu = document.getElementById("menu");
     menu.innerHTML = items.map(([k, t]) => `<a href="#${k}" class="internal-link${k === act ? " act" : ""}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">${ICO[k]}</svg><span>${t}</span>${k === "revisar" ? `<span class="num">${n}</span>` : ""}</a>`).join("");

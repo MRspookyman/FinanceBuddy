@@ -201,7 +201,8 @@ def importar_inversion(alm, ruta, cuenta=None, perfil_nombre=None):
             if huellas_ap[k] > 0: huellas_ap[k] -= 1; existentes += 1; continue
             km = (f["op"], imp, activo["nombre"])
             if manuales[km] > 0: manuales[km] -= 1; existentes += 1; continue
-            d = {"fecha": f["op"], "activo": activo["nombre"], "importe": imp, "cuenta": cuenta, "ext_texto": f["texto"], "ext_importe": f["importe"], "ext_fecha": f["op"]}
+            d = {"fecha": f["op"], "activo": activo["nombre"], "importe": imp, "cuenta": cuenta, "participaciones": participaciones(f["texto"], imp),
+                 "ext_texto": f["texto"], "ext_importe": f["importe"], "ext_fecha": f["op"]}
             rec = next((r for r in recs if r.get("activo_inversion") == activo["nombre"] and r.get("activo") is not False
                         and (r.get("desde") or "") <= f["op"] and imp > 0 and abs(imp - float(r.get("importe") or 0)) <= max(10, 0.05 * float(r.get("importe") or 0))), None)
             if rec: d["recurrente"] = rec["nombre"]
@@ -330,9 +331,17 @@ def crear_perfil(alm, nombre, tipo, columnas, cuenta=None, compras_negativas=Tru
     return alm.guardar("perfil", {**(existente or {}), **datos}, existente["id"] if existente else None)
 
 # ───────────── activos nuevos desde el extracto del bróker ─────────────
+def participaciones(texto, importe):
+    """«ETF ETFS Copper ETC @ 2» → 2 (con el signo de la operación: + compra, − venta). None si el texto no las dice."""
+    m = re.search(r"@\s*(\d+(?:[.,]\d+)?)\s*$", str(texto))
+    if not m: return None
+    n = float(m.group(1).replace(",", "."))
+    return n if importe >= 0 else -n
+
 def clase_activo(texto):
     t = L.norm(texto)
     if re.search(r"bitcoin|\bbtc\b|ethereum|crypto|cripto|solana", t): return "cripto"
+    if re.search(r"\bgold\b|\boro\b|silver|\bplata\b|copper|cobre|commodit|materias primas|platinum|petroleo|\boil\b", t): return "materia"
     if re.search(r"\betf\b|\betc\b|\betp\b|ishares|xtrackers|physical|lyxor|spdr", t): return "etf"
     if re.search(r"\bindex\b|\bfund\b|fondo|\bacc\b|\bfi\b|\bclase\b", t): return "fondo"
     return "otro"
@@ -423,6 +432,7 @@ def _resolver_uno(alm, p, d):
         if not any(x["nombre"] == nombre for x in alm.todos("activo")): raise ValueError("Elige el activo.")
         signo = -1 if next((pp for pp in alm.todos("perfil") if pp["nombre"] == p["perfil"]), {}).get("compras_negativas", True) else 1
         alm.insertar_crudo("aportacion", modelo.limpiar("aportacion", {"fecha": f["op"], "activo": nombre, "importe": round(signo * f["importe"], 2),
+                           "participaciones": participaciones(f["texto"], signo * f["importe"]),
                            "cuenta": cuenta, "ext_texto": f["texto"], "ext_importe": f["importe"], "ext_fecha": f["op"]}))
         msg = f"Guardado: {'compra' if signo * f['importe'] > 0 else 'venta'} de {nombre}"
     elif accion == "interes":

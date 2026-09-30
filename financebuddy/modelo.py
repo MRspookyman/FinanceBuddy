@@ -21,11 +21,12 @@ CAMPOS = {
                    "dia": "int", "desde": "fecha*", "hasta": "fecha", "meses": "meses", "activo": "bool",
                    "activo_inversion": "texto", "cuenta": "texto"},
     # patrones: textos del extracto del bróker que identifican el activo (p. ej. «s&p 500 index»).
-    "activo": {"nombre": "texto*", "clase": ("fondo", "etf", "accion", "cripto", "otro"), "cuenta": "texto", "valor": "num",
+    # ter: gastos corrientes anuales (%) · materia: materias primas (oro, cobre…).
+    "activo": {"nombre": "texto*", "clase": ("fondo", "etf", "accion", "cripto", "materia", "otro"), "cuenta": "texto", "valor": "num",
                "fecha_valor": "fecha", "aportado_inicial": "num", "fecha_inicio": "fecha", "estado": ("activo", "vendido"),
-               "patrones": "lista", "isin": "texto"},
-    # importe: + compra, − venta.
-    "aportacion": {"fecha": "fecha*", "activo": "texto*", "importe": "num*", "cuenta": "texto", "recurrente": "texto",
+               "patrones": "lista", "isin": "texto", "ter": "num+"},
+    # importe: + compra, − venta · participaciones: las compradas (+) o vendidas (−), si el extracto las dice («… @ 2»).
+    "aportacion": {"fecha": "fecha*", "activo": "texto*", "importe": "num*", "participaciones": "num", "cuenta": "texto", "recurrente": "texto",
                    "ext_texto": "texto", "ext_importe": "num", "ext_fecha": "fecha"},
     # saldos: {cuenta: saldo} · valores: {activo: valor} a esa fecha.
     "patrimonio": {"fecha": "fecha*", "saldos": "mapa", "valores": "mapa", "otros": "num", "deudas": "num+", "nota": "texto"},

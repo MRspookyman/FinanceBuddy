@@ -400,3 +400,10 @@ body.theme-dark .fb-grupo{border-color:transparent}
 .fin-panel.resalta{box-shadow:0 0 0 2px var(--brand),var(--shadow)}
 .fb-fila .fb-et{min-width:70px}
 .fin h3.fb-sec{margin:22px 0 10px;font-size:1.05em;font-weight:720;color:var(--ink-2)}
+/* ── inversión ── */
+.fin .fb-aviso-inv{margin:-4px 0 12px;padding:9px 14px;border-radius:12px;color:var(--ink);background:color-mix(in srgb,var(--amber) 14%,transparent)}
+.fb-barra.fina.reparto{background:var(--surface-2)}
+.fin-panel .sep.fb-sep{margin:14px 0 4px;font-size:.76em;font-weight:750;color:var(--ink-3);text-transform:uppercase;letter-spacing:.06em}
+.fin .fin-table td .fin-badge{color:var(--ink-2);background:var(--surface-2)}
+.fb-total .v{white-space:nowrap}
+.fin .fb-tipos{margin:-4px 0 6px}

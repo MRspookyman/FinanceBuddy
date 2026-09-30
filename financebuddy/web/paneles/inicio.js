@@ -19,6 +19,7 @@ const PANELES_INICIO = [
   { id: "ritmo", t: "Ritmo de gasto del mes" },
   { id: "plan", t: "Qué hacer con tu dinero" },
   { id: "dinero", t: "Tu dinero" },
+  { id: "inversion", t: "Tu inversión" },
   { id: "proximos", t: "Próximos fijos" },
   { id: "meses", t: "Tus últimos meses" },
 ];
@@ -55,6 +56,7 @@ function vistaInicio() {
     ritmo: (padre) => tarjetaRitmo(panel(padre, "Ritmo de gasto del mes", null, "Tu gasto variable acumulado día a día, comparado con lo que sueles llevar a estas alturas del mes.")),
     plan: (padre) => tarjetaPlan(panel(padre, "Qué hacer con tu dinero", null, "Cuánto conviene dejar en la cuenta del día a día (un mes de gasto) y a dónde mover lo que sobra.")),
     dinero: (padre) => tarjetaDinero(panel(padre, "Tu dinero", { text: "Actualizar saldos", ruta: "#cerrar" })),
+    inversion: (padre) => { if (activos().length) tarjetaInversionInicio(panel(padre, "Tu inversión", { text: "Ver todo", ruta: "#inversion" })); },
     proximos: (padre) => tarjetaProximos(panel(padre, "Próximos fijos", { text: "Gestionar", ruta: "#gestionar/recurrente" })),
     meses: (padre) => tarjetaMeses(panel(padre, "Tus últimos meses")),
   };
@@ -206,7 +208,7 @@ function tarjetaDinero(p) {
     item(l, { av: { icono: ICONO_CUENTA[c.tipo] || "🏦" }, t: c.nombre, s: { corriente: "día a día", ahorro: "ahorro", broker: "sin invertir", otro: "" }[c.tipo] || "", v: eur(v, 0), ruta: `#editar/cuenta/${c.p.id}` });
   }
   if (I.filas.length) item(l, { av: { icono: "🌱" }, t: "Inversión", s: I.aportado ? `${eurS(I.gan, 0)} (${pct(I.gan / I.aportado, true)}) sobre lo que has metido` : "valor de tus activos",
-    v: eur(I.total, 0), pos: I.gan > 0, ruta: "#valores" });
+    v: eur(I.total, 0), pos: I.gan > 0, ruta: "#inversion" });
   if (E.deudas) item(l, { av: { icono: "📉" }, t: "Deudas", v: eur(-E.deudas, 0) });
   const o = objetivos().find((x) => x.vinculado && x.estado !== "conseguido");
   if (o && o.meta > 0) {
@@ -215,6 +217,19 @@ function tarjetaDinero(p) {
     m.setText(`${o.nombre}: ${eur(o.ahorrado, 0)} de ${eur(o.meta, 0)}${o.ahorrado >= o.meta ? " ✓" : ""}`);
     const b = p.createDiv({ cls: "fb-barra" }); b.createDiv().style.width = `${(f * 100).toFixed(1)}%`;
   }
+}
+
+// Resumen de la inversión para el Inicio: valor, ganancia, reparto por activo y la racha de aportaciones.
+function tarjetaInversionInicio(p) {
+  const I = resumenInversion(), racha = constancia();
+  const t = p.createDiv({ cls: "fb-total" });
+  t.createDiv({ cls: "v", text: eur(I.total, 0) });
+  t.createDiv({ cls: "s", text: isFinite(I.gan) && I.aportado > 0 ? `${eurS(I.gan, 0)} (${pct(I.gan / I.aportado, true)}) sobre lo metido` : `${eur(I.aportadoTodo, 0)} metidos` });
+  stack(p, [...I.filas].sort((a, b) => b.valor - a.valor).map((f) => ({ nombre: f.nombre, valor: f.valor, color: colorActivo(f.nombre) })));
+  const l = p.createDiv({ cls: "fb-lista" });
+  for (const f of [...I.filas].sort((a, b) => b.valor - a.valor).slice(0, 4))
+    item(l, { av: { icono: ICONO_ACTIVO[f.clase] || "💼", sm: true }, t: f.nombre, s: isFinite(f.gan) ? `${eurS(f.gan, 0)} · ${pct(f.aportado > 0 ? f.gan / f.aportado : NaN, true)}` : "sin valor anotado", v: eur(f.valor, 0), pos: f.gan > 0, ruta: "#inversion" });
+  if (racha) p.createDiv({ cls: "fin-note", text: `🔥 ${racha} mes${racha > 1 ? "es" : ""} seguido${racha > 1 ? "s" : ""} aportando` });
 }
 
 function tarjetaProximos(p) {
@@ -332,4 +347,4 @@ function vistaPorCategoria(M) {
 
 // Pantallas antiguas → las nuevas (enlaces guardados y avisos).
 const VISTAS = { inicio: vistaInicio, resumen: vistaInicio, movimientos: vistaMovimientos, gastos: vistaMovimientos,
-  prevision: vistaInicio, patrimonio: vistaInicio, inversion: vistaInicio };
+  prevision: vistaInicio, patrimonio: vistaInicio, inversion: vistaInversion };

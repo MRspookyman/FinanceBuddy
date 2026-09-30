@@ -307,6 +307,17 @@ class TestExtractosReales(Base):
         self.assertEqual((a["clase"], a["patrones"]), ("cripto", ["fidelity physical bitcoin"]))
         self.assertEqual(sorted(x["importe"] for x in self.a.todos("aportacion")), [55.43, 55.45])
 
+class TestParticipaciones(Base):
+    def test_participaciones_y_tipo(self):
+        self.assertEqual((IM.participaciones("ETF ETFS Copper ETC @ 2", -90.6), IM.participaciones("ETF ETFS Copper ETC @ 2", 90.6)), (-2.0, 2.0))
+        self.assertIsNone(IM.participaciones("FIDELITY PHYSICAL BITCOIN ET @", 5))
+        self.assertEqual([IM.clase_activo(t) for t in ("ISHARES PHYSICAL GOLD ETC", "ETF ETFS Copper ETC", "FIDELITY S&P 500 INDEX P ACC")], ["materia", "materia", "fondo"])
+        self.a.guardar("activo", {"nombre": "Cobre", "clase": "materia", "cuenta": "Bróker", "patrones": ["copper"], "aportado_inicial": 0})
+        csv = os.path.join(self.c.inversion, "c.csv")
+        escribir(csv, "utf-8", "Fecha de operación;Fecha valor;Concepto;Importe\n27/04/2026;29/04/2026;ETF ETFS Copper ETC @ 2;-90,63\n26/05/2026;28/05/2026;ETF ETFS Copper ETC @ 1;47,10\n")
+        IM.importar_archivo(self.a, self.c, csv, "inversion", "Bróker")
+        self.assertEqual(sorted((x["importe"], x["participaciones"]) for x in self.a.todos("aportacion")), [(-47.1, -1.0), (90.63, 2.0)])
+
 class TestInversion(Base):
     CSV = ("Fecha de operación;Fecha valor;Concepto;Importe\n"
            "01/09/2026;01/09/2026;Ahorro;200,00\n"
