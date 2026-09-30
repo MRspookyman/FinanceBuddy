@@ -22,6 +22,8 @@ Modelo de dinero (calculos.js): los saldos salen de proyectar el último registr
 
 Inversión (`inversion.js`, `#inversion`): `resumenInversion()` (participaciones y precio medio si todas las operaciones traen `aportacion.participaciones`; sin `activo.valor` vale lo aportado; vendido del todo → `cerradas`), `evolucionInversion()`, `aportacionesMes()`, `constancia()`, `interesesBroker()`. Al importar, «… @ N» → participaciones (`importar.participaciones`).
 
+X-Ray (`xray.py`): un PDF en Importar → `texto_pdf()` (pypdf) → `analizar()` (secciones por sus títulos; nombres partidos en varias líneas) → registro `composicion` enlazado por nombre con tus activos (`enlazar`, difflib ≥ 0,72; pone el TER). Panel «Qué hay dentro de tus fondos» en `inversion.js`. Pruebas con el texto inventado `XRAY` de test_importar.py (no hace falta un PDF). En este contenedor Linux pypdf choca con una `cryptography` rota del sistema: usar un venv con pypdf.
+
 Personalización: `categoria.icono`/`categoria.color` (los usan `catIcono`/`catColor`); `config.acento` (lista `ACENTOS` en servidor.py y pantallas.js → `body[data-acento]` en estilos.css); el tema (auto/claro/oscuro) vive en `localStorage` (`FB.tema()`).
 
 ## Probar (siempre tras un cambio)

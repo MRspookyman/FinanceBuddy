@@ -36,6 +36,9 @@ Solo para **Windows**. Todo en español y en euros.
 aportas cada mes (y cuántos meses seguidos), reparto por tipo (fondos, ETF, cripto, materias primas), participaciones y
 precio medio (si el extracto del bróker las trae, como MyInvestor: «… @ 2»), gastos corrientes, intereses del dinero
 sin invertir y posiciones ya vendidas con su resultado.
+**Qué hay dentro de tus fondos**: sube el informe **X-Ray de Morningstar** (PDF; en MyInvestor, *Cartera → X-Ray*) en
+*Importar* y verás sus países, sectores, las 10 mayores empresas, rentabilidad a 1, 3 y 5 años, volatilidad y gastos,
+tu inversión entera «mirando dentro» (acciones, renta fija, cripto, materias primas) y avisos si está muy concentrada.
 
 **A tu gusto** (*Ajustes*): tema automático, claro u oscuro y color de acento; qué paneles ves en el Inicio y en qué orden;
 icono, color y presupuesto de cada categoría (con aviso si te pasas). En *Movimientos → Por categoría* ves cada una
@@ -103,6 +106,7 @@ financebuddy/
   lectura.py       lectura de Excel/CSV, fechas, importes y reconocimiento del formato
   clasificar.py    clasificación automática (reglas, traspasos, Bizum, recurrentes, lo aprendido de tu historial)
   detectar.py      fijos que se repiten cada mes y de dónde viene el dinero
+  xray.py          informe X-Ray de Morningstar (PDF): composición de tus fondos
   plantilla.py     categorías, reglas y formatos de serie
   ejemplo.py       datos de ejemplo
   web/             la interfaz: index.html, nucleo.js, estilos.css y paneles/*.js

@@ -42,6 +42,9 @@ CAMPOS = {
     "perfil": {"nombre": "texto*", "tipo": ("banco", "inversion"), "columnas": "mapa", "cuenta": "texto",
                "compras_negativas": "bool", "acciones": "listamapa"},
     "cierre": {"mes": "texto*", "fecha": "fecha", "notas": "texto"},
+    # Informe X-Ray de Morningstar (xray.py): datos = {tipos, paises, regiones, sectores, top, rentabilidad, riesgo, fondos,
+    # enlaces: {fondo del informe: tu activo}} · activos: tus activos que describe.
+    "composicion": {"fecha": "fecha*", "nombre": "texto", "datos": "mapa", "activos": "lista"},
     # Internos (solo los escribe el servidor)
     "pendiente": {"tipo_import": ("banco", "inversion"), "cuenta": "texto", "archivo": "texto", "perfil": "texto",
                   "fila": "mapa", "duda": "texto"},
@@ -55,7 +58,7 @@ REFERENCIAS = {
                ("activo", "cuenta"), ("aportacion", "cuenta"), ("objetivo", "cuenta"), ("perfil", "cuenta"),
                ("regla", "cuenta_otra"), ("pendiente", "cuenta"), ("patrimonio", "saldos*")],
     "categoria": [("movimiento", "categoria"), ("recurrente", "categoria"), ("regla", "categoria")],
-    "activo": [("aportacion", "activo"), ("recurrente", "activo_inversion"), ("patrimonio", "valores*")],
+    "activo": [("aportacion", "activo"), ("recurrente", "activo_inversion"), ("patrimonio", "valores*"), ("composicion", "activos[]")],
     "recurrente": [("movimiento", "recurrente"), ("aportacion", "recurrente"), ("regla", "recurrente")],
 }
 UNICOS = {"cuenta": "nombre", "categoria": "nombre", "activo": "nombre", "recurrente": "nombre", "cierre": "mes", "perfil": "nombre"}

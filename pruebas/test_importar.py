@@ -307,6 +307,137 @@ class TestExtractosReales(Base):
         self.assertEqual((a["clase"], a["patrones"]), ("cripto", ["fidelity physical bitcoin"]))
         self.assertEqual(sorted(x["importe"] for x in self.a.todos("aportacion")), [55.43, 55.45])
 
+# Texto como el que da pypdf de un X-Ray de Morningstar (cifras y fondo inventados; misma maquetación).
+XRAY = """Informe a 15 Mar 2026
+X-Ray de Cartera
+Distribución de activos % Exposición por país %
+Distribución de
+Activos
+Port Ref.
+ Acciones 97,50 0,96
+ Obligaciones 1,00 30,65
+ Efectivo 1,50 67,30
+ Otro 0,00 1,09
+ No clasificado 0,00 0,00
+Pais Acción Ref.
+Estados Unidos 70,20 15,48
+Japón 6,10 0,00
+Reino Unido 3,40 0,00
+Pais Acción Ref.
+Canada 3,00 0,00
+
+Desglose por regiones %
+Acción Ref.
+Europa 14,00 84,52
+Europa Occidental
+- Euro
+8,00 83,21
+Acción Ref.
+América 74,00 15,48
+Estados Unidos 70,20 15,48
+Acción Ref.
+Asia 12,00 0,00
+
+Sectores de Renta Variable %
+Acción Ref.
+h Cíclico 30,00 26,99
+r Materiales
+Básicos
+4,00 2,37
+t Consumo
+Cíclico
+10,00 4,76
+y Servicios
+Financieros
+15,00 19,86
+u Inmobiliario 1,00 0,00
+Acción Ref.
+j Sensible al
+ciclo
+50,00 57,17
+i Servicios de
+Comunicación
+8,00 8,27
+a Tecnología 25,00 26,67
+Acción Ref.
+k Defensivo 20,00 15,84
+s Consumo
+Defensivo
+6,00 0,00
+
+Estilo de inversión
+Estilo de acciones Port Ref.
+Precio/Beneficio 18,50 17,33
+
+Las 10 principales posiciones
+Activos % Nombre Tipo Sector Pais
+4,50 Apple Inc Acción Tecnología Estados Unidos
+3,90 Microsoft Corp Acción Tecnología Estados Unidos
+1,20 Nestle SA Acción Consumo Defensivo Suiza
+=====
+Informe a 15 Mar 2026
+Morningstar Rendimiento X-Ray
+Rentab. acum. % Port Ref.
+3 meses 1,50 0,52
+1 año 9,80 1,92
+3 Años Anualizado 11,20 2,78
+5 Años Anualizado -
+Año 3,10 1,29
+Rentab. por periodos % Mejor Peor
+1 año 30,00 (mar. 20-mar. 21) -10,00 (dic. 21-dic. 22)
+Estadísticas de Rentabilidad y Riesgo 3 años 5 años
+Volatilidad 12,50 14,72
+Ratio de Sharpe 0,90 0,75
+=====
+Informe a 15 Mar 2026
+Posiciones de Cartera
+Posiciones de Cartera
+Nombre Tipo Fecha de
+cartera
+Peso (%)
+Vanguard Global Stock Index Fund EUR Acc Fondo 28 feb. 2026 QQQQQ 9,80 11,20 - 0,18 100,00
+"""
+
+class TestXray(Base):
+    def test_analiza_el_informe(self):
+        from financebuddy import xray
+        d = xray.analizar(XRAY)
+        self.assertEqual(d["fecha"], "2026-03-15")
+        self.assertEqual(d["tipos"], {"acciones": 97.5, "renta_fija": 1.0, "efectivo": 1.5, "otro": 0.0, "no_clasificado": 0.0})
+        self.assertEqual(d["paises"][:2], [["Estados Unidos", 70.2], ["Japón", 6.1]])
+        self.assertEqual(len(d["paises"]), 4)
+        self.assertEqual(d["regiones"], {"Europa": 14.0, "América": 74.0, "Asia": 12.0})
+        self.assertEqual(d["sectores"][0], ["Tecnología", 25.0])
+        self.assertEqual(dict(d["sectores"])["Consumo Cíclico"], 10.0)  # nombre partido en dos líneas
+        self.assertEqual(d["grupos_sector"], {"ciclico": 30.0, "sensible": 50.0, "defensivo": 20.0})  # «Cíclico» ≠ «Consumo Cíclico»
+        self.assertEqual(d["top"][2], {"peso": 1.2, "nombre": "Nestle SA", "tipo": "Acción", "sector": "Consumo Defensivo", "pais": "Suiza"})
+        self.assertEqual(d["rentabilidad"], {"3m": 1.5, "1a": 9.8, "3a": 11.2, "ytd": 3.1})
+        self.assertEqual(d["riesgo"], {"volatilidad": 12.5, "sharpe": 0.9})
+        self.assertEqual(d["ratios"], {"per": 18.5})
+        self.assertEqual(d["fondos"], [{"nombre": "Vanguard Global Stock Index Fund EUR Acc", "tipo": "Fondo", "estrellas": 5, "r1": 9.8, "r3": 11.2,
+                                        "r5": None, "ter": 0.18, "peso": 100.0}])
+        with self.assertRaises(ValueError): xray.analizar("Un PDF cualquiera\nsin nada que ver")
+
+    def test_importa_y_enlaza_con_tu_activo(self):
+        from financebuddy import xray
+        self.a.guardar("activo", {"nombre": "Vanguard Global Stock Index", "clase": "fondo", "aportado_inicial": 0})
+        ruta = os.path.join(self.c.inversion, "x-ray.pdf")
+        with open(ruta, "wb") as fh: fh.write(b"%PDF-1.4")
+        original = xray.texto_pdf
+        xray.texto_pdf = lambda origen: XRAY
+        try: r = IM.importar_archivo(self.a, self.c, ruta)
+        finally: xray.texto_pdf = original
+        self.assertTrue(r["ok"]); self.assertEqual(r["tipo"], "xray")
+        self.assertIn("97,5 % acciones", r["mensaje"])
+        c = self.a.todos("composicion")[0]
+        self.assertEqual((c["fecha"], c["activos"]), ("2026-03-15", ["Vanguard Global Stock Index"]))
+        self.assertEqual(next(a for a in self.a.todos("activo") if a["nombre"].startswith("Vanguard"))["ter"], 0.18)  # gastos corrientes del informe
+        self.assertFalse(os.path.exists(ruta))  # a Procesados
+        # Renombrar el activo actualiza el enlace
+        a = next(a for a in self.a.todos("activo") if a["nombre"].startswith("Vanguard"))
+        self.a.guardar("activo", {**a, "nombre": "Vanguard Global"}, a["id"])
+        self.assertEqual(self.a.todos("composicion")[0]["activos"], ["Vanguard Global"])
+
 class TestParticipaciones(Base):
     def test_participaciones_y_tipo(self):
         self.assertEqual((IM.participaciones("ETF ETFS Copper ETC @ 2", -90.6), IM.participaciones("ETF ETFS Copper ETC @ 2", 90.6)), (-2.0, 2.0))

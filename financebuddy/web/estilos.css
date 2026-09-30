@@ -414,3 +414,12 @@ body.theme-dark .fb-grupo{border-color:transparent}
  #menu .lg{display:none}
  #menu .ct{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 }
+/* ── qué hay dentro de tus fondos (X-Ray) ── */
+.fin-grid.fb-xray{grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));gap:8px 28px;margin:14px 0 0}
+.fb-xray .fb-bloque{min-width:0}
+.fin .fb-xray h4,.fin .fb-expo h4{margin:6px 0 6px;font-size:.92em;font-weight:720}
+.fb-xray .fin-meter{margin:8px 0}
+.fb-expo{margin:14px 0 4px}
+.fin .fb-cubre{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0 0 10px}
+.fb-top .fb-av{font-size:.9em;font-weight:800;color:var(--ink-2)}
+.fin-panel .fb-alerta{background:var(--surface-2);border-color:transparent}

@@ -67,7 +67,7 @@ class App:
     def subir(self, d):
         nombre = os.path.basename(str(d.get("nombre") or "archivo.csv"))
         nombre = re.sub(r'[\\/:*?"<>|]', "_", nombre)
-        if not nombre.lower().endswith(IM.EXTENSIONES): return {"ok": False, "mensaje": "Solo se admiten archivos Excel (.xlsx, .xls) o CSV."}
+        if not nombre.lower().endswith(IM.EXTENSIONES): return {"ok": False, "mensaje": "Solo se admiten archivos Excel (.xlsx, .xls), CSV o el informe X-Ray (PDF)."}
         datos = base64.b64decode(d.get("contenido") or "")
         if len(datos) > MAX_SUBIDA: return {"ok": False, "mensaje": "El archivo es demasiado grande."}
         tipo = d.get("tipo") if d.get("tipo") in ("banco", "inversion") else None

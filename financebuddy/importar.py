@@ -13,7 +13,7 @@ class NecesitaPerfil(Exception):
 class NecesitaCuenta(Exception):
     def __init__(self, info): super().__init__("falta la cuenta"); self.info = info
 
-EXTENSIONES = (".xlsx", ".xls", ".xlsm", ".csv", ".txt")
+EXTENSIONES = (".xlsx", ".xls", ".xlsm", ".csv", ".txt", ".pdf")
 
 # ───────────── lectura con perfil ─────────────
 def leer(ruta, alm, tipo=None, perfil_nombre=None, info=None):
@@ -289,13 +289,19 @@ def tipo_de(ruta, alm, carpeta):
     return rec[0]["tipo"] if rec else None
 
 def importar_archivo(alm, carpeta, ruta, tipo=None, cuenta=None, perfil_nombre=None):
-    """Importa un archivo y, si va bien, lo mueve a Importar\\Procesados. Lanza NecesitaPerfil / NecesitaCuenta."""
-    tipo = tipo or tipo_de(ruta, alm, carpeta)
-    if tipo is None:
-        raise NecesitaPerfil({"archivo": os.path.basename(ruta), "tipo": None, **L.muestra_para_configurar(L.filas_crudas(ruta))})
-    alm.copia(carpeta.copias)
-    r = (importar_banco if tipo == "banco" else importar_inversion)(alm, ruta, cuenta, perfil_nombre)
-    if r.get("ok"):
+    """Importa un archivo y, si va bien, lo mueve a Importar\\Procesados. Lanza NecesitaPerfil / NecesitaCuenta.
+    Un PDF es el informe X-Ray de Morningstar (composición de tus fondos, ver xray.py)."""
+    if ruta.lower().endswith(".pdf"):
+        from . import xray
+        alm.copia(carpeta.copias)
+        r = xray.importar(alm, ruta)
+    else:
+        tipo = tipo or tipo_de(ruta, alm, carpeta)
+        if tipo is None:
+            raise NecesitaPerfil({"archivo": os.path.basename(ruta), "tipo": None, **L.muestra_para_configurar(L.filas_crudas(ruta))})
+        alm.copia(carpeta.copias)
+        r = (importar_banco if tipo == "banco" else importar_inversion)(alm, ruta, cuenta, perfil_nombre)
+    if r.get("ok") and r.get("tipo") != "xray":
         t = emparejar_traspasos(alm)
         if t:
             antes = r.get("dudas", 0)
@@ -303,6 +309,7 @@ def importar_archivo(alm, carpeta, ruta, tipo=None, cuenta=None, perfil_nombre=N
             r["dudas"] = sum(1 for p in alm.todos("pendiente") if p.get("archivo") == os.path.basename(ruta) and p.get("cuenta") == r.get("cuenta"))
             if antes: r["mensaje"] = r["mensaje"].replace(f", {antes} por revisar", f", {r['dudas']} por revisar" if r["dudas"] else "")
             r["mensaje"] += f" · {t} traspaso{'s' if t > 1 else ''} entre tus cuentas reconocido{'s' if t > 1 else ''}"
+    if r.get("ok"):
         destino = os.path.join(carpeta.procesados, f"{datetime.date.today().isoformat()} {os.path.basename(ruta)}")
         n = 2
         while os.path.exists(destino):

@@ -89,8 +89,8 @@ function vistaImportar() {
   const radios = [["", "Detectar solo"], ["banco", "Extracto del banco"], ["inversion", "Movimientos del bróker"]].map(([v, t]) => {
     const l = tipoSel.createEl("label"); const r = l.createEl("input", { attr: { type: "radio", name: "tipoimp" } }); r.checked = v === tipo; r.onchange = () => (tipo = v); l.appendText(t); return r;
   });
-  const zona = pS.createDiv({ cls: "fb-zona", text: "Arrastra aquí el Excel o CSV, o pulsa para elegirlo" });
-  const inp = pS.createEl("input", { attr: { type: "file", accept: ".xlsx,.xls,.csv,.txt", multiple: "" } }); inp.style.display = "none";
+  const zona = pS.createDiv({ cls: "fb-zona", text: "Arrastra aquí el Excel o CSV (o el PDF X-Ray de tus fondos), o pulsa para elegirlo" });
+  const inp = pS.createEl("input", { attr: { type: "file", accept: ".xlsx,.xls,.csv,.txt,.pdf", multiple: "" } }); inp.style.display = "none";
   zona.onclick = () => inp.click();
   const subir = async (files) => {
     for (const f of files) {
@@ -124,6 +124,7 @@ function vistaImportar() {
     filasDato(c, [
       { l: "Banco", s: "En la web o la app de tu banco: Cuentas → Movimientos → elige las fechas → Descargar / Exportar en Excel (o CSV). Mejor si incluye la columna de saldo: así la app comprueba que no falta nada.", v: "" },
       { l: "Bróker", s: "Busca los movimientos de la cuenta de efectivo (compras, ventas, intereses) y expórtalos en Excel o CSV.", v: "" },
+      { l: "Qué hay dentro de tus fondos", s: "El informe X-Ray de Morningstar (PDF). En MyInvestor: Cartera → X-Ray → descargar. Súbelo aquí y en Inversión verás sus países, sectores y mayores empresas.", v: "" },
       { l: "La primera vez", s: "Si la app no conoce el formato, te pedirá qué columna es la fecha, el concepto y el importe. Solo una vez por banco.", v: "" },
       { l: "Repetir no pasa nada", s: "Si importas dos veces el mismo periodo, lo ya importado se reconoce y se omite.", v: "" },
     ]);

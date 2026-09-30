@@ -81,7 +81,10 @@ class Almacen:
         for t, campo in modelo.REFERENCIAS[tipo]:
             for r in self.todos(t):
                 cambio = False
-                if campo.endswith("*"):  # claves de un mapa
+                if campo.endswith("[]"):  # elementos de una lista
+                    lista = r.get(campo[:-2]) or []
+                    if viejo in lista: r[campo[:-2]] = [nuevo if x == viejo else x for x in lista]; cambio = True
+                elif campo.endswith("*"):  # claves de un mapa
                     m = r.get(campo[:-1]) or {}
                     if viejo in m: m[nuevo] = m.pop(viejo); cambio = True
                 elif r.get(campo) == viejo: r[campo] = nuevo; cambio = True

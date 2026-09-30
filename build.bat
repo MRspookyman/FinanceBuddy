@@ -6,8 +6,8 @@ python -m unittest pruebas.test_importar pruebas.test_servidor || (echo Las prue
 python -m PyInstaller --noconfirm --clean --onefile --windowed --name FinanceBuddy ^
   --icon recursos\icono.ico ^
   --add-data "financebuddy\web;financebuddy\web" ^
-  --hidden-import openpyxl --hidden-import xlrd ^
-  --exclude-module tkinter --exclude-module PIL ^
+  --hidden-import openpyxl --hidden-import xlrd --hidden-import pypdf ^
+  --exclude-module tkinter --exclude-module PIL --exclude-module cryptography ^
   lanzar.py || exit /b 1
 echo.
 echo Listo: dist\FinanceBuddy.exe

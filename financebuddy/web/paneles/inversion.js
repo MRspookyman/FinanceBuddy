@@ -46,6 +46,7 @@ function vistaInversion() {
   tarjetaReparto(panel(g1, "Cómo está repartido"), I);
 
   tablaActivos(panel(root, "Tus activos", { text: "Editar", ruta: "#gestionar/activo" }), I);
+  queHayDentro(root, I);
 
   const g2 = root.createDiv({ cls: "fin-grid dos" });
   tarjetaAportaciones(panel(g2, "Lo que metes cada mes"));
@@ -89,6 +90,9 @@ function tarjetaReparto(p, I) {
   if (top && top[1] / total >= 0.6 && tipos.length > 1) p.createDiv({ cls: "fin-note", text: `El ${pct(top[1] / total)} está en ${(TIPO_ACTIVO[top[0]] || top[0]).toLowerCase()}.` });
 }
 
+// La rentabilidad anual (TIR) de algo que tienes desde hace semanas se dispara al anualizarla: solo con un año o más.
+const unAño = (f) => !!(f.desde && hoy.diff(f.desde, "days").days >= 365);
+
 function tablaActivos(p, I) {
   // Participaciones y precio medio solo si algún activo los tiene (el extracto del bróker los trae como «@ N»).
   const conPart = I.filas.some((f) => f.participaciones != null);
@@ -101,7 +105,7 @@ function tablaActivos(p, I) {
     eur(f.aportado, 0),
     (f.conValor ? "" : "≈ ") + eur(f.valor, 0),
     isFinite(f.gan) ? { text: `${eurS(f.gan, 0)} · ${pct(f.aportado > 0 ? f.gan / f.aportado : NaN, true)}`, cls: tone(f.gan) } : "—",
-    isFinite(f.tir) ? { text: pct(f.tir, true), cls: tone(f.tir) } : "—",
+    isFinite(f.tir) && unAño(f) ? { text: pct(f.tir, true), cls: tone(f.tir) } : "—",
     I.total > 0 ? pct(f.valor / I.total) : "—",
   ].filter((c) => c !== false));
   tabla(p, cols.filter(Boolean), filas);
@@ -142,4 +146,105 @@ function tarjetaSinInvertir(p, efectivo, INT) {
     const l = p.createDiv({ cls: "fb-lista" });
     for (const a of prox) item(l, { fecha: a.fecha, t: a.activo, s: a.recurrente, v: eur(a.importe, 0) });
   }
+}
+
+// ───────────── qué hay dentro de tus fondos (X-Ray de Morningstar) ─────────────
+const TIPO_XRAY = { acciones: "Acciones", renta_fija: "Renta fija", efectivo: "Efectivo", otro: "Otros" };
+const COLOR_XRAY = { acciones: SERIES[0], renta_fija: SERIES[5], efectivo: SERIES[2], otro: SERIES[6], cripto: SERIES[1], materia: SERIES[3], sin: "var(--ink-3)" };
+// El X-Ray más reciente (registro «composicion»).
+const composicion = () => [...registros("composicion")].sort((a, b) => String(b.fecha).localeCompare(String(a.fecha)))[0] || null;
+
+function queHayDentro(padre, I) {
+  const X = composicion();
+  if (!X) {
+    if (I.filas.some((f) => f.clase === "fondo" || f.clase === "etf")) {
+      const n = padre.createDiv({ cls: "fb-alerta info" });
+      n.createSpan({ cls: "i", text: "🔍" });
+      const t = n.createSpan();
+      t.appendText("¿Qué hay dentro de tus fondos? Sube el informe X-Ray de Morningstar (PDF) en ");
+      enlace(t, "Importar", "#importar");
+      t.appendText(" y verás sus países, sectores y mayores empresas. En MyInvestor: Cartera → X-Ray.");
+    }
+    return;
+  }
+  const D = X.datos || {};
+  const enlazados = new Set(X.activos || []);
+  const p = panel(padre, "Qué hay dentro de tus fondos", { text: `X-Ray del ${fechaCorta(X.fecha)}` });
+  // A qué parte de tu cartera se refiere y fondos del informe que aún no son activos tuyos
+  const cubre = I.filas.filter((f) => enlazados.has(f.nombre));
+  const nota = p.createDiv({ cls: "fin-note fb-cubre" });
+  if (cubre.length && I.total > 0) nota.appendText(`Describe ${cubre.map((f) => f.nombre).join(", ")}: el ${pct(sum(cubre.map((f) => f.valor)) / I.total)} de tu inversión.`);
+  else nota.appendText("Sus fondos aún no están entre tus activos.");
+  for (const f of (D.fondos || []).filter((f) => !(D.enlaces || {})[f.nombre])) {
+    const b = nota.createEl("button", { cls: "fb-btn mini", text: `Crear «${f.nombre}»` });
+    b.onclick = async () => {
+      const r = await FB.api("/api/guardar", { tipo: "activo", datos: { nombre: f.nombre, clase: f.tipo === "ETF" ? "etf" : "fondo", ter: f.ter, aportado_inicial: 0 } });
+      if (!r.ok) { FB.aviso(r.mensaje || "Error", true); return; }
+      await FB.api("/api/guardar", { tipo: "composicion", id: X.id, datos: { ...X, file: undefined, activos: [...enlazados, f.nombre], datos: { ...D, enlaces: { ...(D.enlaces || {}), [f.nombre]: f.nombre } } } });
+      FB.aviso("Activo creado ✓"); await FB.refrescar();
+    };
+  }
+  avisosConcentracion(p, D);
+  exposicionTotal(p, I, X);
+  const g = p.createDiv({ cls: "fin-grid dos fb-xray" });
+  const bloque = (titulo) => { const b = g.createDiv({ cls: "fb-bloque" }); b.createEl("h4", { text: titulo }); return b; };
+  const barras = (b, filas, color, max = 6) => {
+    const top = filas.slice(0, max), resto = 100 - sum(top.map((x) => x[1] || 0));
+    for (const [n, v] of top) meter(b, { nombre: n, valor: v, total: 100, color, fuerte: `${nf(v, 1, 1)} %` });
+    if (filas.length > max && resto > 0.5) b.createDiv({ cls: "fin-note", text: `Resto: ${nf(resto, 1, 1)} %` });
+  };
+  if (D.paises && D.paises.length) barras(bloque("Países (de las acciones)"), D.paises, SERIES[0], 5);
+  if (D.sectores && D.sectores.length) barras(bloque("Sectores"), D.sectores, SERIES[5], 6);
+  if (D.top && D.top.length) {
+    const b = bloque(`Las ${D.top.length} mayores empresas · ${nf(sum(D.top.map((x) => x.peso || 0)), 1, 1)} %`);
+    const l = b.createDiv({ cls: "fb-lista fb-top" });
+    for (const x of D.top) item(l, { av: { icono: (x.nombre || "?").charAt(0), sm: true }, t: x.nombre, s: [x.sector, x.pais].filter(Boolean).join(" · "), v: `${nf(x.peso, 2, 2)} %` });
+  }
+  const b = bloque("Rentabilidad y riesgo del fondo");
+  const R = D.rentabilidad || {}, K = D.riesgo || {}, f0 = (D.fondos || [])[0] || {};
+  const tirMia = cubre.length === 1 && isFinite(cubre[0].tir) && unAño(cubre[0]) ? cubre[0].tir : NaN;
+  filasDato(b, [
+    R["1a"] != null ? { l: "Último año", v: `${nf(R["1a"], 1, 1)} %`, t: tone(R["1a"]), s: isFinite(tirMia) ? `la tuya: ${pct(tirMia, true)} al año (según cuándo metiste cada euro)` : "" } : null,
+    R["3a"] != null ? { l: "3 años (al año)", v: `${nf(R["3a"], 1, 1)} %`, t: tone(R["3a"]) } : null,
+    R["5a"] != null ? { l: "5 años (al año)", v: `${nf(R["5a"], 1, 1)} %`, t: tone(R["5a"]) } : null,
+    K.volatilidad != null ? { l: "Volatilidad (3 años)", v: `${nf(K.volatilidad, 1, 1)} %`, h: "Cuánto sube y baja de un año a otro. Por encima del 15 % son vaivenes fuertes: lo normal en bolsa; en renta fija suele estar por debajo del 5 %." } : null,
+    f0.ter != null ? { l: "Gastos corrientes", v: `${nf(f0.ter, 2, 2)} % al año`, s: f0.estrellas ? "★".repeat(f0.estrellas) + " Morningstar" : "" } : null,
+  ]);
+  p.createDiv({ cls: "fin-note", text: "Datos del informe de Morningstar: lo que el fondo tenía en su última publicación. Rentabilidades pasadas no garantizan las futuras." });
+}
+
+// Avisos cuando mucho depende de una sola cosa (país, sector o pocas empresas).
+function avisosConcentracion(p, D) {
+  const out = [];
+  const pais = (D.paises || [])[0], sector = (D.sectores || [])[0], top = sum((D.top || []).map((x) => x.peso || 0));
+  if (pais && pais[1] >= 60) out.push(`El ${nf(pais[1], 1, 1)} % de las acciones es de ${pais[0]}.`);
+  if (sector && sector[1] >= 30) out.push(`El ${nf(sector[1], 1, 1)} % está en ${sector[0].toLowerCase()}.`);
+  if (top >= 30) out.push(`Las ${(D.top || []).length} mayores empresas son el ${nf(top, 1, 1)} %.`);
+  if (!out.length) return;
+  const a = p.createDiv({ cls: "fb-alerta" });
+  a.createSpan({ cls: "i", text: "⚖️" });
+  a.createSpan({ text: `Muy concentrado: ${out.join(" ")} No es malo en sí, pero todo depende de lo mismo.` });
+}
+
+// Toda tu inversión mirando dentro de los fondos: lo que describe el X-Ray por sus tipos de activo; lo demás, por su tipo.
+function exposicionTotal(p, I, X) {
+  if (!(I.total > 0)) return;
+  const D = X.datos || {}, enl = new Set(X.activos || []), t = D.tipos || {};
+  const tot = sum(Object.keys(TIPO_XRAY).map((k) => t[k] || 0)) || 100;
+  const parte = new Map();
+  const suma = (k, v) => parte.set(k, (parte.get(k) || 0) + v);
+  for (const f of I.filas) {
+    if (enl.has(f.nombre)) for (const k of Object.keys(TIPO_XRAY)) suma(k, (f.valor * (t[k] || 0)) / tot);
+    else if (f.clase === "cripto" || f.clase === "materia") suma(f.clase, f.valor);
+    else suma("sin", f.valor);
+  }
+  const NOMBRE = { ...TIPO_XRAY, cripto: "Cripto", materia: "Materias primas", sin: "Otros fondos (sin X-Ray)" };
+  const filas = [...parte].filter(([, v]) => v > 0.005 * I.total).sort((a, b) => b[1] - a[1]);
+  const b = p.createDiv({ cls: "fb-expo" });
+  b.createEl("h4", { text: "Tu inversión entera, mirando dentro de los fondos" });
+  stack(b, filas.map(([k, v]) => ({ nombre: NOMBRE[k], valor: v, color: COLOR_XRAY[k] })));
+  leyenda(b, filas.map(([k, v]) => [`${NOMBRE[k]} ${pct(v / I.total)}`, COLOR_XRAY[k]]));
+  const pais = (D.paises || [])[0];
+  const acc = parte.get("acciones") || 0;
+  if (pais && acc > 0) b.createDiv({ cls: "fin-note", text: `≈ ${eur((acc * pais[1]) / 100, 0)} de tu dinero está en empresas de ${pais[0]} (${pct((acc * pais[1]) / 100 / I.total)} de tu inversión).` });
 }

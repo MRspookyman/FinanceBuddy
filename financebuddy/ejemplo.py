@@ -31,6 +31,22 @@ PENDIENTES = [  # días antes de hoy, texto del extracto, importe, clase, catego
 
 PENDIENTES_BROKER = [(26, "ISHARES PHYSICAL GOLD ETC @ 1", -48.9), (5, "ISHARES PHYSICAL GOLD ETC @ 1", -49.6)]
 
+XRAY_EJEMPLO = {
+    "tipos": {"acciones": 99.2, "renta_fija": 0.0, "efectivo": 0.8, "otro": 0.0, "no_clasificado": 0.0},
+    "paises": [["Estados Unidos", 71.5], ["Japón", 5.6], ["Reino Unido", 3.7], ["Canadá", 3.1], ["Francia", 2.7], ["Suiza", 2.4], ["Alemania", 2.1]],
+    "regiones": {"Europa": 15.8, "América": 74.9, "Asia": 9.3},
+    "sectores": [["Tecnología", 26.4], ["Servicios Financieros", 16.2], ["Industria", 10.9], ["Salud", 10.1], ["Consumo Cíclico", 10.0],
+                 ["Servicios de Comunicación", 8.3], ["Consumo Defensivo", 5.8], ["Energía", 3.6], ["Materiales Básicos", 3.3], ["Servicios Públicos", 2.7], ["Inmobiliario", 2.1]],
+    "top": [{"peso": 5.1, "nombre": "Apple Inc", "tipo": "Acción", "sector": "Tecnología", "pais": "Estados Unidos"},
+            {"peso": 4.6, "nombre": "Microsoft Corp", "tipo": "Acción", "sector": "Tecnología", "pais": "Estados Unidos"},
+            {"peso": 4.2, "nombre": "NVIDIA Corp", "tipo": "Acción", "sector": "Tecnología", "pais": "Estados Unidos"},
+            {"peso": 2.5, "nombre": "Amazon.com Inc", "tipo": "Acción", "sector": "Consumo Cíclico", "pais": "Estados Unidos"},
+            {"peso": 1.6, "nombre": "Meta Platforms Inc", "tipo": "Acción", "sector": "Servicios de Comunicación", "pais": "Estados Unidos"}],
+    "rentabilidad": {"1a": 14.2, "3a": 9.8, "5a": 11.5}, "riesgo": {"volatilidad": 14.1, "sharpe": 0.8},
+    "fondos": [{"nombre": "Fondo indexado MSCI World", "tipo": "Fondo", "estrellas": 4, "r1": 14.2, "r3": 9.8, "r5": 11.5, "ter": 0.12, "peso": 100.0}],
+    "enlaces": {"Fondo indexado MSCI World": "Fondo indexado MSCI World"},
+}
+
 def crear(raiz, hoy=None, meses=5, reemplazar=True):
     """Crea (o recrea) una carpeta de datos de ejemplo. hoy: AAAA-MM-DD (por defecto, hoy)."""
     if reemplazar and os.path.exists(os.path.join(raiz, "datos.db")):
@@ -107,6 +123,8 @@ def crear(raiz, hoy=None, meses=5, reemplazar=True):
         for f, a in aport: alm.guardar("aportacion", {"fecha": f.isoformat(), **a})
         for a in alm.todos("activo"):
             alm.guardar("activo", {**a, "valor": valores[a["nombre"]], "fecha_valor": hoy.isoformat()}, a["id"])
+        # Un informe X-Ray (inventado) del fondo: qué hay dentro (Inversión → Qué hay dentro de tus fondos)
+        alm.guardar("composicion", {"fecha": hoy.isoformat(), "nombre": "x-ray-ejemplo.pdf", "activos": ["Fondo indexado MSCI World"], "datos": XRAY_EJEMPLO})
         # Unas dudas «por revisar», como las que deja una importación (no cuentan en los cálculos hasta resolverlas)
         for dias, texto, imp, clase, cat, concepto, duda in PENDIENTES:
             f = (hoy - datetime.timedelta(days=dias)).isoformat()
