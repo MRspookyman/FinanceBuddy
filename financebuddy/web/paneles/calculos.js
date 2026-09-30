@@ -295,7 +295,7 @@ function avisos() {
   if (nArch) add("warn", `${nArch} archivo${nArch > 1 ? "s" : ""} en la carpeta Importar sin procesar`, "#importar");
   const K = conciliacion();
   const desc = K ? K.filas.filter((f) => Math.abs(f.dif) > 1) : [];
-  if (desc.length) add("warn", `No cuadra entre el ${K.desde.toFormat("dd/MM")} y el ${K.hasta.toFormat("dd/MM")}: ${desc.map((f) => `${f.nombre} ${eurS(f.dif)}`).join(", ")} · falta o sobra algún movimiento`, "#patrimonio");
+  if (desc.length) add("warn", `No cuadra entre el ${K.desde.toFormat("dd/MM")} y el ${K.hasta.toFormat("dd/MM")}: ${desc.map((f) => `${f.nombre} ${eurS(f.dif)}`).join(", ")} · falta o sobra algún movimiento`, "#cerrar");
   const P = patrimonio();
   // Los cierres se piden desde que se usa la app (primer registro de patrimonio), no desde el historial importado.
   const primerMes = P.length ? keyDe(P[0].fecha) : null;
@@ -311,16 +311,16 @@ function avisos() {
   const sinIni = A.filter((a) => a.aportadoIni == null);
   if (sinIni.length) add("info", `Falta cuánto habías aportado antes a ${sinIni.map((a) => a.nombre).join(", ")} · sin rentabilidad`, "#gestionar/activo");
   const F = prevision();
-  if (F.conRegistro && F.minimo && F.minimo.saldo < 0) add("warn", `Tu dinero en cuentas bajaría a ${eur(F.minimo.saldo, 0)} en ${mesLbl(F.minimo.key).toLowerCase()}`, "#prevision");
+  if (F.conRegistro && F.minimo && F.minimo.saldo < 0) add("warn", `Tu dinero en cuentas bajaría a ${eur(F.minimo.saldo, 0)} en ${mesLbl(F.minimo.key).toLowerCase()}`, "#inicio");
   if (F.agota) {
     const meses = Math.round(mesDT(F.agota.key).diff(mesDT(hoyKey), "months").months);
-    add(meses <= 1 ? "warn" : "info", `El dinero sin invertir de ${nombresBroker()} se acaba en ${mesLbl(F.agota.key).toLowerCase()}: ese mes faltan ${eur(F.agota.apoBanco, 0)} para las aportaciones · pasa dinero desde el banco antes`, "#prevision");
+    add(meses <= 1 ? "warn" : "info", `El dinero sin invertir de ${nombresBroker()} se acaba en ${mesLbl(F.agota.key).toLowerCase()}: ese mes faltan ${eur(F.agota.apoBanco, 0)} para las aportaciones · pasa dinero desde el banco antes`, "#inicio");
   }
   // Ritmo del gasto variable del mes en curso (desde el día 7, mientras no se haya pasado ya: eso lo dice la barra).
   const Mh = finMes(hoyKey), vari = gastoVariable(Mh), d = hoy.day, dm = hoy.daysInMonth;
   if (limiteVar > 0 && d >= 7 && d < dm && vari <= limiteVar) {
     const proy = (vari / d) * dm;
-    if (proy > limiteVar * 1.05) add("warn", `A este ritmo acabarás ${mesLbl(hoyKey).toLowerCase()} con ${eur(proy, 0)} de gasto variable (límite ${eur(limiteVar, 0)}; llevas ${eur(vari, 0)})`, "#gastos");
+    if (proy > limiteVar * 1.05) add("warn", `A este ritmo acabarás ${mesLbl(hoyKey).toLowerCase()} con ${eur(proy, 0)} de gasto variable (límite ${eur(limiteVar, 0)}; llevas ${eur(vari, 0)})`, "#movimientos");
   }
   // Categorías disparadas este mes: ≥ 2× su media de los meses anteriores con datos (y al menos 50 € más).
   const previos = mesesHasta(mesAnterior(hoyKey), 3).filter(conDatos);
@@ -330,7 +330,7 @@ function avisos() {
     for (const [cat, v] of actual) {
       const med = media(antes.map((m) => m.get(cat) || 0));
       if ((med > 0 && v >= 2 * med && v - med >= 50) || (med === 0 && v >= 150))
-        add("info", `${cat}: ${eur(v, 0)} este mes, ${med > 0 ? `${nf(v / med, 1, 1)}× tu media (${eur(med, 0)})` : "sin gasto los meses anteriores"}`, "#gastos");
+        add("info", `${cat}: ${eur(v, 0)} este mes, ${med > 0 ? `${nf(v / med, 1, 1)}× tu media (${eur(med, 0)})` : "sin gasto los meses anteriores"}`, "#movimientos");
     }
   }
   // Recordatorios con fecha.

@@ -4,12 +4,12 @@ const titulo = (t, sub, conNav = true) => cabecera(t, false, sub);
 
 // ───────────── primeros pasos ─────────────
 function vistaBienvenida() {
-  root.createDiv({ cls: "fin-head" }).createDiv().createEl("h2", { text: "Bienvenido a FinanceBuddy" });
-  const intro = root.createDiv({ cls: "fin-panel" });
-  intro.createEl("p", { text: "Tus finanzas en tu ordenador: importas los extractos de tu banco (Excel o CSV) y la app te dice cuánto puedes gastar, a dónde va tu dinero y qué hacer con lo que sobra. Nada sale de tu ordenador." });
-  const pe = intro.createDiv({ cls: "fin-note" });
-  pe.appendText("¿Quieres verla antes con datos inventados? ");
-  accion(pe, "Probar con datos de ejemplo", async () => { const r = await FB.api("/api/ejemplo", { activar: true }); if (r.ok) { await FB.recargar(); FB.ir("#resumen"); } else FB.aviso(r.mensaje, true); });
+  const intro = root.createDiv({ cls: "fb-bienvenida" });
+  intro.createEl("h2", { text: "Hola, soy FinanceBuddy 👋" });
+  intro.createEl("p", { text: "Importas los extractos de tu banco (Excel o CSV) y te digo cuánto puedes gastar, a dónde va tu dinero y qué hacer con lo que sobra. Todo se queda en tu ordenador." });
+  const pe = intro.createDiv();
+  pe.appendText("¿Prefieres verla antes con datos inventados? ");
+  accion(pe, "Probar con datos de ejemplo", async () => { const r = await FB.api("/api/ejemplo", { activar: true }); if (r.ok) { await FB.recargar(); FB.ir("#inicio"); } else FB.aviso(r.mensaje, true); });
 
   const cs = [{ nombre: "Cuenta corriente", tipo: "corriente", extracto: true, saldo: "" }, { nombre: "Ahorro", tipo: "ahorro", extracto: false, saldo: "" }];
   const p1 = panel(root, "1 · Tus cuentas y cuánto tienes hoy en cada una");
@@ -353,13 +353,13 @@ function pintarFijos(cont, r) {
 // ───────────── apuntar a mano ─────────────
 function vistaApuntar() {
   titulo("Apuntar un movimiento", "Un gasto en efectivo, algo que aún no ha llegado al banco…");
-  formulario(root, "movimiento", null, { volver: "#gastos", avisoGuardado: "Apuntado ✓", textoGuardar: "Apuntar" });
+  formulario(root, "movimiento", null, { volver: "#movimientos", avisoGuardado: "Apuntado ✓", textoGuardar: "Apuntar" });
   root.createDiv({ cls: "fin-note", text: "Si luego importas el extracto y el movimiento está (misma fecha e importe), no se duplica." });
 }
 
 // ───────────── cerrar el mes ─────────────
 function vistaCerrar() {
-  titulo("Cerrar el mes", "Anota tus saldos del último día: así la app comprueba que no falta nada y sigue tu patrimonio");
+  titulo("Actualizar saldos", "Anota lo que tienes en cada cuenta (mejor el último día del mes): así la app comprueba que no falta nada");
   const P = patrimonio();
   const ant = mesAnterior(hoyKey);
   const primer = P.length ? keyDe(P[0].fecha) : hoyKey;
@@ -423,7 +423,7 @@ function vistaCerrar() {
     b.disabled = false;
     if (!r.ok) { res.innerHTML = ""; mensaje(res, r.mensaje || "Error", "err"); return; }
     FB.aviso(r.mensaje);
-    await FB.recargar(); FB.ir("#patrimonio");
+    await FB.recargar(); FB.ir("#inicio");
   };
   // Meses cerrados: resumen de cada uno (calculado con los movimientos) y sus notas
   const C = [...cierres()].sort((a, b) => String(b.mes).localeCompare(String(a.mes)));
@@ -452,7 +452,7 @@ function vistaValores() {
   b.onclick = async () => {
     const valores = {}; for (const [n, i] of Object.entries(ins)) if (i.value !== "") valores[n] = i.value;
     const r = await FB.api("/api/valores", { fecha: iF.value, valores });
-    if (r.ok) { FB.aviso(r.mensaje); await FB.recargar(); FB.ir("#inversion"); } else mensaje(p, r.mensaje, "err");
+    if (r.ok) { FB.aviso(r.mensaje); await FB.recargar(); FB.ir("#inicio"); } else mensaje(p, r.mensaje, "err");
   };
   enlace(p.createDiv({ cls: "fin-note" }), "Editar o añadir activos →", "#gestionar/activo");
 }
@@ -464,7 +464,7 @@ function vistaAjustes() {
     const e = panel(root, "Estás viendo datos de ejemplo");
     e.createDiv({ cls: "fin-note", text: "Son inventados. Cuando quieras, vuelve a tus datos." });
     const b = e.createEl("button", { cls: "fb-btn", text: "Volver a mis datos" });
-    b.onclick = async () => { await FB.api("/api/ejemplo", { activar: false }); await FB.recargar(); FB.ir("#resumen"); };
+    b.onclick = async () => { await FB.api("/api/ejemplo", { activar: false }); await FB.recargar(); FB.ir("#inicio"); };
   }
   const g = rejilla();
   const pL = panel(g, "Tu límite de gasto variable");
@@ -474,10 +474,33 @@ function vistaAjustes() {
   const bL = f.createEl("button", { cls: "fb-btn", text: "Guardar" });
   bL.onclick = async () => { await FB.api("/api/config", { limite_variable: iL.value }); FB.aviso("Guardado ✓"); await FB.recargar(); render(); };
 
-  const pG = panel(g, "Tus datos");
-  filasDato(pG, [{ l: "Detectar fijos y de dónde viene tu dinero", ruta: "#fijos", v: "" }, ...["cuenta", "categoria", "recurrente", "activo", "objetivo", "recordatorio", "regla", "perfil", "movimiento", "aportacion", "patrimonio", "cierre"].map((t) => ({
-    l: FORMS[t].plural, ruta: `#gestionar/${t}`, v: String((DB.registros[t] || []).length),
-  }))]);
+  const pG = panel(g, "Lo más usado");
+  const cnt = (t) => (DB.registros[t] || []).length;
+  const accesos = (padre, lista) => {
+    const box = padre.createDiv({ cls: "fb-accesos" });
+    for (const [ic, t, s, ruta] of lista) {
+      const a = box.createEl("a", { cls: "fb-acceso internal-link", href: ruta });
+      const av = a.createDiv({ cls: "fb-av", text: ic }); setVar(av, "--cc", "var(--brand)");
+      const d = a.createDiv(); d.createDiv({ cls: "t", text: t }); d.createDiv({ cls: "s", text: s });
+    }
+  };
+  accesos(pG, [
+    ["🔍", "Detectar fijos", "nóminas, alquiler, recibos y de dónde viene tu dinero", "#fijos"],
+    ["🧾", "Actualizar saldos", "cierra el mes: lo que tienes en cada cuenta", "#cerrar"],
+  ]);
+  const pD = panel(root, "Tus datos");
+  accesos(pD, [
+    ["🔁", "Fijos", `${cnt("recurrente")} ingresos y gastos que se repiten`, "#gestionar/recurrente"],
+    ["💳", "Cuentas", `${cnt("cuenta")} cuentas`, "#gestionar/cuenta"],
+    ["🏷️", "Categorías", `${cnt("categoria")} categorías`, "#gestionar/categoria"],
+    ["🧠", "Reglas", "cómo se clasifica cada comercio", "#gestionar/regla"],
+    ["🌱", "Inversión", `${cnt("activo")} activos · actualizar su valor`, "#valores"],
+    ["🎯", "Objetivos", `${cnt("objetivo")} metas de ahorro`, "#gestionar/objetivo"],
+    ["⏰", "Recordatorios", "renta, ITV, seguros anuales…", "#gestionar/recordatorio"],
+    ["📄", "Formatos de archivo", "cómo se lee el Excel de cada banco", "#gestionar/perfil"],
+    ["📒", "Todos los movimientos", `${cnt("movimiento")} registrados`, "#gestionar/movimiento"],
+    ["📥", "Compras de inversión", `${cnt("aportacion")} aportaciones`, "#gestionar/aportacion"],
+  ]);
 
   const pC = panel(root, "Carpeta de datos y copias de seguridad");
   pC.createDiv({ cls: "fin-note", text: `Tus datos están en ${DB.info.carpeta} (archivo datos.db). Cada día que abres la app se guarda una copia en la carpeta Copias (las 30 últimas).` });
@@ -494,7 +517,7 @@ function vistaAjustes() {
   const fr2 = det2.createDiv({ cls: "fb-fila" });
   const iC = fr2.createEl("input", { attr: { type: "text", placeholder: "C:\\Users\\…\\FinanceBuddy" } }); iC.value = DB.info.carpeta;
   const bC = fr2.createEl("button", { cls: "fb-btn sec", text: "Cambiar" });
-  bC.onclick = async () => { const r = await FB.api("/api/carpeta", { carpeta: iC.value }); FB.aviso(r.mensaje || "Hecho", !r.ok); await FB.recargar(); FB.ir("#resumen"); };
+  bC.onclick = async () => { const r = await FB.api("/api/carpeta", { carpeta: iC.value }); FB.aviso(r.mensaje || "Hecho", !r.ok); await FB.recargar(); FB.ir("#inicio"); };
   det2.createDiv({ cls: "fin-note", text: "Si la carpeta no tiene datos, se empieza de cero allí (tus datos actuales siguen en la carpeta de antes)." });
   const det3 = pC.createEl("details"); det3.createEl("summary", { text: "Borrar todos los datos" });
   det3.createDiv({ cls: "fin-note", text: "Se guarda una copia antes. Escribe BORRAR para confirmar." });
@@ -555,14 +578,14 @@ function vistaEditar() {
 // ───────────── render ─────────────
 const TODAS = { ...VISTAS, bienvenida: vistaBienvenida, importar: vistaImportar, revisar: vistaRevisar, apuntar: vistaApuntar, cerrar: vistaCerrar,
   valores: vistaValores, ajustes: vistaAjustes, gestionar: vistaGestionar, editar: vistaEditar, fijos: vistaFijos };
-const TITULOS = { resumen: "Resumen", gastos: "Gastos", prevision: "Previsión", inversion: "Inversión", patrimonio: "Patrimonio", objetivos: "Objetivos",
+const TITULOS = { inicio: "Inicio", movimientos: "Movimientos",
   bienvenida: "Bienvenida", importar: "Importar", revisar: "Por revisar", apuntar: "Apuntar", cerrar: "Cerrar el mes", valores: "Valores", ajustes: "Ajustes", gestionar: "Ajustes", editar: "Editar", fijos: "Fijos" };
 function render() {
   _movs = _movsMes = _aports = _objs = _pat = _cuentas = _recs = _activos = _cats = undefined; _finMes = new Map();
   root.empty();
   const sinConfigurar = !cuentas().length && !["bienvenida", "ajustes", "gestionar", "editar"].includes(vista);
-  (sinConfigurar ? vistaBienvenida : TODAS[vista] || vistaResumen)();
-  document.title = "FinanceBuddy · " + (TITULOS[sinConfigurar ? "bienvenida" : vista] || "Resumen");
+  (sinConfigurar ? vistaBienvenida : TODAS[vista] || vistaInicio)();
+  document.title = "FinanceBuddy · " + (TITULOS[sinConfigurar ? "bienvenida" : vista] || "Inicio");
 }
 render();
 // Para las pruebas automáticas.

@@ -12,7 +12,7 @@ const polar = (v) => (v >= 0 ? GOOD : BAD);
 
 const root = FB.container.createDiv({ cls: "fin" });
 const setVar = (el, k, v) => (el.style.setProperty ? el.style.setProperty(k, v) : (el.style[k] = v));
-// Enlace a otra pantalla de la app: «#gastos», «#editar/movimiento/12»…
+// Enlace a otra pantalla de la app: «#movimientos», «#editar/movimiento/12»…
 const enlace = (padre, texto, ruta) => padre.createEl("a", { cls: "internal-link", text: texto, href: ruta || "#" });
 const accion = (padre, texto, fn, title) => {
   const a = padre.createEl("a", { cls: "fin-link", text: texto, href: "#" });
@@ -21,22 +21,35 @@ const accion = (padre, texto, fn, title) => {
   return a;
 };
 
-// Navegación: los paneles (izquierda) y las tareas (derecha). Objetivos va dentro de Patrimonio.
-const PANELES = () => [
-  ["resumen", "Resumen"], ["gastos", "Gastos"], ["prevision", "Previsión"], ["inversion", "Inversión"], ["patrimonio", "Patrimonio"],
-];
-const TAREAS = () => {
-  const n = (DB.pendientes || []).length;
-  return [["importar", "Importar"], ["revisar", n ? `Por revisar (${n})` : "Por revisar"], ["cerrar", "Cerrar el mes"], ["ajustes", "Ajustes"]];
-};
+// Icono y color de cada categoría (las que cree el usuario reciben uno genérico y un color estable).
+const CAT_ICONO = { Vivienda: "🏠", Suministros: "💡", Seguros: "🛡️", Suscripciones: "📺", Supermercado: "🛒", "Comer fuera": "🍽️", Ocio: "🎉",
+  Transporte: "🚌", Coche: "🚗", Salud: "💊", Compras: "🛍️", Hogar: "🛋️", Viajes: "✈️", "Formación": "📚", Regalos: "🎁", "Cuidado personal": "💇",
+  Mascotas: "🐾", Efectivo: "💶", Comisiones: "🏦", Otros: "📦", "Nómina": "💼", "Otros ingresos": "💰", Apuestas: "🎲", Videojuegos: "🎮", Deporte: "🏀" };
+const PALETA = ["#5B3DF5", "#FF7A59", "#0FA876", "#E59400", "#E0559B", "#2E90FA", "#8E7CC3", "#14B8A6", "#F97316", "#64748B"];
+const hashTxt = (s) => [...String(s)].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7);
+const catColor = (n) => PALETA[hashTxt(n) % PALETA.length];
+const catIcono = (n) => CAT_ICONO[n] || "🏷️";
+const ICONO_CLASE = { transferencia: "🔁", ingreso: "💰", reembolso: "↩️" };
+function avatar(padre, { cat, clase, icono, sm } = {}) {
+  const a = padre.createDiv({ cls: "fb-av" + (sm ? " sm" : "") });
+  a.textContent = icono || (clase === "transferencia" ? ICONO_CLASE.transferencia : cat ? catIcono(cat) : ICONO_CLASE[clase] || "🏷️");
+  setVar(a, "--cc", cat ? catColor(cat) : "var(--brand)");
+  return a;
+}
+// Fila de lista con avatar: { av: {cat|clase|icono}, t, s, v, vs, pos, ruta, onclick, prev }
+function item(padre, it) {
+  const el = it.ruta ? padre.createEl("a", { cls: "fb-item internal-link", href: it.ruta }) : padre.createDiv({ cls: "fb-item" + (it.onclick ? " click" : "") });
+  if (it.onclick) el.onclick = it.onclick;
+  if (it.prev) el.classList.add("prev");
+  if (it.fecha) { const f = el.createDiv({ cls: "fb-fecha" }); f.createEl("b", { text: it.fecha.toFormat("d") }); f.createSpan({ text: it.fecha.setLocale("es").toFormat("LLL").replace(".", "") }); }
+  else if (it.av) avatar(el, it.av);
+  const n = el.createDiv({ cls: "n" });
+  n.createDiv({ cls: "t", text: it.t });
+  if (it.s) n.createDiv({ cls: "s", text: it.s });
+  if (it.v != null) { const v = el.createDiv({ cls: "v" + (it.pos ? " pos" : "") }); v.appendText(it.v); if (it.vs) v.createEl("small", { text: it.vs }); }
+  return el;
+}
 function cabecera(titulo, conMes, subt) {
-  const nav = root.createDiv({ cls: "fin-nav" });
-  const actual = vista === "gestionar" || vista === "editar" ? "ajustes" : vista === "valores" ? "inversion" : vista === "objetivos" ? "patrimonio" : vista;
-  for (const [k, t] of PANELES()) { const a = enlace(nav, t, "#" + k); if (k === actual) a.className += " act"; }
-  TAREAS().forEach(([k, t], i) => {
-    const a = enlace(nav, t, "#" + k);
-    a.className += " tarea" + (k === actual ? " act" : "") + (i === 0 ? " aux" : "") + (k === "revisar" && (DB.pendientes || []).length ? " aviso" : "");
-  });
   const h = root.createDiv({ cls: "fin-head" });
   const izq = h.createDiv();
   izq.createEl("h2", { text: titulo });

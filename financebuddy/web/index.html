@@ -6,15 +6,23 @@
 <link rel="stylesheet" href="/web/estilos.css">
 <script src="/web/vendor/luxon.min.js"></script>
 </head><body>
-<div id="barra">
-  <a href="#resumen" class="marca">FinanceBuddy</a>
-  <span id="datos"></span>
-  <span class="hueco"></span>
-  <a href="#apuntar" class="fb-btn">+ Apuntar</a>
-  <button id="tema" title="Tema claro/oscuro" aria-label="Cambiar tema">◐</button>
-</div>
-<div id="ejemplo" hidden>Estás viendo <b>datos de ejemplo</b> (inventados) · <a href="#ajustes">volver a mis datos</a></div>
-<div id="app"><p class="cargando">Cargando…</p></div>
+<aside id="lateral">
+  <a href="#inicio" class="marca internal-link" aria-label="Inicio">
+    <span class="logo" aria-hidden="true"><svg viewBox="0 0 32 32"><rect width="32" height="32" rx="10" fill="url(#g)"/><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#6D4AFF"/><stop offset="1" stop-color="#FF7A59"/></linearGradient></defs><circle cx="11.5" cy="13.5" r="2" fill="#fff"/><circle cx="20.5" cy="13.5" r="2" fill="#fff"/><path d="M10 19.5c3.4 3.2 8.6 3.2 12 0" stroke="#fff" stroke-width="2.4" fill="none" stroke-linecap="round"/></svg></span>
+    <span class="nombre">FinanceBuddy</span>
+  </a>
+  <nav id="menu" aria-label="Secciones"></nav>
+  <div class="pie">
+    <a href="#apuntar" class="fb-btn apuntar internal-link">+ Apuntar</a>
+    <div id="datos"></div>
+    <button id="tema" type="button" title="Tema claro/oscuro" aria-label="Cambiar tema">◐ <span>Tema</span></button>
+  </div>
+</aside>
+<main id="principal">
+  <div id="ejemplo" hidden>Estás viendo <b>datos de ejemplo</b> (inventados) · <a href="#ajustes" class="internal-link">volver a mis datos</a></div>
+  <div id="app"><p class="cargando">Cargando…</p></div>
+</main>
+<a href="#apuntar" id="fab" class="internal-link" aria-label="Apuntar un movimiento">+</a>
 <div id="aviso" role="status"></div>
 <div id="log"></div>
 <script>const TOKEN = "__TOKEN__", VERSION = "__VERSION__";</script>

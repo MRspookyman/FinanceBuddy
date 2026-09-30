@@ -84,61 +84,51 @@ function columnas(padre, { etiquetas, series, titulos, alto = 210 }) {
     return s.join("") + "</svg>";
   });
 }
-function linea(padre, { puntos, color = "var(--fin-s1)", alto = 220 }) {
-  chart(padre, (W) => {
-    const H = alto, L = 50, T = 12, B = 24, n = puntos.length;
-    const ultimo = ejeFmt(puntos[n - 1].y);
-    const R = Math.max(14, ultimo.length * 7 + 14);
-    const ys = puntos.map((p) => p.y);
-    const { lo, hi, ticks } = niceTicks(Math.min(...ys), Math.max(...ys));
-    const Y = (v) => T + (hi - v) * (H - T - B) / (hi - lo);
-    const X = (i) => L + (n === 1 ? (W - L - R) / 2 : i * (W - L - R) / (n - 1));
-    const s = [`<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img">`];
-    ejeY(s, ticks, Y, L, W, R);
-    const d = puntos.map((p, i) => `${i ? "L" : "M"}${X(i).toFixed(1)},${Y(p.y).toFixed(1)}`).join("");
-    s.push(`<path d="${d}L${X(n - 1).toFixed(1)},${Y(lo).toFixed(1)}L${X(0).toFixed(1)},${Y(lo).toFixed(1)}Z" style="fill:${color};opacity:.1"/>`);
-    s.push(`<path d="${d}" style="fill:none;stroke:${color};stroke-width:2;stroke-linejoin:round;stroke-linecap:round"/>`);
-    puntos.forEach((p, i) => {
-      const a = i === 0 ? L : (X(i - 1) + X(i)) / 2, b = i === n - 1 ? W - R : (X(i) + X(i + 1)) / 2;
-      s.push(`<g class="col" data-tip="${esc(p.x + "\n" + eur(p.y))}"><rect class="band" x="${a.toFixed(1)}" y="${T}" width="${Math.max(1, b - a).toFixed(1)}" height="${H - T - B}"/>`
-        + `<line class="xh" x1="${X(i).toFixed(1)}" x2="${X(i).toFixed(1)}" y1="${T}" y2="${H - B}"/>`
-        + `<circle class="hd" cx="${X(i).toFixed(1)}" cy="${Y(p.y).toFixed(1)}" r="4.5" style="fill:${color}"/></g>`);
-    });
-    s.push(`<circle cx="${X(n - 1).toFixed(1)}" cy="${Y(puntos[n - 1].y).toFixed(1)}" r="4.5" style="fill:${color};stroke:var(--background-primary);stroke-width:2;pointer-events:none"/>`);
-    s.push(`<text class="lab" x="${(X(n - 1) + 9).toFixed(1)}" y="${(Y(puntos[n - 1].y) + 4).toFixed(1)}">${esc(ultimo)}</text>`);
-    const cabe = Math.max(2, Math.floor((W - L - R) / 78));
-    const idx = n <= cabe ? puntos.map((_, i) => i) : [...new Set(Array.from({ length: cabe }, (_, j) => Math.round(j * (n - 1) / (cabe - 1))))];
-    let previo = null;
-    idx.forEach((i) => {
-      if (puntos[i].x === previo) return;
-      previo = puntos[i].x;
-      s.push(`<text x="${X(i).toFixed(1)}" y="${H - 6}" text-anchor="${n > 1 && i === 0 ? "start" : n > 1 && i === n - 1 ? "end" : "middle"}">${esc(puntos[i].x)}</text>`);
-    });
-    return s.join("") + "</svg>";
-  });
-}
 
-// Mapa de calor fila × mes. Intensidad relativa al máximo de cada fila (se ve la tendencia de cada categoría).
-// filas: [{ nombre, valores[], onclick?(i) }]; meses: claves AAAA-MM; act: clave resaltada.
-function mapaCalor(padre, { filas, meses, act, onclick }) {
-  const wrap = padre.createDiv({ cls: "fin-tablewrap" });
-  const g = wrap.createDiv({ cls: "fin-heat" });
-  g.style.gridTemplateColumns = `minmax(110px,1.6fr) repeat(${meses.length}, minmax(44px,1fr)) minmax(62px,1.1fr)`;
-  g.createDiv({ cls: "h" });
-  meses.forEach((k) => g.createDiv({ cls: "h" + (k === act ? " act" : ""), text: mesCorto(k) }));
-  g.createDiv({ cls: "h num", text: "Total" });
-  for (const f of filas) {
-    const max = Math.max(0, ...f.valores);
-    g.createDiv({ cls: "c nom", text: f.nombre });
-    f.valores.forEach((v, i) => {
-      v = Math.round(v * 100) / 100; // un mes con reembolsos puede quedar en ±0,00 o negativo
-      const c = g.createDiv({ cls: "c" + (meses[i] === act ? " act" : "") + (v ? " has" : "") + (onclick && v ? " click" : ""), text: v ? compact(v).replace("+", "") : "·" });
-      if (v) {
-        c.style.background = `color-mix(in srgb, var(--fin-s1) ${Math.round(10 + 55 * Math.max(0, v) / (max || 1))}%, var(--background-secondary))`;
-        c.title = `${f.nombre} · ${mesLbl(meses[i]).toLowerCase()}: ${eur(v)}`;
-        if (onclick) c.onclick = () => onclick(f, i);
-      }
-    });
-    g.createDiv({ cls: "c num", text: eur(sum(f.valores), 0) });
+// Anillo de progreso (sobre fondo de color): fracción usada, marca opcional (p. ej. el día del mes) y dos líneas en el centro.
+function anillo(padre, { frac, marca, c1, c2, tam = 150 }) {
+  const r = 58, C = 2 * Math.PI * r, f = Math.max(0, Math.min(1, frac || 0));
+  const ang = (x) => (x * 360 - 90) * Math.PI / 180;
+  const mk = marca != null ? `<line class="marca" x1="${75 + 49 * Math.cos(ang(marca))}" y1="${75 + 49 * Math.sin(ang(marca))}" x2="${75 + 67 * Math.cos(ang(marca))}" y2="${75 + 67 * Math.sin(ang(marca))}" stroke-width="3" stroke-linecap="round"/>` : "";
+  const d = padre.createDiv({ cls: "anillo" });
+  d.innerHTML = `<svg width="${tam}" height="${tam}" viewBox="0 0 150 150" role="img"><circle class="fondo" cx="75" cy="75" r="${r}" fill="none" stroke-width="13"/>`
+    + `<circle class="arco" cx="75" cy="75" r="${r}" fill="none" stroke-width="13" stroke-linecap="round" stroke-dasharray="${C.toFixed(1)}" stroke-dashoffset="${(C * (1 - f)).toFixed(1)}" transform="rotate(-90 75 75)"/>`
+    + `${mk}<text class="c1" x="75" y="78" text-anchor="middle">${esc(c1)}</text><text class="c2" x="75" y="97" text-anchor="middle">${esc(c2 || "")}</text></svg>`;
+  return d;
+}
+// Dona: partes [{ nombre, valor, color }], con el total en el centro.
+function dona(padre, partes, { c1, c2, tam = 170 } = {}) {
+  const tot = sum(partes.map((p) => Math.max(0, p.valor)));
+  const R = 70, r = 46, cx = 85, cy = 85;
+  const s = [`<svg class="dona" width="${tam}" height="${tam}" viewBox="0 0 170 170" role="img">`];
+  if (tot <= 0) s.push(`<circle cx="${cx}" cy="${cy}" r="${(R + r) / 2}" fill="none" stroke="var(--surface-2)" stroke-width="${R - r}"/>`);
+  let a0 = -Math.PI / 2;
+  for (const p of partes.filter((p) => p.valor > 0)) {
+    const a1 = a0 + (p.valor / tot) * Math.PI * 2 - (partes.length > 1 ? 0.025 : 0);
+    const large = a1 - a0 > Math.PI ? 1 : 0;
+    const P = (rad, a) => `${(cx + rad * Math.cos(a)).toFixed(2)},${(cy + rad * Math.sin(a)).toFixed(2)}`;
+    const d = p.valor >= tot ? `M${cx - R},${cy}a${R},${R} 0 1,0 ${2 * R},0a${R},${R} 0 1,0 ${-2 * R},0M${cx - r},${cy}a${r},${r} 0 1,1 ${2 * r},0a${r},${r} 0 1,1 ${-2 * r},0`
+      : `M${P(R, a0)}A${R},${R} 0 ${large},1 ${P(R, a1)}L${P(r, a1)}A${r},${r} 0 ${large},0 ${P(r, a0)}Z`;
+    s.push(`<path d="${d}" fill="${p.color}" fill-rule="evenodd"><title>${esc(`${p.nombre}: ${eur(p.valor, 0)}`)}</title></path>`);
+    a0 = a1 + (partes.length > 1 ? 0.025 : 0);
   }
+  s.push(`<text class="c1" x="${cx}" y="${cy + 4}" text-anchor="middle">${esc(c1 || "")}</text><text class="c2" x="${cx}" y="${cy + 20}" text-anchor="middle">${esc(c2 || "")}</text></svg>`);
+  const d = padre.createDiv();
+  d.innerHTML = s.join("");
+  return d;
+}
+// Barras de los 7 días de una semana. dias: [{ etiqueta, valor, futuro, hoy }], meta: gasto por día de referencia.
+function barrasSemana(padre, dias, meta) {
+  const max = Math.max(meta || 0, ...dias.map((d) => d.valor), 1) * 1.1;
+  const g = padre.createDiv({ cls: "fb-semana" });
+  const alto = 150 - 40; // espacio para el importe y la letra del día
+  for (const d of dias) {
+    const c = g.createDiv({ cls: "d" + (d.futuro ? " fut" : "") + (d.hoy ? " hoy" : "") + (meta && d.valor > meta ? " alto" : "") });
+    c.createDiv({ cls: "dv", text: d.valor > 0 ? eur(d.valor, 0) : "" });
+    const b = c.createDiv({ cls: "b" }); b.style.height = `${Math.max(4, (d.valor / max) * alto)}px`;
+    b.title = `${d.titulo || d.etiqueta}: ${eur(d.valor)}`;
+    c.createDiv({ cls: "dl", text: d.etiqueta });
+  }
+  if (meta > 0) { const m = g.createDiv({ cls: "meta" }); m.style.bottom = `${22 + (meta / max) * alto}px`; m.createSpan({ text: `${eur(meta, 0)}/día` }); }
+  return g;
 }

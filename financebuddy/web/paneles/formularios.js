@@ -40,7 +40,7 @@ const FORMS = {
     cols: ["Fecha", "Concepto", "Categoría", "Importe"], orden: (a, b) => String(b.fecha).localeCompare(String(a.fecha)) || b.id - a.id,
     antes: (d) => { if (d.clase === "transferencia") { d[d._dir || "destino"] = d._otra; d[d._dir === "origen" ? "destino" : "origen"] = ""; d.categoria = ""; } else { d.destino = d.origen = ""; } },
     cargar: (d) => { d._dir = d.origen ? "origen" : "destino"; d._otra = d.destino || d.origen || ""; } },
-  recurrente: { uno: "recurrente", plural: "Recurrentes", ayuda: "Lo que se repite cada mes (o ciertos meses): nómina, alquiler, recibos, aportaciones. Sirven para la previsión y para saber lo que falta por pagar.",
+  recurrente: { uno: "fijo", plural: "Fijos", ayuda: "Lo que se repite cada mes (o ciertos meses): nómina, alquiler, recibos, aportaciones. Sirven para la previsión y para saber lo que falta por pagar.",
     campos: [
       { k: "nombre", l: "Nombre", req: true, ph: "p. ej. Alquiler" },
       { k: "clase", l: "Tipo", t: "opc", opc: [["gasto", "Gasto"], ["ingreso", "Ingreso"], ["aportacion", "Aportación a una inversión"]] },

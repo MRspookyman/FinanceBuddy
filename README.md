@@ -4,9 +4,10 @@ Tus finanzas personales **en tu ordenador**. Importas los extractos de tu banco 
 
 - **cuánto puedes gastar** lo que queda de mes y esta semana;
 - **qué hacer con tu dinero**: cuánto conviene dejar en la cuenta corriente y cuánto mover al ahorro o a la inversión;
-- a dónde va tu dinero (gastos por categoría, mes a mes);
-- cómo va tu **inversión** (ganancia y rentabilidad anual);
-- tu **patrimonio** y una **previsión** de los próximos 12 meses.
+- a dónde va tu dinero (gastos por categoría) y de dónde viene;
+- cuánto tienes en cada cuenta y cómo va tu **inversión**.
+
+Cuatro pantallas: **Inicio**, **Movimientos**, **Importar** y **Ajustes**.
 
 Nada sale de tu ordenador: no hay cuentas, ni nube, ni conexión con el banco. Los datos se guardan en un archivo de tu carpeta Documentos.
 
@@ -25,8 +26,8 @@ Solo para **Windows**. Todo en español y en euros.
    - La primera vez con un banco nuevo te pregunta qué columna es la fecha, el concepto y el importe. Solo esa vez.
 4. **Por revisar**: lo que la app no sabe clasificar sola te lo pregunta.
    - Marca «recordar» y la próxima vez se clasifica solo (y también las demás dudas iguales).
-5. Una vez al mes, **Cerrar el mes**: anotas el saldo de tus cuentas y el valor de tu inversión.
-   - Así la app comprueba que no falta ningún movimiento y sigue tu patrimonio.
+5. Una vez al mes, *Ajustes → Actualizar saldos*: anotas lo que tienes en cada cuenta y el valor de tu inversión.
+   - Así la app comprueba que no falta ningún movimiento.
 6. Con dos o más meses importados, *Ajustes → Detectar fijos*: la app encuentra tus nóminas, alquiler y recibos (lo que se repite cada mes) y te los propone; también te enseña **de dónde viene tu dinero**.
 
 Cerrar la pestaña del navegador no cierra la app: para cerrarla, *Ajustes → Cerrar FinanceBuddy*. Si la vuelves a abrir, se reutiliza la que ya estaba en marcha.
@@ -37,7 +38,7 @@ Cerrar la pestaña del navegador no cierra la app: para cerrarla, *Ajustes → C
 2. Arrástralo a *Importar*, o guárdalo en la carpeta `Importar\Banco` y pulsa «Importar la carpeta».
    - Los movimientos del bróker van a `Importar\Inversión`.
 3. Revisa lo pendiente, si hay algo.
-4. Mira el *Resumen*.
+4. Mira el *Inicio*.
 
 Importar dos veces el mismo periodo **no duplica nada**: cada movimiento se reconoce por su fecha e importe en el extracto.
 
@@ -94,6 +95,6 @@ financebuddy/
 pruebas/           pruebas (Python y cálculos en el navegador)
 ```
 
-Los módulos de `web/paneles/` se concatenan y comparten ámbito, en este orden: `datos`, `calculos`, `componentes`, `graficos`, `bloques`, `vistas`, `formularios`, `pantallas`.
+Los módulos de `web/paneles/` se concatenan y comparten ámbito, en este orden: `datos`, `calculos`, `componentes`, `graficos`, `inicio`, `formularios`, `pantallas`.
 
 Con [Claude Code](https://claude.com/claude-code), la skill `.claude/skills/financebuddy-dev` explica la arquitectura y cómo probar y extender la app.
