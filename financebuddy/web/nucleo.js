@@ -99,10 +99,11 @@
     document.getElementById("datos").textContent = fechas.length ? `Movimientos hasta el ${fechas[fechas.length - 1].split("-").reverse().join("/")}` : "";
     document.getElementById("ejemplo").hidden = !(DB.info && DB.info.ejemplo);
     const n = (DB.pendientes || []).length;
-    const items = [["inicio", "Inicio"], ["movimientos", "Movimientos"], ["inversion", "Inversión"], ["importar", "Importar"], n ? ["revisar", "Por revisar"] : null, ["ajustes", "Ajustes"]].filter(Boolean);
+    // [ruta, nombre, nombre corto (barra de abajo en el móvil)]
+    const items = [["inicio", "Inicio"], ["movimientos", "Movimientos", "Movs."], ["inversion", "Inversión"], ["importar", "Importar"], n ? ["revisar", "Por revisar", "Revisar"] : null, ["ajustes", "Ajustes"]].filter(Boolean);
     const v = ruta()[0], act = SECCION[v] || v;
     const menu = document.getElementById("menu");
-    menu.innerHTML = items.map(([k, t]) => `<a href="#${k}" class="internal-link${k === act ? " act" : ""}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">${ICO[k]}</svg><span>${t}</span>${k === "revisar" ? `<span class="num">${n}</span>` : ""}</a>`).join("");
+    menu.innerHTML = items.map(([k, t, c]) => `<a href="#${k}" class="internal-link${k === act ? " act" : ""}" title="${t}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">${ICO[k]}</svg><span class="lg">${t}</span><span class="ct">${c || t}</span>${k === "revisar" ? `<span class="num">${n}</span>` : ""}</a>`).join("");
   }
 
   // ── montaje de la pantalla actual ──

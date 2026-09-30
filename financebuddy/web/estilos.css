@@ -407,3 +407,10 @@ body.theme-dark .fb-grupo{border-color:transparent}
 .fin .fin-table td .fin-badge{color:var(--ink-2);background:var(--surface-2)}
 .fb-total .v{white-space:nowrap}
 .fin .fb-tipos{margin:-4px 0 6px}
+#menu .ct{display:none}
+@media (max-width:860px){
+ #menu{gap:2px}
+ #menu a{flex:1 1 0;min-width:0;padding:6px 2px}
+ #menu .lg{display:none}
+ #menu .ct{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+}
