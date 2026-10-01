@@ -330,6 +330,8 @@ function vistaMovimientos() {
       b.onclick = () => { filtroCat = c; pintarChips(); pintar(); };
     }
   };
+  const devuelto = new Map();  // gasto → lo que te han devuelto de él (Bizums enlazados)
+  for (const r of registros("movimiento")) if (r.reembolsa) devuelto.set(r.reembolsa, (devuelto.get(r.reembolsa) || 0) + num(r.importe));
   const pintar = () => {
     lista.innerHTML = "";
     const q = norm(inp.value.trim());
@@ -350,7 +352,7 @@ function vistaMovimientos() {
       }
       const entra = m.clase === "ingreso" || m.clase === "reembolso";
       const signo = m.clase === "transferencia" ? (m.origen ? "+" : "−") : entra ? "+" : "−";
-      const sub = m.clase === "transferencia" ? `Entre tus cuentas ${m.destino ? "→ " + m.destino : m.origen ? "← " + m.origen : ""}` : `${m.categoria}${m.clase === "reembolso" ? " · te lo devolvieron" : ""}`;
+      const sub = m.clase === "transferencia" ? `Entre tus cuentas ${m.destino ? "→ " + m.destino : m.origen ? "← " + m.origen : ""}` : `${m.categoria}${m.clase === "reembolso" ? " · te lo devolvieron" : ""}${devuelto.has(m.p.id) ? ` · te devolvieron ${eur(devuelto.get(m.p.id))}` : ""}`;
       item(cont, {
         av: { cat: m.clase === "transferencia" ? null : m.categoria, clase: m.clase }, t: m.concepto,
         s: `${sub}${cuentas().length > 1 ? " · " + m.cuenta : ""}${m.auto ? " · previsto" : ""}`,

@@ -307,6 +307,59 @@ class TestExtractosReales(Base):
         self.assertEqual((a["clase"], a["patrones"]), ("cripto", ["fidelity physical bitcoin"]))
         self.assertEqual(sorted(x["importe"] for x in self.a.todos("aportacion")), [55.43, 55.45])
 
+class TestBizums(Base):
+    """Bizums recibidos: la parte que te devuelven de un gasto que pagaste tú (bizums.py)."""
+    def reparto(self, extra=()):
+        # El 15 pagas 97,84 € en el súper; el 16 te mandan 4 Bizums de ~19,56 € (97,84 ÷ 5: tú incluido)
+        filas = [("2026-09-10", "Pago Movil En Gimnasio Zeus, Jaen", -30.00),
+                 ("2026-09-15", "Pago Movil En Mercadona Aguad, Jaen, Tarj. :*1234", -97.84),
+                 ("2026-09-16", "Bizum de Ana Ruiz Lopez", 19.56), ("2026-09-16", "Bizum de Luis Perez Gil", 19.6),
+                 ("2026-09-16", "Bizum de Eva Sanz Diaz", 19.56), ("2026-09-16", "Bizum de Pablo Cano Rey", 19.56)] + list(extra)
+        return self.importar(self.extracto(sorted(filas)))
+    def test_reparto_exacto_encuentra_el_gasto_aunque_no_sea_del_dia_anterior(self):
+        self.reparto([("2026-09-12", "Pago Movil En Cine Plaza, Jaen", -40.00)])  # otro gasto en medio, más reciente
+        self.assertEqual([p for p in self.a.todos("pendiente") if "Bizum" in p["fila"]["texto"]], [])
+        reem = [m for m in self.movs() if m["clase"] == "reembolso"]
+        self.assertEqual((len(reem), {m["categoria"] for m in reem}), (4, {"Supermercado"}))
+        # Y quedan enlazados con el gasto: tu parte real = 97,84 − 78,28 = 19,56
+        from financebuddy import bizums
+        bizums.enlazar(self.a)
+        super_ = next(m for m in self.movs() if m["clase"] == "gasto" and m["importe"] == 97.84)
+        self.assertEqual({m["reembolsa"] for m in self.movs() if m["clase"] == "reembolso"}, {super_["id"]})
+    def test_no_devuelve_mas_de_lo_que_costo(self):
+        from financebuddy import bizums
+        self.reparto()
+        for i, quien in enumerate(("Mara Gil Ron", "Rosa Gil Ron")):
+            self.a.guardar("movimiento", {"fecha": f"2026-09-1{7 + i}", "clase": "reembolso", "categoria": "Supermercado", "importe": 19.56, "concepto": f"Otro{i}",
+                                          "cuenta": "Nómina", "ext_texto": f"Bizum de {quien}"})
+        bizums.enlazar(self.a)
+        extra = {m["concepto"]: m for m in self.movs() if m["concepto"].startswith("Otro")}
+        self.assertIsNotNone(extra["Otro0"].get("reembolsa"))  # 5 × 19,56 = 97,80: cabe
+        self.assertIsNone(extra["Otro1"].get("reembolsa"))     # el sexto ya no: no se devuelve más de lo que costó
+    def test_los_hermanos_del_reparto_heredan_la_categoria(self):
+        filas = [("2026-09-26", "Bizum de Ana Ruiz Lopez concepto comida", 22.12), ("2026-09-26", "Bizum de Luis Perez Gil", 22.12),
+                 ("2026-09-26", "Bizum de Eva Sanz Diaz", 22.20), ("2026-09-27", "Bizum de Pablo Cano Rey", 22.12),
+                 ("2026-09-26", "Bizum de Otro Distinto Mas", 5.00)]  # importe distinto: no es del reparto
+        r = self.importar(self.extracto(sorted(filas)))
+        self.assertEqual(r["dudas"], 1, r)
+        self.assertEqual({m["categoria"] for m in self.movs() if m["importe"] > 20}, {"Comer fuera"})
+        self.assertEqual(self.a.todos("pendiente")[0]["fila"]["importe"], 5.0)
+    def test_gasto_de_otro_extracto(self):
+        # El gasto está en un extracto anterior (ya importado) y los Bizums llegan en otro
+        self.importar(self.extracto([("2026-09-10", "Pago Movil En Restaurante El Pino, Jaen", -60.00)], nombre="a.xlsx"))
+        r = self.importar(self.extracto([("2026-09-13", "Bizum de Ana Ruiz Lopez", 15.00), ("2026-09-13", "Bizum de Luis Perez Gil", 15.00),
+                                         ("2026-09-13", "Bizum de Eva Sanz Diaz", 15.00)], nombre="b.xlsx", saldo_inicial=940.0))
+        self.assertEqual((r["dudas"], r["nuevas"]), (0, 3), r)  # 60 ÷ 4 = 15 (tú + 3)
+        self.assertEqual({m["categoria"] for m in self.movs() if m["clase"] == "reembolso"}, {"Comer fuera"})
+    def test_sin_gasto_sigue_preguntando(self):
+        r = self.importar(self.extracto([("2026-09-13", "Bizum de Ana Ruiz Lopez", 15.00), ("2026-09-13", "Bizum de Luis Perez Gil", 15.00)]))
+        self.assertEqual(r["dudas"], 2)
+        self.assertIn("parece un reparto", self.a.todos("pendiente")[0]["duda"])
+    def test_aritmetica(self):
+        from financebuddy import bizums as B
+        self.assertTrue(B.parte(97.84, 19.56, 5) and B.parte(97.84, 19.6, 5) and not B.parte(97.84, 20.5, 5))
+        self.assertEqual(B.iguales(19.56, "2026-09-16", [{"fecha": "2026-09-16", "importe": 19.6}, {"fecha": "2026-09-17", "importe": 19.56}, {"fecha": "2026-09-20", "importe": 19.56}]), 2)
+
 class TestParticipaciones(Base):
     def test_participaciones_y_tipo(self):
         self.assertEqual((IM.participaciones("ETF ETFS Copper ETC @ 2", -90.6), IM.participaciones("ETF ETFS Copper ETC @ 2", 90.6)), (-2.0, 2.0))

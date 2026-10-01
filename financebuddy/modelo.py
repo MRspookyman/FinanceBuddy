@@ -15,7 +15,8 @@ CAMPOS = {
     # ext_*: huella de la fila del extracto de la que sale (para no importarla dos veces).
     "movimiento": {"fecha": "fecha*", "clase": ("gasto", "ingreso", "reembolso", "transferencia"), "categoria": "texto",
                    "importe": "num+*", "cuenta": "texto", "concepto": "texto*", "recurrente": "texto", "destino": "texto",
-                   "origen": "texto", "nota": "texto", "ext_texto": "texto", "ext_importe": "num", "ext_fecha": "fecha"},
+                   "origen": "texto", "nota": "texto", "ext_texto": "texto", "ext_importe": "num", "ext_fecha": "fecha",
+                   "reembolsa": "int"},  # reembolsa: id del gasto que devuelve este reembolso (Bizums, bizums.py)
     # meses: solo esos meses del año (p. ej. [7] = anual en julio).
     "recurrente": {"nombre": "texto*", "clase": ("gasto", "ingreso", "aportacion"), "categoria": "texto", "importe": "num+*",
                    "dia": "int", "desde": "fecha*", "hasta": "fecha", "meses": "meses", "activo": "bool",

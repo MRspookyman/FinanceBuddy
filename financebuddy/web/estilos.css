@@ -390,6 +390,15 @@ body.theme-dark .fb-grupo{border-color:transparent}
 .fin .fb-cats select.otra{height:34px;border-radius:999px;font-size:.86em;padding:0 12px;background:var(--surface-2);border-color:transparent;color:var(--ink-2)}
 .fin-panel .fb-cats button{background:var(--surface-2)}
 .fb-opciones{margin-top:12px}
+.fb-cands{display:flex;flex-direction:column;gap:6px;margin-top:12px}.fb-cands .et{font-size:.82em;font-weight:650;color:var(--ink-2)}
+.fin .fb-cands button.fb-cand{all:unset;box-sizing:border-box;cursor:pointer;display:block;padding:9px 13px;border-radius:12px;background:var(--surface-2);border:1px solid transparent;transition:background .12s,border-color .12s}
+.fin .fb-cands button.fb-cand:hover{border-color:var(--brand)}.fin .fb-cands button.fb-cand:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+.fb-cand.jev{background:color-mix(in srgb,var(--brand) 12%,var(--surface));border-color:color-mix(in srgb,var(--brand) 40%,transparent)}
+.fb-cand .t{display:flex;justify-content:space-between;gap:10px;font-weight:650;font-size:.9em}.fb-cand .v{font-variant-numeric:tabular-nums;white-space:nowrap}
+.fb-cand .s{font-size:.78em;color:var(--ink-2);margin-top:2px}.fb-cand .ext{margin:3px 0 0;font-size:.72em;color:var(--ink-3);font-family:ui-monospace,Consolas,monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fin-rows .v.b{font-weight:750}
+.fb-enviado{padding:9px 0;border-top:1px solid var(--line)}.fb-enviado .c{font-size:.74em;color:var(--ink-3)}
+.fb-enviado .e{white-space:pre-wrap;font-size:.82em;margin:3px 0}.fb-enviado .q{font-size:.76em;color:var(--ink-2)}
 .fb-lista-jev{margin:4px 0 12px;padding-left:20px;font-size:.88em;color:var(--ink-2)} .fb-lista-jev li{margin:2px 0}
 .fb-hecho{display:grid;justify-items:center;gap:6px;padding:48px 20px;text-align:center;border-radius:var(--r);background:var(--surface);border:1px solid var(--line);color:var(--ink-2)}
 .fb-hecho .i{display:grid;place-items:center;width:56px;height:56px;border-radius:18px;font-size:26px;color:#fff;background:var(--aurora);margin-bottom:6px}

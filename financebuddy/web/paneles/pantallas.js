@@ -240,12 +240,13 @@ function vistaRevisar() {
   }
   const banco = P.filter((p) => p.tipo_import !== "inversion"), inv = P.filter((p) => p.tipo_import === "inversion");
   const agrupar = (lista, conClase) => {
-    const m = new Map();
+    const m = new Map(), rep = conClase ? repartosBizum(lista) : new Map();
     for (const p of [...lista].sort((a, b) => String(a.fila.op).localeCompare(String(b.fila.op)))) {
-      const k = [p.cuenta, p.fila.patron || sugerirPatron(p.fila.texto), p.fila.importe < 0 ? "-" : "+", conClase && p.fila.clase === "transferencia" ? "t" : ""].join("|");
+      const k = rep.get(p.id) || [p.cuenta, p.fila.patron || sugerirPatron(p.fila.texto), p.fila.importe < 0 ? "-" : "+", conClase && p.fila.clase === "transferencia" ? "t" : ""].join("|");
       if (!m.has(k)) m.set(k, []);
       m.get(k).push(p);
     }
+    for (const [k, g] of m) if (k.startsWith("reparto|")) g.reparto = true;  // varios Bizums iguales el mismo día: un solo gasto repartido
     return [...m.values()].sort((a, b) => b.length - a.length || sum(b.map((p) => Math.abs(p.fila.importe))) - sum(a.map((p) => Math.abs(p.fila.importe))));
   };
   const G = agrupar(banco, true), GI = agrupar(inv, false);
@@ -272,13 +273,29 @@ function vistaRevisar() {
     for (const g of GIv) tarjetaGrupoInversion(ci, g);
   }
 }
+// Bizums recibidos iguales (≥ 2) el mismo día: son el reparto de UN gasto que pagaste tú, se resuelven juntos. Igual que bizums.repartos().
+const esBizum = (t) => /bizum/i.test(t || "");
+const primerNombre = (t) => C_titulo(((/bizum (?:de|recibido de)\s+(\S+)/i.exec(t || "")) || [])[1] || "Bizum");
+function repartosBizum(lista) {
+  const bz = lista.filter((p) => p.fila.importe > 0 && p.fila.clase !== "transferencia" && esBizum(p.fila.texto))
+    .sort((a, b) => String(a.fila.op).localeCompare(String(b.fila.op)) || a.fila.importe - b.fila.importe);
+  const grupos = [], out = new Map();
+  for (const p of bz) {
+    const g = grupos.find((g) => g[0].fila.op === p.fila.op && g[0].cuenta === p.cuenta && Math.abs(g[0].fila.importe - p.fila.importe) <= Math.max(0.06, 0.02 * p.fila.importe));
+    if (g) g.push(p); else grupos.push([p]);
+  }
+  for (const g of grupos) if (g.length >= 2) for (const p of g) out.set(p.id, `reparto|${g[0].cuenta}|${g[0].fila.op}|${g[0].fila.importe.toFixed(2)}`);
+  return out;
+}
+// La sugerencia de un grupo. En un reparto, la persona de cada Bizum no dice nada: solo vale lo que Jev ha mirado del conjunto.
+const sugDe = (g) => (g.reparto ? g.map((p) => p.sugerencia).find((s) => s && s.fuente === "jev") || null : g[0].sugerencia);
 // Asistente Jev (opcional): pedir categoría para los grupos del banco que no tienen sugerencia, y qué son los textos
 // del bróker que la app no reconoce.
 const JEV_SEGURA = 0.85;  // igual que jev.SEGURA: desde aquí, la sugerencia sale marcada al aceptar en bloque
 function botonJev(padre, G, GI) {
   const J = (DB.config || {}).jev || {};
   const sinB = (GI || []).filter((g) => g[0].sugerencia && g[0].sugerencia.nuevo && !g[0].sugerencia.isin && !g[0].jev);
-  const sin = [...G.filter((g) => !g[0].sugerencia && !g[0].jev && g[0].fila.clase !== "transferencia"), ...sinB];
+  const sin = [...G.filter((g) => !sugDe(g) && !g[0].jev && g[0].fila.clase !== "transferencia"), ...sinB];
   if (!sin.length) return;
   const f = padre.createDiv({ cls: "fb-fila fb-bloque-sug" });
   if (!J.activo) {
@@ -304,7 +321,7 @@ function propuestaBanco(g) {
     const otras = cuentas().filter((c) => c.nombre !== p.cuenta);
     return otras.length === 1 ? { texto: `🔁 ${entra ? "Desde" : "A"} ${otras[0].nombre}`, datos: { accion: "guardar", clase: "transferencia", cuenta_otra: otras[0].nombre }, motivo: "a tu nombre", segura: true } : null;
   }
-  const s = p.sugerencia;
+  const s = sugDe(g);
   return s && s.categoria ? { texto: `${catIcono(s.categoria)} ${s.categoria}`, datos: { accion: "guardar", clase: s.clase, categoria: s.categoria }, motivo: s.motivo,
     segura: s.fuente === "jev" ? num(s.confianza) >= JEV_SEGURA : !/^parecido/.test(s.motivo || "") } : null;
 }
@@ -370,7 +387,7 @@ function cabGrupo(card, g, av, nombre) {
   n.createDiv({ cls: "t", text: nombre });
   n.createDiv({ cls: "s", text: g.length > 1 ? `${g.length} movimientos · del ${fmtISO(g[0].fila.op)} al ${fmtISO(g[g.length - 1].fila.op)} · ${p.cuenta}` : `${fmtISO(f.op)} · ${p.cuenta}` });
   cab.createDiv({ cls: "v " + (entra ? "pos" : ""), text: eurS(sum(g.map((x) => x.fila.importe))) });
-  const ext = card.createDiv({ cls: "ext", text: f.texto + (g.length > 1 ? `  (${g.map((x) => eur(Math.abs(x.fila.importe))).join(" · ")})` : "") });
+  const ext = card.createDiv({ cls: "ext", text: g.reparto ? `De: ${g.map((x) => primerNombre(x.fila.texto)).join(", ")}  (${g.map((x) => eur(x.fila.importe)).join(" · ")})` : f.texto + (g.length > 1 ? `  (${g.map((x) => eur(Math.abs(x.fila.importe))).join(" · ")})` : "") });
   ext.title = ext.textContent;
   if (p.duda) card.createDiv({ cls: "duda", text: p.duda });
 }
@@ -421,13 +438,42 @@ function tarjetaGrupoInversion(padre, g) {
     const iPat = f1.createEl("input", { attr: { type: "text" } }); iPat.value = patron; iPat.oninput = () => (patron = iPat.value);
   });
 }
+// «¿De cuál de tus gastos es?»: los gastos tuyos de los días anteriores que un Bizum recibido (o un reparto) podría devolver, con
+// todo lo que ayuda a elegir. Al pulsar uno, el Bizum se guarda como reembolso de ese gasto (su categoría) y queda enlazado.
+function gastosCandidatos(card, g, sug, hecho) {
+  const cs = g[0].candidatos || [];
+  if (!cs.length) return;
+  const imp = g[0].fila.importe, suma = sum(g.map((p) => p.fila.importe)), n = g.length;
+  const caja = card.createDiv({ cls: "fb-cands" });
+  caja.createDiv({ cls: "et", text: n > 1 ? `¿De cuál de tus gastos es este reparto? Los ${n} Bizums suman ${eur(suma)}` : "¿De cuál de tus gastos es esta parte?" });
+  for (const c of cs) {
+    const b = caja.createEl("button", { cls: "fb-cand" + (sug && sug.gasto_id === c.id ? " jev" : "") });
+    b.title = c.texto;
+    const arr = b.createDiv({ cls: "t" });
+    arr.createSpan({ text: `${sug && sug.gasto_id === c.id ? "✨ " : ""}${fechaCorta(c.fecha)} · ${c.concepto || C_titulo(sugerirPatron(c.texto))}` });
+    arr.createSpan({ cls: "v", text: eur(c.importe) });
+    const partes = [`${catIcono(c.cat)} ${c.cat}`, c.dias === 0 ? "ese mismo día" : `${c.dias} día${c.dias > 1 ? "s" : ""} antes`];
+    if (c.k && c.k > 1) partes.push(`${eur(imp)} × ${c.k} = ${eur(imp * c.k)} ${Math.abs(imp * c.k - c.importe) <= Math.max(0.06 * c.k, 0.02 * c.importe) ? "✓ cuadra" : "≈"}`);
+    else if (c.k === 1) partes.push("es justo el gasto entero");
+    else partes.push(`${eur(suma)} = el ${Math.round((100 * suma) / c.importe)} % del gasto`);
+    b.createDiv({ cls: "s", text: partes.join(" · ") });
+    const resto = c.importe - c.devuelto;
+    const s2 = [c.devuelto > 0 ? `ya te han devuelto ${eur(c.devuelto)} (te quedan ${eur(resto)})` : "", resto - suma >= -0.1 ? `tu parte real: ${eur(Math.max(0, resto - suma))}` : `te devuelven ${eur(suma - resto)} más de lo que costó`].filter(Boolean);
+    b.createDiv({ cls: "s", text: s2.join(" · ") });
+    b.createDiv({ cls: "ext", text: c.texto });
+    b.onclick = () => hecho({ accion: "guardar", clase: "gasto", categoria: c.cat, reembolsa: c.id }, b);
+  }
+}
 function tarjetaGrupo(padre, g) {
   const p = g[0], f = p.fila, entra = f.importe > 0, esTr = f.clase === "transferencia";
-  const sug = p.sugerencia;
+  const sug = sugDe(g);
   const card = padre.createDiv({ cls: "fb-grupo" });
-  cabGrupo(card, g, sug ? { cat: sug.categoria } : { icono: esTr ? "🔁" : entra ? "💰" : "❔" }, f.concepto || C_titulo(sugerirPatron(f.texto)));
-  let recordar = true, patron = f.patron || sugerirPatron(f.texto), concepto = f.concepto || "";
+  cabGrupo(card, g, sug ? { cat: sug.categoria } : { icono: esTr ? "🔁" : g.reparto ? "↩️" : entra ? "💰" : "❔" },
+    g.reparto ? `Reparto: ${g.length} Bizums de ${eur(f.importe)}` : f.concepto || C_titulo(sugerirPatron(f.texto)));
+  // Un reparto no se recuerda por persona (cada Bizum es de uno distinto): solo se aplica a estos
+  let recordar = !g.reparto, patron = g.reparto ? "" : f.patron || sugerirPatron(f.texto), concepto = f.concepto || "";
   const hecho = resolverGrupo(card, g, () => ({ recordar, patron, concepto: g.length === 1 ? concepto : null }));
+  if (entra && !esTr && esBizum(f.texto)) gastosCandidatos(card, g, sug, hecho);
   const chips = card.createDiv({ cls: "fb-cats" });
   const chip = (texto, datos, cls) => { const b = chips.createEl("button", { text: texto, cls: cls || "" }); b.onclick = () => hecho(datos, b); return b; };
   const claseCat = (cat) => (grupoDe(cat) === "ingreso" ? "ingreso" : "gasto");
@@ -459,6 +505,7 @@ function tarjetaGrupo(padre, g) {
   const bD = chips.createEl("button", { cls: "desc", text: g.length > 1 ? "Descartar todos" : "Descartar" });
   bD.title = "No registrar " + (g.length > 1 ? "estos movimientos" : "este movimiento");
   bD.onclick = () => hecho({ accion: "ignorar" }, bD);
+  if (g.reparto) return;  // sin «Opciones»: no hay nada que recordar ni nombre que cambiar
   plegable(card, "Opciones", (c) => {
     const f1 = c.createDiv({ cls: "fb-fila" });
     const lab = f1.createEl("label"); const chk = lab.createEl("input", { attr: { type: "checkbox" } }); chk.checked = recordar; chk.onchange = () => (recordar = chk.checked);
@@ -861,6 +908,7 @@ function panelJev(padre) {
     "Apuntar: la categoría según escribes el concepto",
     "Fijos: si algo que se repite es una cuota o solo coincide",
     "Un banco nuevo: qué columna es cada cosa"]) usos.createEl("li", { text: t });
+  p.createDiv({ cls: "fin-note", text: "Además del movimiento, Jev recibe contexto de tu propio historial para comparar con tu criterio: cómo has clasificado cosas parecidas, tus Bizums más habituales y qué ha pasado antes con esa persona (sin su nombre), y en un Bizum recibido, los gastos tuyos que podría devolver." });
   p.createDiv({ cls: "fin-note", text: "Se envía a TypeSafe (EE. UU.) solo el concepto del movimiento —sin nombres de los Bizum, números de tarjeta, IBAN ni correos— y el importe. Nada de saldos, cuentas ni fechas. Sin clave, la app funciona igual." });
   const f = p.createDiv({ cls: "fb-fila" });
   const i = f.createEl("input", { attr: { type: "password", autocomplete: "off", placeholder: J.hay_clave ? `Clave guardada (…${J.fin_clave})` : "Pega aquí tu clave de Jev", "aria-label": "Clave de Jev" } });
@@ -885,6 +933,18 @@ function panelJev(padre) {
     chk("Activado", "activo", !!J.activo);
     chk("Pedir sugerencias al importar", "al_importar", !!J.al_importar);
     if (!J.de_entorno) { const q = o.createEl("button", { cls: "fin-link", text: "Quitar la clave" }); q.onclick = () => guardar({ clave: "", activo: false }, "Clave quitada"); }
+    plegable(p, "Ver lo último que se ha enviado a Jev", (c) => {
+      c.createDiv({ cls: "fin-note", text: "Exactamente lo que ha salido de tu ordenador, de lo más nuevo a lo más viejo (las últimas 30 consultas). Los nombres de personas, números de tarjeta, IBAN, direcciones y tu nombre no salen." });
+      FB.api("/api/jev/enviado", {}).then((r) => {
+        if (!r.ok || !(r.enviado || []).length) { vacio(c, "Aún no se ha enviado nada", " Aparecerá aquí en cuanto Jev revise algo."); return; }
+        for (const e of r.enviado) {
+          const x = c.createDiv({ cls: "fb-enviado" });
+          x.createDiv({ cls: "c", text: e.cuando });
+          x.createDiv({ cls: "e", text: e.estado });
+          for (const q of e.preguntas) x.createDiv({ cls: "q", text: `Pregunta «${q.nombre}»: ${q.instrucciones} — ${q.tipo === "noul" ? "sí / no" : `${q.opciones.length} opciones: ${q.opciones.slice(0, 3).join(" | ")}${q.opciones.length > 3 ? " …" : ""}`}` });
+        }
+      });
+    });
     const u = J.uso || {};
     const n = p.createDiv({ cls: "fin-note" });
     const coste = num(u.coste) < 0.01 ? "menos de un céntimo" : `unos ${nf(num(u.coste), 2, 2)} $`;
@@ -982,6 +1042,7 @@ function vistaEditar() {
   if (id !== "nuevo" && !reg) { vacio(root, "Ese registro ya no existe"); return; }
   const volver = FB.anterior && !FB.anterior.startsWith("#editar") ? FB.anterior : `#gestionar/${tipo}`;
   if (tipo === "movimiento" && reg && ["gasto", "ingreso", "reembolso"].includes(reg.clase)) cambioCategoria(root, reg, volver);
+  if (tipo === "movimiento" && reg && reg.id) panelReembolsos(root, reg);
   formulario(root, tipo, reg, { volver });
   if (tipo === "aportacion" && reg && reg.id) {
     const x = [reg.supuesta ? "La orden no decía si era compra o venta: se tomó como compra. Si fue una venta, pon el importe y las participaciones en negativo." : "",
@@ -993,6 +1054,25 @@ function vistaEditar() {
 }
 
 // Cambiar la categoría a un clic; si viene del extracto, también la de los parecidos (mismo comercio) y recordarlo.
+// En la ficha de un gasto: lo que te han devuelto y lo que te costó de verdad. En la de un reembolso: de qué gasto es.
+function panelReembolsos(padre, reg) {
+  const movs = registros("movimiento");
+  if (reg.clase === "gasto") {
+    const rs = movs.filter((m) => m.reembolsa === reg.id).sort((a, b) => String(a.fecha).localeCompare(String(b.fecha)));
+    if (!rs.length) return;
+    const dev = sum(rs.map((m) => num(m.importe)));
+    const p = panel(padre, "Te lo han devuelto", { text: `${rs.length} Bizum${rs.length > 1 ? "s" : ""}` }, "Dinero que te han devuelto de este gasto (sus Bizums). Resta de su categoría.");
+    filasDato(p, [...rs.map((m) => ({ l: `${fechaCorta(m.fecha)} · ${m.concepto}`, v: `+${eur(num(m.importe))}`, t: "pos", ruta: `#editar/movimiento/${m.id}` })),
+      { l: "Pagaste", v: eur(num(reg.importe)) }, { l: "Te han devuelto", v: eur(dev) }, { l: "Tu parte real", v: eur(Math.max(0, num(reg.importe) - dev)), t: "b" }]);
+  } else if (reg.clase === "reembolso" && reg.reembolsa) {
+    const g = movs.find((m) => m.id === reg.reembolsa);
+    if (!g) return;
+    const otros = movs.filter((m) => m.reembolsa === g.id), dev = sum(otros.map((m) => num(m.importe)));
+    const p = panel(padre, "Devuelve parte de este gasto");
+    filasDato(p, [{ l: `${fechaCorta(g.fecha)} · ${g.concepto}`, s: `${g.categoria || ""}${g.ext_texto ? " · " + g.ext_texto : ""}`, v: eur(num(g.importe)), ruta: `#editar/movimiento/${g.id}` },
+      { l: `Lo devuelven ${otros.length} Bizum${otros.length > 1 ? "s" : ""}`, v: eur(dev) }, { l: "Tu parte real", v: eur(Math.max(0, num(g.importe) - dev)), t: "b" }]);
+  }
+}
 function cambioCategoria(padre, reg, volver) {
   const p = panel(padre, "Cambiar la categoría");
   const chips = p.createDiv({ cls: "fb-cats" });

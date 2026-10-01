@@ -1,7 +1,7 @@
 # Servidor local de la app: sirve las pantallas (web/) y una API JSON sobre la base de datos.
 # Solo escucha en 127.0.0.1 y cada arranque genera una clave que la página envía en la cabecera X-FB-Token.
 import base64, datetime, http.server, io, json, mimetypes, os, re, secrets, socketserver, tempfile, threading, traceback, urllib.parse
-from . import VERSION, cartera, clasificar as C, detectar, importar as IM, jev, modelo, plantilla, rutas
+from . import VERSION, bizums, cartera, clasificar as C, detectar, importar as IM, jev, modelo, plantilla, rutas
 from .almacen import Almacen
 
 mimetypes.add_type("font/woff2", ".woff2")
@@ -27,6 +27,7 @@ class App:
         self.alm = Almacen(self.carpeta.db)
         plantilla.instalar(self.alm)
         self.alm.copia(self.carpeta.copias)
+        bizums.enlazar(self.alm)  # une los Bizums recibidos con su gasto (también en datos de versiones anteriores)
 
     # ───── datos para la página ─────
     def datos(self):
@@ -35,16 +36,21 @@ class App:
         if pend:  # la categoría más probable de cada duda del banco (por tu historial)
             mem = C.memoria(regs.get("movimiento", []))
             activos = regs.get("activo", [])
+            fijas = {c["nombre"] for c in regs.get("categoria", []) if c.get("grupo") == "fijo"}
+            cands = bizums.detalle_candidatos(pend, regs.get("movimiento", []), fijas)  # gastos que un Bizum recibido podría devolver
             for p in pend:
                 f = p.get("fila") or {}
+                if p["id"] in cands: p["candidatos"] = cands[p["id"]]
                 if p.get("tipo_import") == "inversion": p["sugerencia"] = jev.sugerencia_broker(IM.sugerencia_inversion(p, activos), p.get("jev"))
                 elif f.get("clase") != "transferencia":
                     s = C.sugerir(f.get("texto", ""), f.get("importe", 0), mem, f.get("cat", ""))
                     j = p.get("jev") or {}
-                    # Lo que propone Jev, si tu historial no dice nada (o solo «parecido a…»)
-                    if j.get("categoria") and (not s or str(s.get("motivo", "")).startswith("parecido")):
+                    # Lo que propone Jev, si tu historial no dice nada (o solo «parecido a…»); en un Bizum, si está bastante seguro
+                    if j.get("categoria") and (not s or str(s.get("motivo", "")).startswith("parecido")
+                                               or (bizums.es_bizum(f.get("texto")) and float(j.get("confianza") or 0) >= 0.7)):
                         s = {"clase": j.get("clase") or ("gasto" if f.get("importe", 0) < 0 else "ingreso"), "categoria": j["categoria"],
-                             "motivo": f"Jev · {round(100 * float(j.get('confianza') or 0))} %", "fuente": "jev", "confianza": j.get("confianza")}
+                             "motivo": f"Jev · {round(100 * float(j.get('confianza') or 0))} %" + (f" · {j['motivo']}" if j.get("motivo") else ""),
+                             "fuente": "jev", "confianza": j.get("confianza")}
                     p["sugerencia"] = s
         regs.pop("ignorado", None)
         cfg = self.alm.config()
@@ -65,6 +71,7 @@ class App:
         nombre = os.path.basename(ruta)
         try:
             r = IM.importar_archivo(self.alm, self.carpeta, ruta, tipo, cuenta, perfil)
+            if r.get("ok") and r.get("tipo") == "banco": bizums.enlazar(self.alm)
             c, fallo = jev.config(self.alm), None
             if r.get("ok") and r.get("dudas") and c["activo"] and c["al_importar"]:  # el asistente Jev propone qué es lo que queda por revisar
                 if r.get("tipo") == "banco":
@@ -216,7 +223,10 @@ class App:
         if ruta == "/api/importar/carpeta": return self.importar_carpeta()
         if ruta == "/api/importar/subir": return self.subir(d)
         if ruta == "/api/importar/reintentar": return self.reintentar(d)
-        if ruta == "/api/resolver": return {"ok": True, "mensaje": IM.resolver(a, int(d["id"]), d)}
+        if ruta == "/api/resolver":
+            msg = IM.resolver(a, int(d["id"]), d)
+            bizums.enlazar(a)
+            return {"ok": True, "mensaje": msg}
         if ruta == "/api/detectar": return {"ok": True, "fijos": jev.fijos(a, detectar.fijos(a)), "origenes": detectar.origenes(a)}
         if ruta == "/api/fijos": return {"ok": True, "mensaje": detectar.crear(a, d.get("fijos") or [])}
         if ruta == "/api/bienvenida": return self.bienvenida(d)
@@ -237,6 +247,7 @@ class App:
             partes = [f"categoría para {n} de {total} grupos"] if total else []
             if nb: partes.append(f"qué son {nb} textos del bróker")
             return {"ok": True, "n": n + nb, "mensaje": "✨ Jev propone " + " y ".join(partes) if partes else "No queda nada sin sugerencia"}
+        if ruta == "/api/jev/enviado": return {"ok": True, "enviado": jev.registro(a)}
         if ruta == "/api/jev/categoria": return {"ok": True, **jev.sugerir_categoria(a, d.get("texto"), modelo.numero(d.get("importe")) or 0)}
         if ruta == "/api/jev/auditar":
             if not jev.config(a)["activo"]: return {"ok": False, "mensaje": "Activa el asistente Jev en Ajustes (con tu clave)."}

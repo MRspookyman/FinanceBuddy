@@ -30,6 +30,8 @@ class JevFalso(http.server.BaseHTTPRequestHandler):
                 ch = "banco" if nombre == "_tipo" else elegir(*claves[nombre]) if nombre in claves else "ninguna"
             elif nombre == "tipo":
                 ch = "reembolso" if "bizum recibido" in estado else "ingreso"
+            elif nombre == "origen":  # reparto de Bizums: el gasto candidato del súper, si lo hay
+                ch = next((k for k in crit if "mercadona" in crit[k].lower()), "ninguno")
             elif nombre == "accion":  # bróker
                 ch = "comision" if "custodia" in estado else "compra" if "apple" in estado else None
             elif nombre == "clase":
@@ -235,6 +237,79 @@ class TestJev(unittest.TestCase):
         n = len(RECIBIDO)
         self.app.manejar("/api/detectar", {})
         self.assertEqual(len(RECIBIDO), n)  # se recuerda
+
+    def reparto(self):
+        """Mercadona 97,84 € pagado con tarjeta y cuatro Bizums de ~19,56 € ocho días después (fuera del día anterior)."""
+        for f, c, i in (("2026-09-01", "Pago Movil En Mercadona Aguad, Jaen", -97.84), ("2026-09-02", "Pago Movil En Ferreteria Lopez, Madrid", -12.5)):
+            self.app.manejar("/api/guardar", {"tipo": "movimiento", "datos": {"fecha": f, "clase": "gasto", "importe": abs(i), "concepto": c.split(" En ")[1].split(",")[0],
+                                                                              "categoria": "Supermercado" if "Mercadona" in c else "Hogar", "cuenta": "Nómina", "ext_texto": c, "ext_importe": i, "ext_fecha": f}})
+        ruta = os.path.join(self.app.carpeta.banco, "r.xlsx")
+        excel_santander(ruta, [("2026-09-09", f"Bizum de {n} concepto", 19.56) for n in ("Ana Ruiz", "Luis Gil", "Eva Sanz", "Pablo Cano")], saldo_inicial=900.0)
+        return self.app._importar(ruta, "banco", "Nómina")
+
+    def test_bizum_reparto_con_gastos_candidatos(self):
+        self.app.manejar("/api/jev/config", {"clave": CLAVE, "activo": True, "al_importar": False})
+        # Ocho días después, 4 Bizums de 19,56 = 97,84 ÷ 5 (tú incluido): lo casa la aritmética local, sin preguntar a Jev
+        r = self.reparto()
+        P = self.app.datos()["pendientes"]
+        self.assertEqual(len(P), 0, r)
+        self.assertEqual(RECIBIDO, [])
+
+    def test_bizum_pendiente_pregunta_a_jev_con_los_candidatos(self):
+        self.app.manejar("/api/jev/config", {"clave": CLAVE, "activo": True, "al_importar": False})
+        for f, c, i in (("2026-09-01", "Pago Movil En Mercadona Aguad, Jaen", -97.84), ("2026-09-05", "Pago Movil En Cine Plaza, Jaen", -40.0)):
+            self.app.manejar("/api/guardar", {"tipo": "movimiento", "datos": {"fecha": f, "clase": "gasto", "importe": abs(i), "concepto": c.split(" En ")[1].split(",")[0],
+                                                                              "categoria": "Supermercado" if "Mercadona" in c else "Ocio", "cuenta": "Nómina", "ext_texto": c, "ext_importe": i, "ext_fecha": f}})
+        ruta = os.path.join(self.app.carpeta.banco, "r.xlsx")
+        excel_santander(ruta, [("2026-09-09", "Bizum de Ana Ruiz", 31.00), ("2026-09-09", "Bizum de Luis Gil", 31.00)], saldo_inicial=900.0)  # 62 € no cuadra con nada
+        self.app._importar(ruta, "banco", "Nómina")
+        self.assertEqual(len(self.app.datos()["pendientes"]), 2)
+        self.app.manejar("/api/jev/revisar", {})
+        P = self.app.datos()["pendientes"]
+        # Los dos Bizums son un reparto: una sola pregunta, con los gastos tuyos como opciones y el contexto de tu historial
+        q = [b for b in RECIBIDO if "origen" in b["questions"]]
+        self.assertEqual(len(q), 1)
+        opciones = json.dumps(q[0]["questions"]["origen"]["criteria"], ensure_ascii=False)
+        self.assertIn("97.84", opciones); self.assertIn("40.00", opciones); self.assertIn("ninguno", opciones)
+        self.assertIn("2 Bizums de esa misma cantidad", q[0]["state"]); self.assertIn("recibe Bizums casi siempre", q[0]["state"])
+        self.assertNotIn("Ruiz", json.dumps(RECIBIDO, ensure_ascii=False))
+        s = P[0]["sugerencia"]
+        self.assertEqual((s["fuente"], s["categoria"], s["clase"]), ("jev", "Supermercado", "reembolso"))
+        self.assertIn("parte de «Pago Movil En Mercadona", s["motivo"])
+        # Los candidatos llegan a la página con todo el detalle
+        c = P[0]["candidatos"]
+        self.assertEqual({x["importe"] for x in c}, {97.84, 40.0})
+        self.assertTrue(all({"id", "fecha", "concepto", "cat", "dias", "devuelto", "texto"} <= set(x) for x in c))
+        # Elegir uno enlaza los Bizums con ese gasto
+        gasto = next(x for x in c if x["importe"] == 97.84)
+        self.app.manejar("/api/resolver", {"id": P[0]["id"], "ids": [p["id"] for p in P], "accion": "guardar", "clase": "gasto", "categoria": "Supermercado", "reembolsa": gasto["id"]})
+        reem = [m for m in self.app.alm.todos("movimiento") if m["clase"] == "reembolso"]
+        self.assertEqual(({m["reembolsa"] for m in reem}, len(reem)), ({gasto["id"]}, 2))
+
+    def test_contexto_de_tu_historial_y_privacidad(self):
+        self.app.manejar("/api/jev/config", {"clave": CLAVE, "activo": True, "al_importar": False})
+        self.app.alm.set_config("titulares", ["MARTINEZ MEGIAS JAVIER"])
+        for conc, cat in (("cena", "Comer fuera"), ("cena", "Comer fuera"), ("copa", "Comer fuera"), ("piso", "Vivienda")):
+            self.app.manejar("/api/guardar", {"tipo": "movimiento", "datos": {"fecha": "2026-09-03", "clase": "gasto", "importe": 10, "concepto": conc, "categoria": cat, "cuenta": "Nómina",
+                                                                              "ext_texto": f"Bizum a favor de Laura Gil concepto {conc}", "ext_importe": -10, "ext_fecha": "2026-09-03"}})
+        ctx = jev.Contexto(self.app.alm)
+        t = ctx.de("Bizum a favor de Laura Gil concepto mojitos", -8)
+        self.assertIn("«cena» → Comer fuera (2)", t); self.assertIn("«piso» → Vivienda", t)
+        self.assertIn("le has enviado 4 Bizums", t); self.assertNotIn("Laura", t)
+        self.assertIn("SU PARTE", t)
+        # Tu nombre y las direcciones no salen, ni en el concepto de una transferencia
+        jev.config(self.app.alm)
+        s = jev.saneado("TRANSFERENCIA A FAVOR DE Pepe Gil CONCEPTO Septiembre y fianza, C/linares 4izq, Javier Martinez", -450)
+        self.assertNotIn("Javier", s); self.assertNotIn("linares", s); self.assertIn("fianza", s)
+
+    def test_registro_de_lo_enviado(self):
+        self.app.manejar("/api/jev/config", {"clave": CLAVE, "activo": True})
+        self.assertEqual(self.app.manejar("/api/jev/enviado", {})["enviado"], [])
+        self.importar()
+        e = self.app.manejar("/api/jev/enviado", {})["enviado"]
+        self.assertTrue(e and all({"cuando", "estado", "preguntas"} <= set(x) for x in e))
+        self.assertNotIn("Ruiz", json.dumps(e, ensure_ascii=False))
+        self.assertEqual(len(e), len(RECIBIDO))  # lo registrado es lo enviado, ni más ni menos
 
 if __name__ == "__main__":
     unittest.main()
