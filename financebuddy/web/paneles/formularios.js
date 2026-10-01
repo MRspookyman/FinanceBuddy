@@ -6,6 +6,13 @@ const CLASE_MOV = { gasto: "Gasto", ingreso: "Ingreso", reembolso: "Te lo devolv
 const opcCategorias = (grupo) => () => categorias().filter((c) => !grupo || (grupo === "ingreso" ? c.grupo === "ingreso" : c.grupo !== "ingreso")).map((c) => [c.nombre, c.nombre]);
 const opcCuentas = (filtro) => () => cuentas().filter((c) => !filtro || filtro(c)).map((c) => [c.nombre, c.nombre]);
 const opcActivos = () => registros("activo").map((a) => [a.nombre, a.nombre]);
+// Los gastos de los 60 días anteriores a este movimiento (los más cercanos primero), con lo que ayuda a reconocerlos
+const opcGastosRecientes = (d) => {
+  const f = d.fecha || hoy.toISODate();
+  return registros("movimiento").filter((m) => m.clase === "gasto" && m.fecha <= f && m.fecha >= DateTime.fromISO(f).minus({ days: 60 }).toISODate())
+    .sort((a, b) => String(b.fecha).localeCompare(String(a.fecha)) || b.id - a.id).slice(0, 80)
+    .map((m) => [String(m.id), `${fechaCorta(m.fecha)} · ${m.concepto} · ${eur(m.importe)} · ${m.categoria || "sin categoría"}`]);
+};
 const opcRecurrentes = (clase) => () => registros("recurrente").filter((r) => !clase || r.clase === clase).map((r) => [r.nombre, r.nombre]);
 const catSegunClase = (d) => d.clase === "ingreso" ? opcCategorias("ingreso")() : opcCategorias("gasto")();
 
@@ -38,13 +45,15 @@ const FORMS = {
       { k: "cuenta", l: "Cuenta", t: "opc", opc: opcCuentas(), defecto: () => principal() },
       { k: "_dir", l: "Dirección", t: "opc", opc: [["destino", "Sale hacia…"], ["origen", "Entra desde…"]], si: (d) => d.clase === "transferencia", virtual: true },
       { k: "_otra", l: "Otra cuenta", t: "opc", opc: opcCuentas(), si: (d) => d.clase === "transferencia", virtual: true },
+      { k: "reembolsa", l: "Devuelve parte de este gasto", t: "opc", opc: opcGastosRecientes, vacio: "— ninguno —", si: (d) => d.clase === "reembolso",
+        ayuda: "Si te devuelven dinero de un gasto que pagaste tú (un Bizum de un amigo…), elige cuál: así ves cuánto te costó de verdad." },
       { k: "recurrente", l: "Es el pago/cobro de este recurrente", t: "opc", opc: opcRecurrentes(), vacio: "— ninguno —", si: (d) => d.clase === "gasto" || d.clase === "ingreso",
         ayuda: "Si lo enlazas, ese mes el recurrente no se cuenta dos veces." },
       { k: "nota", l: "Nota" }],
     fila: (r) => [fechaCorta(r.fecha), r.concepto, r.clase === "transferencia" ? `entre cuentas${r.destino ? " → " + r.destino : r.origen ? " ← " + r.origen : ""}` : r.categoria || "", { text: (r.clase === "gasto" ? "−" : r.clase === "transferencia" ? "" : "+") + eur(r.importe), cls: r.clase === "ingreso" ? "pos" : "" }],
     cols: ["Fecha", "Concepto", "Categoría", "Importe"], orden: (a, b) => String(b.fecha).localeCompare(String(a.fecha)) || b.id - a.id,
     antes: (d) => { if (d.clase === "transferencia") { d[d._dir || "destino"] = d._otra; d[d._dir === "origen" ? "destino" : "origen"] = ""; d.categoria = ""; } else { d.destino = d.origen = ""; } },
-    cargar: (d) => { d._dir = d.origen ? "origen" : "destino"; d._otra = d.destino || d.origen || ""; } },
+    cargar: (d) => { d._dir = d.origen ? "origen" : "destino"; d._otra = d.destino || d.origen || ""; d.reembolsa = d.reembolsa ? String(d.reembolsa) : ""; } },
   recurrente: { uno: "fijo", plural: "Fijos", ayuda: "Lo que se repite cada mes (o ciertos meses): nómina, alquiler, recibos, aportaciones. Sirven para la previsión y para saber lo que falta por pagar.",
     campos: [
       { k: "nombre", l: "Nombre", req: true, ph: "p. ej. Alquiler" },

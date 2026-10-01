@@ -136,9 +136,10 @@ def titulares_de(nombres):
     """Nombres de titular (config «titulares») → conjuntos de palabras para es_titular()."""
     return [{w for w in palabras(n) if len(w) >= 3} for n in nombres or [] if n]
 
-def clasificar_fila(f, todas, reglas, cuentas, recurrentes, cuenta_propia, categorias=None, mem=None, titulares=None):
+def clasificar_fila(f, todas, reglas, cuentas, recurrentes, cuenta_propia, categorias=None, mem=None, titulares=None, previos=None):
     """f: {op, texto, importe}. Devuelve {clase, cat, concepto, destino?/origen?, recurrente?, duda?}.
-    todas: todas las filas del archivo ya clasificadas hasta aquí (para los Bizums recibidos)."""
+    todas: todas las filas del archivo ya clasificadas hasta aquí (para los Bizums recibidos).
+    previos: gastos y Bizums ya guardados fuera de las fechas del archivo (bizums.previos)."""
     t, tn, imp = f["texto"], norm(f["texto"]), f["importe"]
     r = {"clase": "gasto" if imp < 0 else "ingreso", "cat": "", "concepto": titulo(comercio(t) or re.sub(r",.*$", "", t) or "Movimiento")}
     def con(**kw):
@@ -184,19 +185,22 @@ def clasificar_fila(f, todas, reglas, cuentas, recurrentes, cuenta_propia, categ
     if m and imp > 0:
         quien, conc = titulo(m.group(1)), (m.group(2) or "").strip()
         nombre = quien.split(" ")[0]
+        from . import bizums
         cat = cat_por_palabras(conc)
-        if not cat:
-            dia = datetime.date.fromisoformat(f["op"])
-            fijas = {n for n, g in (categorias or {}).items() if g == "fijo"} | NO_COMPARTIDAS
-            cerca = [g for g in todas if g is not f and g.get("clase") == "gasto" and g.get("cat") and not g.get("duda") and g["cat"] not in fijas
-                     and g["cat"] != "Otros" and abs(g["importe"]) >= imp
-                     and 0 <= (dia - datetime.date.fromisoformat(g["op"])).days <= 1]
-            if cerca: cat = max(cerca, key=lambda g: abs(g["importe"]))["cat"]
+        recibidos = [{"fecha": g["op"], "importe": g["importe"]} for g in todas if g["importe"] > 0 and bizums.es_bizum(g["texto"])] + (previos or {}).get("bizums", [])
+        if not cat:  # ¿de qué gasto tuyo es? (un reparto exacto, o el gasto del día o el anterior)
+            fijas = {n for n, g in (categorias or {}).items() if g == "fijo"}
+            gastos = [{"fecha": g["op"], "importe": abs(g["importe"]), "cat": g["cat"], "texto": g["texto"]} for g in todas
+                      if g is not f and g.get("clase") == "gasto" and g.get("cat") and not g.get("duda")] + (previos or {}).get("gastos", [])
+            c = bizums.casar(imp, f["op"], gastos, recibidos, fijas)
+            if c: cat = c["gasto"]["cat"]
         if cat: return con(clase="reembolso", cat=cat, concepto=f"Parte de {nombre}")
         aprendido = por_memoria(t, imp, mem, minimo=2)
         if aprendido: return con(clase=aprendido[0], cat=aprendido[1], concepto=f"Bizum de {nombre}", aprendido=True)
+        n = bizums.iguales(imp, f["op"], recibidos)
         return con(clase="ingreso", cat="Otros ingresos", concepto=f"Bizum de {nombre}",
-                   duda=f"Bizum de {quien} «{conc or 'sin concepto'}» sin un gasto cercano: ¿te devuelve algo o es un ingreso?")
+                   duda=f"Bizum de {quien} «{conc or 'sin concepto'}»: " + (f"{n} Bizums iguales a la vez, parece un reparto, pero no encuentro el gasto. ¿De qué era?" if n >= 2
+                                                                         else "sin un gasto cercano: ¿te devuelve algo o es un ingreso?"))
     # 5) Devolución de una compra
     if tn.startswith("devolucion") or " devolucion" in tn:
         return con(clase="reembolso", cat="Compras", concepto=f"Devolución {comercio(t) or ''}".strip(), duda="Devolución: ¿de qué categoría era la compra?")

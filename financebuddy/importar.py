@@ -5,7 +5,7 @@
 # Si el formato no se reconoce, devuelve lo necesario para que el usuario diga qué columna es cada cosa.
 import datetime, os, re, shutil
 from collections import Counter
-from . import clasificar as C, lectura as L, modelo, operaciones as OP
+from . import bizums, clasificar as C, lectura as L, modelo, operaciones as OP
 
 class NecesitaPerfil(Exception):
     def __init__(self, info): super().__init__("formato desconocido"); self.info = info
@@ -122,9 +122,11 @@ def importar_banco(alm, ruta, cuenta=None, perfil_nombre=None):
     mem = C.memoria(alm.todos("movimiento"))
     grupos = {c["nombre"]: c.get("grupo") for c in alm.todos("categoria")}
     titulares = C.titulares_de((alm.config("titulares") or []) + [info.get("titular")])
-    # Clasificar de la más antigua a la más reciente (los Bizums recibidos miran los gastos de antes)
+    # Clasificar de la más antigua a la más reciente (los Bizums recibidos miran los gastos de antes, también los de otros extractos)
+    previos = bizums.previos(alm, min(f["op"] for f in filas), max(f["op"] for f in filas))
     for f in reversed(filas):
-        f.update(C.clasificar_fila(f, filas, reglas, cuentas, recs, cuenta, categorias=grupos, mem=mem, titulares=titulares))
+        f.update(C.clasificar_fila(f, filas, reglas, cuentas, recs, cuenta, categorias=grupos, mem=mem, titulares=titulares, previos=previos))
+    bizums.propagar(filas)  # los hermanos de un reparto heredan la categoría del que ya la tiene
     huellas = huellas_existentes(alm, cuenta)
     # Movimientos apuntados a mano (sin huella) en esa cuenta: mismo importe y sentido, fecha a ±3 días (el banco
     # suele cargarlo un par de días después). Al casar, el apunte manual se queda con la huella del extracto.
@@ -169,7 +171,7 @@ def movimiento_de(f, cuenta, **cambios):
     d = {"fecha": min(f["op"], f.get("val") or f["op"]), "clase": f["clase"], "categoria": f.get("cat") if f["clase"] != "transferencia" else "",
          "importe": abs(f["importe"]), "cuenta": cuenta, "concepto": f.get("concepto") or C.titulo(f["texto"]),
          "ext_texto": f["texto"], "ext_importe": f["importe"], "ext_fecha": f["op"]}
-    for k in ("recurrente", "destino", "origen"):
+    for k in ("recurrente", "destino", "origen", "reembolsa"):
         if f.get(k): d[k] = f[k]
     return modelo.limpiar("movimiento", d)
 
@@ -461,6 +463,9 @@ def _resolver_uno(alm, p, d):
         elif not cambios["cat"]: raise ValueError("Elige una categoría.")
         if clase == "gasto" and f["importe"] > 0: cambios["clase"] = "reembolso"
         if clase in ("ingreso", "reembolso") and f["importe"] < 0: cambios["clase"] = "gasto"
+        if cambios["clase"] == "reembolso" and str(d.get("reembolsa") or "").isdigit():  # el gasto que devuelve, elegido por ti
+            g = alm.obtener("movimiento", int(d["reembolsa"]))
+            if g and g.get("clase") == "gasto": cambios["reembolsa"] = g["id"]
         fila = {**f, **cambios}
         fila = C.enlazar({"clase": fila["clase"], "cat": fila["cat"], "concepto": fila["concepto"]}, f, alm.todos("recurrente")) | {k: v for k, v in fila.items() if k not in ("clase", "cat", "concepto")}
         alm.insertar_crudo("movimiento", movimiento_de(fila, cuenta))

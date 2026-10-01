@@ -61,8 +61,15 @@ app le pregunta:
   avisa de lo que está en «Otros» o de lo que cree con ≥ 85 % que es de otra categoría. «Cambiar» lo aplica a todo el
   comercio y lo recuerda como regla. Al importar el banco repasa también lo nuevo que se ha clasificado solo.
 - **Apuntar**: al escribir el concepto propone la categoría (tus reglas y tu historial primero; Jev si no lo saben).
+- **Bizums recibidos**: de qué gasto tuyo es la parte que te devuelven. Se le enseñan tus gastos de los días anteriores como
+  opciones y elige uno (o «ninguno»).
 - **Fijos**: si algo que se repite en una categoría de gasto variable parece una cuota (academia, clases…) o solo coincide.
 - **Un banco nuevo**: si el archivo es del banco o del bróker y qué columna es cada cosa.
+
+**Qué contexto recibe**, además del concepto y el importe: cómo has clasificado cosas parecidas, tus Bizums más habituales por
+concepto, qué ha pasado antes con esa persona (sin su nombre) y que el Bizum que envías suele ser tu parte de algo y el que
+recibes la parte que te devuelven. En *Ajustes → Asistente Jev → Ver lo último que se ha enviado* ves, consulta a consulta,
+exactamente lo que ha salido de tu ordenador. Tu nombre (titulares) y las direcciones («C/ Linares 4») también se quitan.
 
 Solo sugiere, con su confianza («Jev · 91 %»; desde el 85 % sale marcada al aceptar en bloque). Si no hay conexión o la
 clave falla, deja de preguntar y no marca nada (se reintenta la próxima vez). En Ajustes ves las consultas del mes y
@@ -70,6 +77,13 @@ lo que cuestan (céntimos). Se envía solo el concepto saneado —sin
 nombres de personas en Bizums y transferencias, números de tarjeta, IBAN ni correos— y el importe; la clave se guarda
 solo en tu carpeta de datos. Para medir cuánto acierta con tus movimientos antes de fiarte:
 `python pruebas\evaluar_jev.py` (con `--mostrar` enseña lo que se enviaría sin enviar nada). Sin clave, todo igual.
+
+**Bizums**: tus Bizums enviados son tu parte de un gasto (categoría por el concepto). Los recibidos son lo que te devuelven de un
+gasto que pagaste tú: se restan de su categoría y se enlazan con él (*Movimientos*: «te devolvieron X»; en su ficha, «Tu parte
+real»). La app lo casa sola con aritmética: varios Bizums iguales que cuadran con un gasto (5 × 19,56 € = 97,84 € ÷ 5), hasta
+10 días después y también si el gasto está en otro extracto; los iguales del mismo día heredan la categoría del que ya la tiene.
+Lo que no cuadra aparece en *Por revisar* como un **reparto** (un solo grupo) con los gastos candidatos, con su fecha, importe,
+categoría, cuánto te han devuelto ya y cuánto te costó de verdad: eliges uno y queda enlazado.
 
 **Por revisar**: filtros (banco, bróker, con sugerencia) y **Revisar y aceptar las sugerencias** de una vez, con una
 casilla por grupo (las dudosas, sin marcar). Las entradas de dinero al bróker con un concepto tuyo («ahorro», «Inicio»)
@@ -143,6 +157,7 @@ financebuddy/
   detectar.py      fijos que se repiten cada mes y de dónde viene el dinero
   operaciones.py   órdenes y operaciones del bróker con participaciones (ISIN, traspasos entre fondos)
   cartera.py       arreglos a mano: unir activos, deshacer un traspaso tomado por venta, cuadrar participaciones
+  bizums.py        Bizums recibidos: casar con el gasto que devuelven (aritmética de repartos) y enlazarlo
   jev.py           asistente opcional Jev (TypeSafe AI): dudas del banco y del bróker, repaso de categorías, apuntar, fijos y formatos nuevos
   plantilla.py     categorías, reglas y formatos de serie
   ejemplo.py       datos de ejemplo
@@ -153,3 +168,7 @@ pruebas/           pruebas (Python y cálculos en el navegador)
 Los módulos de `web/paneles/` se concatenan y comparten ámbito, en este orden: `datos`, `calculos`, `componentes`, `graficos`, `inicio`, `inversion`, `formularios`, `pantallas`.
 
 Con [Claude Code](https://claude.com/claude-code), la skill `.claude/skills/financebuddy-dev` explica la arquitectura y cómo probar y extender la app.
+
+**[`CONTEXTO.md`](CONTEXTO.md)** reúne todo el contexto del proyecto —reglas que no se rompen, arquitectura, historial de
+cambios, auditorías realizadas con sus hallazgos, decisiones y pendientes— para poder retomar el trabajo sin la conversación
+original. Si cambias algo importante, actualízalo.

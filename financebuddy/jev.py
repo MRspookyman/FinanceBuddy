@@ -18,9 +18,10 @@
 #    "criteria": {"<opción>": "<descripción>"}}}}
 #   → {"model": "jev-1.13.0", "answers": {"<nombre>": {"type": "choice", "choice": "<opción>", "confidence": 0.93,
 #      "probabilities": {…}}}, "usage": {"input_tokens": …, "output_tokens": …}}
-import datetime, json, os, re, threading, urllib.error, urllib.request
+import datetime, difflib, json, os, re, threading, urllib.error, urllib.request
+from collections import Counter, deque
 from concurrent.futures import ThreadPoolExecutor
-from . import clasificar as C, lectura as L
+from . import bizums, clasificar as C, lectura as L
 
 URL = "https://api.typesafe.ai/v1/systemone"
 MODELO = "jev-latest"
@@ -34,10 +35,17 @@ class ErrorJev(Exception):
 
 PRECIO_MTOK = 0.042  # $ por millón de tokens de entrada (la salida es gratis)
 _uso, _uso_lock = {"consultas": 0, "tokens": 0}, threading.Lock()
+_enviado = deque(maxlen=30)  # lo último que se ha mandado a Jev (para enseñártelo en Ajustes): lo mismo que sale por la red
+def registro(alm):
+    """Lo último que se ha enviado a Jev, de más nuevo a más viejo: [{cuando, estado, preguntas:[{nombre, instrucciones, opciones}]}]."""
+    return list(reversed(alm.config("jev_enviado") or []))
 def guardar_uso(alm):
-    """Suma al mes en curso las consultas hechas desde la última vez (config.jev_uso = {AAAA-MM: {consultas, tokens}})."""
+    """Suma al mes en curso las consultas hechas desde la última vez (config.jev_uso = {AAAA-MM: {consultas, tokens}})
+    y guarda lo enviado (config.jev_enviado)."""
     with _uso_lock:
         n, t = _uso["consultas"], _uso["tokens"]; _uso["consultas"] = _uso["tokens"] = 0
+        nuevos = list(_enviado); _enviado.clear()
+    if nuevos: alm.set_config("jev_enviado", ((alm.config("jev_enviado") or []) + nuevos)[-30:])
     if not n: return
     u = dict(alm.config("jev_uso") or {})
     mes = datetime.date.today().strftime("%Y-%m")
@@ -46,7 +54,9 @@ def guardar_uso(alm):
     alm.set_config("jev_uso", dict(sorted(u.items())[-12:]))
 
 # ───────────── configuración (la clave vive solo en la base de datos local) ─────────────
+_ocultar = []  # palabras de tus titulares (tu nombre): nunca salen, ni en el concepto de una transferencia
 def config(alm):
+    _ocultar[:] = [w for t in alm.config("titulares") or [] for w in L.norm(t).split() if len(w) >= 3]
     c = alm.config("jev") or {}
     clave = c.get("clave") or os.environ.get("TYPESAFE_API_KEY", "")
     return {"clave": clave, "activo": bool(c.get("activo", True)) and bool(clave), "al_importar": bool(c.get("al_importar", True))}
@@ -75,6 +85,10 @@ def guardar_config(alm, d):
 def preguntar(clave, estado, preguntas, timeout=15, url=None):
     """Una petición a /v1/systemone → {nombre: respuesta}. Lanza ErrorJev con un mensaje legible."""
     cuerpo = json.dumps({"model": MODELO, "state": estado, "questions": preguntas}, ensure_ascii=False).encode("utf-8")
+    with _uso_lock:
+        _enviado.append({"cuando": datetime.datetime.now().strftime("%d/%m %H:%M"), "estado": estado,
+                         "preguntas": [{"nombre": k, "tipo": q.get("type"), "instrucciones": q.get("instructions"),
+                                        "opciones": [str(v)[:70] for v in (q.get("criteria") or {}).values()]} for k, q in preguntas.items()]})
     req = urllib.request.Request(url or os.environ.get("FB_JEV_URL") or URL, data=cuerpo, method="POST",
                                  headers={"Authorization": f"Bearer {clave}", "Content-Type": "application/json"})
     for intento in (1, 2):
@@ -134,11 +148,106 @@ def saneado(texto, importe, donde="una cuenta bancaria en España"):
     m = RE_TRANSF.match(t)
     if m and not RE_EMPRESA.search(L.norm(m.group(3))):
         t = f"{m.group(1)} {m.group(2)} una persona{m.group(4) or ''}"
+    t = re.sub(r"(?i)\b(?:c/|calle|cl\.?|avda\.?|avenida|plaza|pza\.?|paseo|camino|ctra\.?|carretera)\s*[^\W\d_][\w ºª.-]*?\s*,?\s*\d+\s*[\w.º-]*", "", t)  # direcciones
+    for w in _ocultar: t = re.sub(r"(?i)(?<!\w)" + re.escape(w) + r"(?!\w)", "", t)  # tu nombre
     t = re.sub(r"\b[A-Z]{2}\d{2}(?:\s?[\dA-Z]{4}){3,7}\b", "", t)          # IBAN
     t = re.sub(r"\S+@\S+", "", t)                                         # correos
     t = re.sub(r"(?i)tarj\.?\s*:?\s*\*?\d+|\*\d{3,}|\b\d{5,}\b", "", t)   # tarjetas y números largos
     t = re.sub(r"\s{2,}", " ", t).strip(" ,.;:")
     return f"Movimiento de {donde}: «{t}». {'Sale' if importe < 0 else 'Entra'} dinero: {abs(importe):.2f} €."
+
+def _corto(texto, importe):
+    """El concepto tal y como se envía (lo de dentro de «»)."""
+    return saneado(texto, importe).split("«", 1)[-1].rsplit("»", 1)[0]
+
+# ───────────── contexto: tu historial, para que compare y decida con tu criterio ─────────────
+CONTEXTO_BIZUM = {
+    False: "Contexto: quien usa la app envía Bizums casi siempre para pagar SU PARTE de algo que pagó otro (cena, copas, regalo, "
+           "gasolina, piso…): el concepto suele decir qué era.",
+    True: "Contexto: quien usa la app recibe Bizums casi siempre porque ÉL pagó algo (cena, compra, gasolina…) y los demás le devuelven "
+          "su parte; a veces el concepto lo dice y a veces no. Solo rara vez es un ingreso suyo."}
+RE_PERSONA = re.compile(r"bizum\s+(?:a favor de|enviado a|recibido de|de|a)\s+(.+?)(?:\s+concepto\b.*)?$")
+
+def _concepto_bizum(texto, importe):
+    """«Bizum enviado. Concepto: cena» → «cena» (vacío si no tiene)."""
+    m = re.search(r"concepto:\s*(.+)$", _corto(texto, importe), re.I)
+    return L.norm(m.group(1)).strip() if m else ""
+
+def _persona(texto):
+    m = RE_PERSONA.search(L.norm(texto or ""))
+    return m.group(1).strip() if m else ""
+
+class Contexto:
+    """Lo que se le cuenta a Jev además del movimiento, sacado de TU historial (sin nombres de personas): cómo has clasificado
+    cosas parecidas y, en un Bizum, qué suele ser con esa persona. Así compara con tu criterio en vez de adivinar."""
+    def __init__(self, alm):
+        self.comercios = {}   # (entra, clave del comercio) → [texto de muestra, Counter(categoría)]
+        self.conceptos = {True: {}, False: {}}     # Bizums por sentido: concepto → [Counter(categoría)]
+        self.personas = {}    # persona (local, nunca se envía) → {"env": Counter(cat), "rec": Counter((clase, cat))}
+        for m in alm.todos("movimiento"):
+            if m.get("clase") not in ("gasto", "ingreso", "reembolso") or not m.get("categoria"): continue
+            t = m.get("ext_texto") or m.get("concepto") or ""
+            entra = m["clase"] != "gasto"
+            if bizums.es_bizum(t):
+                c = _concepto_bizum(t, 1 if entra else -1)
+                if c and c not in ("envio de dinero con bizum",): self.conceptos[entra].setdefault(c, Counter())[m["categoria"]] += 1
+                p = self.personas.setdefault(_persona(t), {"env": Counter(), "rec": Counter()}) if _persona(t) else None
+                if p is not None: (p["rec"] if entra else p["env"])[(m["clase"], m["categoria"]) if entra else m["categoria"]] += 1
+            else:
+                k = self._clave(t)
+                if len(k) >= 3: self.comercios.setdefault((entra, k), [_corto(t, 1 if entra else -1)[:60], Counter()])[1][m["categoria"]] += 1
+
+    @staticmethod
+    def _clave(texto):
+        """Para emparejar comercios (solo en tu ordenador): la clave de la app, sin «Pago Movil En», «Transferencia de»…"""
+        return L.norm(C.comercio(texto) or C.clave(texto))
+
+    @staticmethod
+    def _cats(c, n=3):
+        return ", ".join(f"{cat} ({v})" if v > 1 else cat for cat, v in c.most_common(n))
+
+    def precedentes(self, texto, importe, incluir_misma=True, n=4):
+        """Comercios parecidos que ya has clasificado y cómo."""
+        entra = importe > 0
+        k = self._clave(texto)
+        claves = [x for (e, x) in self.comercios if e == entra and (incluir_misma or x != k)]
+        parecidos = difflib.get_close_matches(k, claves, n=n, cutoff=0.55) if not bizums.es_bizum(texto) else []
+        if incluir_misma and k in claves and k not in parecidos: parecidos.insert(0, k)
+        lineas = [f"«{self.comercios[(entra, x)][0]}» → {self._cats(self.comercios[(entra, x)][1])}" for x in parecidos[:n]]
+        return ("Cómo has clasificado cosas parecidas: " + "; ".join(lineas) + ".") if lineas else ""
+
+    def habituales(self, entra, n=8):
+        """Tus Bizums enviados (o recibidos) más repetidos, por concepto, y cómo los has clasificado."""
+        top = sorted(self.conceptos[entra].items(), key=lambda kv: -sum(kv[1].values()))[:n]
+        if not top: return ""
+        return f"Tus Bizums {'recibidos' if entra else 'enviados'} más habituales, por concepto: " + "; ".join(
+            f"«{c}» → {self._cats(v, 2)}" for c, v in top) + "."
+
+    def persona(self, texto):
+        """Qué ha pasado antes con esa persona (el nombre no sale de tu ordenador)."""
+        p = self.personas.get(_persona(texto))
+        if not p: return ""
+        env, rec = sum(p["env"].values()), sum(p["rec"].values())
+        partes = []
+        if env: partes.append(f"le has enviado {env} Bizum{'s' if env > 1 else ''} (de {self._cats(p['env'])})")
+        if rec:
+            reem, ing = Counter(), 0
+            for (clase, cat), v in p["rec"].items():
+                if clase == "reembolso": reem[cat] += v
+                else: ing += v
+            q = ([f"{sum(reem.values())} te devolvían {self._cats(reem)}"] if reem else []) + ([f"{ing} eran ingresos"] if ing else [])
+            partes.append(f"te ha enviado {rec} ({', '.join(q)})")
+        return ("Con esa misma persona, antes: " + " y ".join(partes) + ".") if partes else ""
+
+    def de(self, texto, importe, incluir_misma=True, persona=True):
+        """El texto de contexto para una consulta sobre este movimiento (vacío si no hay nada que contar)."""
+        if bizums.es_bizum(texto):
+            e = importe > 0
+            return "\n".join(x for x in (CONTEXTO_BIZUM[e], self.habituales(e), self.persona(texto) if persona else "") if x)
+        return self.precedentes(texto, importe, incluir_misma)
+
+def _con_contexto(estado, contexto):
+    return estado + ("\n" + contexto if contexto else "")
 
 def _slug(s):
     return re.sub(r"[^a-z0-9]+", "_", L.norm(s)).strip("_")[:40] or "x"
@@ -160,16 +269,18 @@ def categorias_de(alm):
     ingreso = [(c["nombre"], c.get("descripcion") or DESCRIPCIONES.get(c["nombre"], "")) for c in cats if c.get("grupo") == "ingreso"]
     return gasto, ingreso
 
-def clasificar(clave, texto, importe, gasto, ingreso, url=None, minima=MINIMA):
-    """→ {clase: gasto|ingreso|reembolso, categoria, confianza, modelo} o None si Jev no está seguro."""
+def clasificar(clave, texto, importe, gasto, ingreso, url=None, minima=MINIMA, contexto=""):
+    """→ {clase: gasto|ingreso|reembolso, categoria, confianza, modelo} o None si Jev no está seguro.
+    `contexto`: lo que se le cuenta de tu historial (Contexto.de)."""
     cg, ng = _opciones(gasto)
+    estado = _con_contexto(saneado(texto, importe), contexto)
     if importe < 0:
-        ans, d = preguntar(clave, saneado(texto, importe), {"categoria": {"type": "choice", "instructions": "¿En qué categoría de gasto encaja este pago?", "criteria": cg}}, url=url)
+        ans, d = preguntar(clave, estado, {"categoria": {"type": "choice", "instructions": "¿En qué categoría de gasto encaja este pago?", "criteria": cg}}, url=url)
         a = ans.get("categoria") or {}
         r = {"clase": "gasto", "categoria": ng.get(a.get("choice")), "confianza": float(a.get("confidence") or 0)}
     else:
         ci, ni = _opciones(ingreso)
-        ans, d = preguntar(clave, saneado(texto, importe), {
+        ans, d = preguntar(clave, estado, {
             "tipo": {"type": "choice", "instructions": "¿Por qué entra este dinero?", "criteria": {
                 "reembolso": "Te devuelven dinero de algo que pagaste tú: un amigo te paga su parte de una cena o un regalo, una tienda te devuelve una compra",
                 "ingreso": "Dinero que ganas: nómina, pensión, alquiler que cobras, venta de algo, premio, intereses"}},
@@ -188,15 +299,47 @@ def grupos_sin_sugerencia(alm):
     """Grupos de dudas del banco (misma cuenta, comercio y signo) sin sugerencia de tu historial ni de Jev."""
     movs = alm.todos("movimiento")
     mem = C.memoria(movs)
+    pend = alm.todos("pendiente")
+    rep = bizums.repartos(pend)  # varios Bizums iguales el mismo día: un solo reparto, se pregunta una vez
     grupos = {}
-    for p in alm.todos("pendiente"):
+    for p in pend:
         f = p.get("fila") or {}
         if p.get("tipo_import") != "banco" or f.get("clase") == "transferencia" or p.get("jev"): continue
         s = C.sugerir(f.get("texto", ""), f.get("importe", 0), mem, f.get("cat", ""))
-        if s and not str(s.get("motivo", "")).startswith("parecido"): continue
-        k = (p.get("cuenta"), f.get("patron") or C.patron_sugerido(f.get("texto", "")), f.get("importe", 0) < 0)
+        # En un Bizum, «como las otras veces con esa persona» es una pista floja (decide el concepto): se pregunta igual
+        if s and not str(s.get("motivo", "")).startswith("parecido") and not bizums.es_bizum(f.get("texto")): continue
+        k = (p.get("cuenta"), rep[p["id"]], False) if p["id"] in rep else (p.get("cuenta"), f.get("patron") or C.patron_sugerido(f.get("texto", "")), f.get("importe", 0) < 0)
         grupos.setdefault(k, []).append(p)
     return list(grupos.values())
+
+def clasificar_reparto(alm, clave, g, gasto, ingreso, ctx, url=None):
+    """Un reparto de Bizums recibidos: Jev compara el importe con los gastos tuyos de los días anteriores y dice de cuál es la
+    parte (o que de ninguno). → {clase: reembolso, categoria, confianza, modelo, motivo} o None."""
+    f = g[0]["fila"]
+    imp = f["importe"]
+    fijas = {c["nombre"] for c in alm.todos("categoria") if c.get("grupo") == "fijo"}
+    gastos = [bizums._gasto(m) for m in alm.todos("movimiento") if m.get("clase") == "gasto"]
+    recibidos = [{"fecha": p["fila"]["op"], "importe": p["fila"]["importe"]} for p in alm.todos("pendiente") if p["fila"].get("importe", 0) > 0 and bizums.es_bizum(p["fila"].get("texto"))]
+    cs = bizums.candidatos(imp, f["op"], gastos, recibidos, fijas, maximo=6)
+    if not cs: return None
+    d0 = datetime.date.fromisoformat(f["op"])
+    crit, por = {}, {}
+    for i, c in enumerate(cs):
+        gst = c["gasto"]
+        cuando = "ese mismo día" if c["dias"] == 0 else f"{c['dias']} día{'s' if c['dias'] > 1 else ''} antes"
+        cuenta = f" · {imp:.2f} € es la parte {c['k']}ª (tú incluido)" if c.get("k") and c["k"] > 1 else (f" · {imp:.2f} € es justo ese gasto entero" if c.get("k") == 1 else "")
+        crit[f"g{i}"] = f"{cuando}, pagaste {gst['importe']:.2f} € en «{_corto(gst['texto'], -1)[:50]}» ({gst['cat']}){cuenta}"
+        por[f"g{i}"] = c
+    crit["ninguno"] = "No devuelve ninguno de estos gastos: es un ingreso suyo, o un gasto que pagaste en efectivo o desde otra cuenta"
+    n = len(g)
+    estado = _con_contexto(saneado(f.get("texto", ""), imp) + (f" Ese día te han enviado {n} Bizums de esa misma cantidad." if n > 1 else ""),
+                           ctx.de(f.get("texto", ""), imp, persona=n == 1))
+    ans, d = preguntar(clave, estado, {"origen": {"type": "choice", "instructions": "¿De cuál de tus gastos es esta parte que te devuelven?", "criteria": crit}}, url=url)
+    a = ans.get("origen") or {}
+    c, conf = por.get(a.get("choice")), float(a.get("confidence") or 0)
+    if not c or conf < MINIMA: return None
+    return {"clase": "reembolso", "categoria": c["gasto"]["cat"], "confianza": round(conf, 3), "modelo": d.get("model", MODELO),
+            "motivo": f"parte de «{_corto(c['gasto']['texto'], -1)[:30]}»", "gasto_id": c["gasto"]["id"]}
 
 def revisar(alm, limite=MAX_GRUPOS, url=None):
     """Pide a Jev la categoría de los grupos de «Por revisar» sin sugerencia y la guarda en cada duda (`jev`).
@@ -206,9 +349,14 @@ def revisar(alm, limite=MAX_GRUPOS, url=None):
     gasto, ingreso = categorias_de(alm)
     grupos = grupos_sin_sugerencia(alm)[:limite]
     if not grupos: return 0, 0, None
+    ctx = Contexto(alm)
     def uno(g):
         f = g[0]["fila"]
-        return clasificar(c["clave"], f.get("texto", ""), f.get("importe", 0), gasto, ingreso, url=url)
+        if f.get("importe", 0) > 0 and bizums.es_bizum(f.get("texto")):  # Bizum recibido: primero, ¿de qué gasto tuyo es?
+            r = clasificar_reparto(alm, c["clave"], g, gasto, ingreso, ctx, url=url)
+            if r: return r
+        return clasificar(c["clave"], f.get("texto", ""), f.get("importe", 0), gasto, ingreso, url=url,
+                          contexto=ctx.de(f.get("texto", ""), f.get("importe", 0), persona=len(g) == 1))
     res = _lote(uno, grupos)
     n, error = 0, None
     with alm.transaccion():
@@ -279,7 +427,8 @@ def sugerir_categoria(alm, texto, importe, url=None):
     if not c["activo"]: return {"categoria": s["categoria"], "clase": s["clase"], "fuente": "historial"} if s else {}
     gasto, ingreso = categorias_de(alm)
     try:
-        cat, conf = _elegir(c["clave"], f"Movimiento apuntado a mano: «{texto}». {'Entra' if entra else 'Sale'} dinero: {abs(importe):.2f} €.",
+        cat, conf = _elegir(c["clave"], _con_contexto(f"Movimiento apuntado a mano: «{texto}». {'Entra' if entra else 'Sale'} dinero: {abs(importe):.2f} €.",
+                                                       Contexto(alm).de(texto, importe)),
                             "¿En qué categoría encaja?", ingreso if entra else gasto, url=url)
     except ErrorJev: return {}
     finally: guardar_uso(alm)
@@ -348,6 +497,7 @@ def auditar(alm, limite=150, url=None):
     if not c["activo"]: return 0, 0, None
     from collections import Counter
     gasto, ingreso = categorias_de(alm)
+    ctx = Contexto(alm)
     rev = dict(alm.config("jev_revision") or {})
     vistos, hallazgos = dict(rev.get("vistos") or {}), {h["clave"]: h for h in rev.get("hallazgos") or []}
     grupos = {}
@@ -368,7 +518,9 @@ def auditar(alm, limite=150, url=None):
         m = ms[-1]
         entra = m["clase"] == "ingreso"
         imp = float(m.get("ext_importe") or (m["importe"] if m["clase"] != "gasto" else -m["importe"]))
-        return _elegir(c["clave"], saneado(m.get("ext_texto") or m.get("concepto"), imp),
+        t = m.get("ext_texto") or m.get("concepto")
+        # Sin su propio historial (si no, solo repetiría lo que ya hay): comparte lo demás, pero no la misma ficha ni a la misma persona
+        return _elegir(c["clave"], _con_contexto(saneado(t, imp), ctx.de(t, imp, incluir_misma=False, persona=False)),
                        "¿De qué tipo de ingreso es?" if entra else "¿En qué categoría de gasto encaja?", ingreso if entra else gasto, url=url)
     res = _lote(uno, pendientes)
     n, error = 0, None
