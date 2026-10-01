@@ -23,6 +23,7 @@ const FORMS = {
       { k: "nombre", l: "Nombre", req: true },
       { k: "grupo", l: "Grupo", t: "opc", opc: [["variable", "Gasto variable"], ["fijo", "Gasto fijo (alquiler, recibos…)"], ["ingreso", "Ingreso"]] },
       { k: "presupuesto", l: "Presupuesto mensual (opcional)", t: "num", ayuda: "Si lo pones, verás una barra de lo gastado frente a este presupuesto y un aviso si te pasas." },
+      { k: "descripcion", l: "Qué entra aquí (opcional)", ph: "p. ej. clases de pádel y material deportivo", ayuda: "Si usas el asistente Jev, le ayuda a proponer esta categoría." },
       { k: "icono", l: "Icono", t: "emoji" },
       { k: "color", l: "Color", t: "color" }],
     fila: (r) => [`${r.icono || catIcono(r.nombre)}  ${r.nombre}`, { variable: "variable", fijo: "fijo", ingreso: "ingreso" }[r.grupo] || r.grupo, r.presupuesto ? eur(r.presupuesto, 0) : ""], cols: ["Nombre", "Grupo", "Presupuesto"] },
@@ -31,8 +32,9 @@ const FORMS = {
       { k: "fecha", l: "Fecha", t: "fecha", req: true, defecto: () => hoy.toISODate() },
       { k: "clase", l: "Tipo", t: "opc", opc: Object.entries(CLASE_MOV) },
       { k: "importe", l: "Importe (€, sin signo)", t: "num", req: true },
-      { k: "concepto", l: "Concepto", req: true, ph: "p. ej. Cena con amigos" },
-      { k: "categoria", l: "Categoría", t: "opc", opc: catSegunClase, si: (d) => d.clase !== "transferencia" },
+      { k: "concepto", l: "Concepto", req: true, ph: "p. ej. Cena con amigos", alSalir: sugerirCategoria },
+      { k: "categoria", l: "Categoría", t: "opc", opc: catSegunClase, si: (d) => d.clase !== "transferencia",
+        nota: (d) => (d._sug && d._sug.cat === d.categoria ? d._sug.txt : "") },
       { k: "cuenta", l: "Cuenta", t: "opc", opc: opcCuentas(), defecto: () => principal() },
       { k: "_dir", l: "Dirección", t: "opc", opc: [["destino", "Sale hacia…"], ["origen", "Entra desde…"]], si: (d) => d.clase === "transferencia", virtual: true },
       { k: "_otra", l: "Otra cuenta", t: "opc", opc: opcCuentas(), si: (d) => d.clase === "transferencia", virtual: true },
@@ -174,11 +176,14 @@ function formulario(padre, tipo, reg, opciones = {}) {
         const conVacio = !!c.vacio || (!c.req && typeof c.opc === "function");  // una lista cerrada (tipo, estado…) siempre tiene valor
         if (conVacio) { const o = el.createEl("option", { text: c.vacio || "—" }); o.value = ""; }
         for (const [v, t] of ops) { const o = el.createEl("option", { text: t }); o.value = v; }
+        if (d._sug && d._sug.cat === d[c.k] && !ops.some(([v]) => v === d[c.k])) d[c.k] = "";  // lo sugerido ya no encaja (otro tipo)
         if (d[c.k] != null && d[c.k] !== "" && !ops.some(([v]) => v === d[c.k])) { const o = el.createEl("option", { text: d[c.k] }); o.value = d[c.k]; }
         el.value = d[c.k] ?? (conVacio ? "" : (ops[0] || [""])[0]);
         if (el.value === "" && !conVacio && ops.length) el.value = ops[0][0];
         d[c.k] = el.value;
         el.onchange = () => { d[c.k] = el.value; dibujar(); };
+        const nota = c.nota && c.nota(d);
+        if (nota) form.createDiv({ cls: "s", text: nota });
       } else if (c.t === "bool") {
         const l = form.createEl("label", { cls: "fb-check" });
         el = l.createEl("input", { attr: { type: "checkbox" } });
@@ -212,6 +217,7 @@ function formulario(padre, tipo, reg, opciones = {}) {
         el.value = Array.isArray(d[c.k]) ? d[c.k].join(", ") : d[c.k] ?? "";
         el.oninput = () => { d[c.k] = el.value; };
         if (c.t === "num") el.onblur = () => { if (["meta", "meta_meses", "cuenta"].includes(c.k)) dibujar(); };
+        if (c.alSalir) el.onblur = () => c.alSalir(d, dibujar, form);
       }
     }
     etiquetar(form);
@@ -223,6 +229,7 @@ function formulario(padre, tipo, reg, opciones = {}) {
     const datos = { ...d };
     if (F.antes) F.antes(datos);
     for (const c of F.campos) if (c.virtual) delete datos[c.k];
+    for (const k of Object.keys(datos)) if (k[0] === "_") delete datos[k];  // ayudas de la pantalla (p. ej. _sug)
     bG.disabled = true;
     const r = await FB.api("/api/guardar", { tipo, id: reg && reg.id, datos });
     bG.disabled = false;
@@ -244,5 +251,24 @@ function formulario(padre, tipo, reg, opciones = {}) {
   }
   const bC = botones.createEl("a", { cls: "fb-btn sec", text: "Cancelar", href: opciones.volver || `#gestionar/${tipo}` });
   return p;
+}
+// Apuntar a mano: al escribir el concepto, la categoría que dicen tus reglas, tu historial o (si lo tienes activado) Jev.
+// Solo si aún no has elegido una tú.
+async function sugerirCategoria(d, dibujar, form) {
+  const texto = String(d.concepto || "").trim();
+  const libre = () => !d.categoria || (d._sug && d._sug.cat === d.categoria);
+  if (d.id || d.clase === "transferencia" || texto.length < 3 || !libre()) return;
+  if (d._sug && d._sug.texto === texto && d._sug.clase === d.clase) return;
+  const imp = Math.abs(num(d.importe)) || 1;
+  const r = await FB.api("/api/jev/categoria", { texto, importe: d.clase === "ingreso" ? imp : -imp }).catch(() => ({}));
+  if (!r.ok || !r.categoria || String(d.concepto || "").trim() !== texto || !libre()) return;
+  if ((grupoDe(r.categoria) === "ingreso") !== (d.clase === "ingreso")) return;
+  d.categoria = r.categoria;
+  d._sug = { cat: r.categoria, texto, clase: d.clase,
+    txt: r.fuente === "jev" ? `✨ Sugerida por Jev (${Math.round(100 * num(r.confianza))} %): cámbiala si no es` : r.fuente === "regla" ? "✨ Según tu regla para este texto" : "✨ Como otras veces que apuntaste algo así" };
+  const ctrls = () => [...form.querySelectorAll("input,select,textarea,button")];
+  const foco = ctrls().indexOf(document.activeElement);  // redibujar sin perder dónde estabas escribiendo
+  dibujar();
+  if (foco >= 0 && ctrls()[foco]) ctrls()[foco].focus();
 }
 const mensaje = (padre, texto, tipo) => { const m = padre.createDiv({ cls: "fb-msg " + (tipo || "") }); m.textContent = texto; return m; };

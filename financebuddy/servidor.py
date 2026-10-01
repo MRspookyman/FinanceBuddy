@@ -1,7 +1,7 @@
 # Servidor local de la app: sirve las pantallas (web/) y una API JSON sobre la base de datos.
 # Solo escucha en 127.0.0.1 y cada arranque genera una clave que la página envía en la cabecera X-FB-Token.
 import base64, datetime, http.server, io, json, mimetypes, os, re, secrets, socketserver, tempfile, threading, traceback, urllib.parse
-from . import VERSION, cartera, clasificar as C, detectar, importar as IM, modelo, plantilla, rutas
+from . import VERSION, cartera, clasificar as C, detectar, importar as IM, jev, modelo, plantilla, rutas
 from .almacen import Almacen
 
 mimetypes.add_type("font/woff2", ".woff2")
@@ -37,11 +37,19 @@ class App:
             activos = regs.get("activo", [])
             for p in pend:
                 f = p.get("fila") or {}
-                if p.get("tipo_import") == "inversion": p["sugerencia"] = IM.sugerencia_inversion(p, activos)
+                if p.get("tipo_import") == "inversion": p["sugerencia"] = jev.sugerencia_broker(IM.sugerencia_inversion(p, activos), p.get("jev"))
                 elif f.get("clase") != "transferencia":
-                    p["sugerencia"] = C.sugerir(f.get("texto", ""), f.get("importe", 0), mem, f.get("cat", ""))
+                    s = C.sugerir(f.get("texto", ""), f.get("importe", 0), mem, f.get("cat", ""))
+                    j = p.get("jev") or {}
+                    # Lo que propone Jev, si tu historial no dice nada (o solo «parecido a…»)
+                    if j.get("categoria") and (not s or str(s.get("motivo", "")).startswith("parecido")):
+                        s = {"clase": j.get("clase") or ("gasto" if f.get("importe", 0) < 0 else "ingreso"), "categoria": j["categoria"],
+                             "motivo": f"Jev · {round(100 * float(j.get('confianza') or 0))} %", "fuente": "jev", "confianza": j.get("confianza")}
+                    p["sugerencia"] = s
         regs.pop("ignorado", None)
-        return {"registros": regs, "pendientes": pend, "config": self.alm.config(),
+        cfg = self.alm.config()
+        cfg["jev"] = jev.config_publica(self.alm)  # la clave nunca sale hacia la página
+        return {"registros": regs, "pendientes": pend, "config": cfg,
                 "info": {"version": VERSION, "carpeta": self.carpeta.raiz, "hoy": self.hoy, "ejemplo": self.ejemplo,
                          "archivos": [{"nombre": os.path.basename(p), "tipo": t} for p, t in IM.archivos_pendientes(self.carpeta)]}}
 
@@ -57,9 +65,21 @@ class App:
         nombre = os.path.basename(ruta)
         try:
             r = IM.importar_archivo(self.alm, self.carpeta, ruta, tipo, cuenta, perfil)
+            c, fallo = jev.config(self.alm), None
+            if r.get("ok") and r.get("dudas") and c["activo"] and c["al_importar"]:  # el asistente Jev propone qué es lo que queda por revisar
+                if r.get("tipo") == "banco":
+                    n, total, error = jev.revisar(self.alm)
+                    if n: r["mensaje"] += f" · ✨ Jev propone categoría para {n} de {total} grupos por revisar"
+                    elif error: r["mensaje"] += f" · Jev no ha podido ayudar: {error}"; fallo = error
+                elif r.get("tipo") == "inversion" and jev.revisar_broker(self.alm):
+                    r["mensaje"] += " · ✨ Jev ha mirado lo que la app no reconocía"
+            if r.get("ok") and r.get("tipo") == "banco" and r.get("nuevas") and c["activo"] and c["al_importar"] and not fallo:
+                _, h, _ = jev.auditar(self.alm, limite=40)  # y repasa lo que se ha clasificado solo (lo nuevo)
+                if h: r.update(jev_hallazgos=h, mensaje=r["mensaje"] + f" · ✨ Jev cree que {h} comercio{'s' if h > 1 else ''} {'están' if h > 1 else 'está'} en otra categoría")
             return {**r, "archivo": nombre}
         except IM.NecesitaPerfil as e:
-            return {"ok": False, "necesita": "perfil", "archivo": nombre, **e.info, "tipo": tipo or e.info.get("tipo")}
+            propuesta = jev.mapear_columnas(self.alm, e.info.get("cabecera") or [], e.info.get("ejemplos") or []) if jev.config(self.alm)["activo"] else {}
+            return {"ok": False, "necesita": "perfil", "archivo": nombre, **e.info, "tipo": tipo or e.info.get("tipo"), "propuesta": propuesta}
         except IM.NecesitaCuenta as e:
             return {"ok": False, "necesita": "cuenta", **e.info}
         except Exception as e:
@@ -197,7 +217,7 @@ class App:
         if ruta == "/api/importar/subir": return self.subir(d)
         if ruta == "/api/importar/reintentar": return self.reintentar(d)
         if ruta == "/api/resolver": return {"ok": True, "mensaje": IM.resolver(a, int(d["id"]), d)}
-        if ruta == "/api/detectar": return {"ok": True, "fijos": detectar.fijos(a), "origenes": detectar.origenes(a)}
+        if ruta == "/api/detectar": return {"ok": True, "fijos": jev.fijos(a, detectar.fijos(a)), "origenes": detectar.origenes(a)}
         if ruta == "/api/fijos": return {"ok": True, "mensaje": detectar.crear(a, d.get("fijos") or [])}
         if ruta == "/api/bienvenida": return self.bienvenida(d)
         if ruta == "/api/cierre": return self.cierre(d)
@@ -205,6 +225,26 @@ class App:
         if ruta == "/api/activo/unir": return {"ok": True, "mensaje": cartera.unir(a, d["origen"], d["destino"])}
         if ruta == "/api/activo/borrar": return {"ok": True, "mensaje": cartera.borrar(a, d["id"], bool(d.get("era_traspaso")))}
         if ruta == "/api/activo/cuadrar": return {"ok": True, "mensaje": cartera.cuadrar(a, d["id"], d.get("participaciones"), d.get("fecha"), d.get("valor"))}
+        if ruta == "/api/jev/config": jev.guardar_config(a, d); return {"ok": True, "jev": jev.config_publica(a)}
+        if ruta == "/api/jev/probar":
+            try: return {"ok": True, "mensaje": jev.probar(a)}
+            except jev.ErrorJev as e: return {"ok": False, "mensaje": str(e)}
+        if ruta == "/api/jev/revisar":
+            if not jev.config(a)["activo"]: return {"ok": False, "mensaje": "Activa el asistente Jev en Ajustes (con tu clave)."}
+            n, total, error = jev.revisar(a)
+            nb = jev.revisar_broker(a)
+            if error: return {"ok": False, "mensaje": error}
+            partes = [f"categoría para {n} de {total} grupos"] if total else []
+            if nb: partes.append(f"qué son {nb} textos del bróker")
+            return {"ok": True, "n": n + nb, "mensaje": "✨ Jev propone " + " y ".join(partes) if partes else "No queda nada sin sugerencia"}
+        if ruta == "/api/jev/categoria": return {"ok": True, **jev.sugerir_categoria(a, d.get("texto"), modelo.numero(d.get("importe")) or 0)}
+        if ruta == "/api/jev/auditar":
+            if not jev.config(a)["activo"]: return {"ok": False, "mensaje": "Activa el asistente Jev en Ajustes (con tu clave)."}
+            n, h, error = jev.auditar(a)
+            if error: return {"ok": False, "mensaje": error}
+            if not n: return {"ok": True, "mensaje": f"Jev ya lo había repasado todo: {h} para revisar" if h else "Jev ya lo había repasado todo: está en orden"}
+            return {"ok": True, "mensaje": f"Jev ha repasado {n} comercios: {h} para revisar" if h else f"Jev ha repasado {n} comercios: todo en orden"}
+        if ruta == "/api/jev/hallazgo": return {"ok": True, "mensaje": jev.resolver_hallazgo(a, str(d.get("clave") or ""), d.get("accion"))}
         if ruta == "/api/config/descartar_aviso":  # avisos de la revisión de la cartera que el usuario da por buenos
             k = str(d.get("clave") or "")[:120]
             if k: a.set_config("avisos_descartados", list(dict.fromkeys((a.config("avisos_descartados") or []) + [k]))[-200:])

@@ -10,7 +10,7 @@ CAMPOS = {
     # iban: sus 4 últimas cifras (para saber de qué cuenta es un extracto sin preguntar).
     "cuenta": {"nombre": "texto*", "tipo": ("corriente", "ahorro", "broker", "otro"), "extracto": "bool", "iban": "texto", "notas": "texto"},
     # icono: un emoji · color: #RRGGBB (si faltan, la app pone uno propio de la categoría).
-    "categoria": {"nombre": "texto*", "grupo": ("variable", "fijo", "ingreso"), "presupuesto": "num+", "icono": "texto", "color": "texto"},
+    "categoria": {"nombre": "texto*", "grupo": ("variable", "fijo", "ingreso"), "presupuesto": "num+", "icono": "texto", "color": "texto", "descripcion": "texto"},
     # importe siempre positivo: la clase da el signo. Transferencias con destino (sale) u origen (entra) = otra cuenta.
     # ext_*: huella de la fila del extracto de la que sale (para no importarla dos veces).
     "movimiento": {"fecha": "fecha*", "clase": ("gasto", "ingreso", "reembolso", "transferencia"), "categoria": "texto",
@@ -48,8 +48,9 @@ CAMPOS = {
                "compras_negativas": "bool", "acciones": "listamapa"},
     "cierre": {"mes": "texto*", "fecha": "fecha", "notas": "texto"},
     # Internos (solo los escribe el servidor)
+    # jev: lo que propone el asistente Jev (jev.py): {clase, categoria, confianza, modelo} o {sin_decision: true}.
     "pendiente": {"tipo_import": ("banco", "inversion"), "cuenta": "texto", "archivo": "texto", "perfil": "texto",
-                  "fila": "mapa", "duda": "texto"},
+                  "fila": "mapa", "duda": "texto", "jev": "mapa"},
     "ignorado": {"cuenta": "texto", "ext_fecha": "fecha", "ext_importe": "num", "ext_texto": "texto"},
     # Operación con participaciones pero sin importe (Excel de operaciones) que espera a su movimiento de la cuenta del bróker.
     "operacion": {"fecha": "fecha*", "activo": "texto*", "participaciones": "cant*", "orden": "texto"},

@@ -306,11 +306,11 @@ a.fb-btn,.fin a.fb-btn.internal-link{color:#fff}
 .fb-card .txt{font-size:.85em;color:var(--ink-2)} .fb-card .duda{font-size:.85em;color:var(--ink-2);font-style:italic}
 .fb-fila{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:6px 0}
 .fb-fila .fb-et{min-width:150px;font-size:.9em}
-.fin select,.fin input[type=text],.fin input[type=number],.fin input[type=date],.fin input[type=search],.fin textarea{height:40px;padding:0 12px;border-radius:12px;font:inherit;font-size:.92em;color:var(--ink);background:var(--surface);border:1px solid var(--line);min-width:0}
-.fin-panel select,.fin-panel input[type=text],.fin-panel input[type=number],.fin-panel input[type=date]{background:var(--surface-2)}
+.fin select,.fin input[type=text],.fin input[type=password],.fin input[type=number],.fin input[type=date],.fin input[type=search],.fin textarea{height:40px;padding:0 12px;border-radius:12px;font:inherit;font-size:.92em;color:var(--ink);background:var(--surface);border:1px solid var(--line);min-width:0}
+.fin-panel select,.fin-panel input[type=text],.fin-panel input[type=password],.fin-panel input[type=number],.fin-panel input[type=date]{background:var(--surface-2)}
 .fin textarea{height:auto;padding:10px 12px;resize:vertical;width:100%}
 .fin input:focus,.fin select:focus,.fin textarea:focus{outline:2px solid var(--brand);outline-offset:-1px}
-.fb-fila input[type=text]{flex:1 1 180px}
+.fb-fila input[type=text],.fb-fila input[type=password]{flex:1 1 180px}
 .fin input.corto{width:140px} .fin input.mini{width:72px}
 .fb-fila label,.fb-check{font-size:.88em;color:var(--ink-2);display:flex;align-items:center;gap:6px}
 .fin input[type=checkbox],.fin input[type=radio]{accent-color:var(--brand);width:17px;height:17px}
@@ -379,6 +379,7 @@ body.theme-dark .fb-grupo{border-color:transparent}
 .fb-grupo .fin-more>summary{padding:4px 0;font-size:.82em;color:var(--ink-3);font-weight:600}
 .fb-grupo .fin-more-body{padding:4px 0 0}
 .fb-cats{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.fb-cats>a{align-self:center;font-size:.85em;color:var(--ink-2);margin-left:4px}
 .fin .fb-cats button{all:unset;cursor:pointer;display:inline-flex;align-items:center;gap:6px;padding:7px 13px;border-radius:999px;font-size:.86em;font-weight:620;color:var(--ink);background:var(--surface-2);border:1px solid transparent;transition:background .12s,border-color .12s}
 .fin .fb-cats button:hover{border-color:var(--brand);background:var(--brand-soft)}
 .fin .fb-cats button.sug{color:var(--brand);background:var(--brand-soft);border-color:color-mix(in srgb,var(--brand) 35%,transparent)}
@@ -389,6 +390,7 @@ body.theme-dark .fb-grupo{border-color:transparent}
 .fin .fb-cats select.otra{height:34px;border-radius:999px;font-size:.86em;padding:0 12px;background:var(--surface-2);border-color:transparent;color:var(--ink-2)}
 .fin-panel .fb-cats button{background:var(--surface-2)}
 .fb-opciones{margin-top:12px}
+.fb-lista-jev{margin:4px 0 12px;padding-left:20px;font-size:.88em;color:var(--ink-2)} .fb-lista-jev li{margin:2px 0}
 .fb-hecho{display:grid;justify-items:center;gap:6px;padding:48px 20px;text-align:center;border-radius:var(--r);background:var(--surface);border:1px solid var(--line);color:var(--ink-2)}
 .fb-hecho .i{display:grid;place-items:center;width:56px;height:56px;border-radius:18px;font-size:26px;color:#fff;background:var(--aurora);margin-bottom:6px}
 .fb-hecho b{font-size:1.2em;color:var(--ink)}

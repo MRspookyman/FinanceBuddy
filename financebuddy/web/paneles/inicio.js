@@ -311,6 +311,8 @@ function vistaMovimientos() {
   const modo = params[0] === "categorias" ? "categorias" : "lista";
   const seg = root.createDiv({ cls: "fb-seg" });
   for (const [k, t, r] of [["lista", "Lista", "#movimientos"], ["categorias", "Por categoría", "#movimientos/categorias"]]) enlace(seg, t, r).className += k === modo ? " act" : "";
+  const nJev = ((((DB.config || {}).jev || {}).revision || {}).hallazgos || []).length;  // lo que el asistente Jev ve en otra categoría
+  if (nJev) enlace(root.createDiv({ cls: "fin-note fb-pista" }), `✨ El asistente Jev cree que ${nJev === 1 ? "un comercio está" : `${nJev} comercios están`} en otra categoría · revísalo →`, "#revision");
   if (modo === "categorias") { vistaPorCategoria(M); return; }
 
   const todos = [...M.ms].sort((a, b) => b.fecha - a.fecha || (b.p.id || 0) - (a.p.id || 0));

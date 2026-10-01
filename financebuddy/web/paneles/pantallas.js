@@ -137,6 +137,7 @@ function resultadoImport(padre, r) {
     mensaje(card, r.mensaje || "Importado", "ok");
     if (r.dudas) enlace(card, `Revisar ${r.dudas} movimiento${r.dudas > 1 ? "s" : ""} →`, "#revisar");
     if (r.tipo === "banco" && r.nuevas) enlace(card, "Detectar tus ingresos y gastos fijos →", "#fijos");
+    if (r.jev_hallazgos) enlace(card, "✨ Revisar tus categorías →", "#revision");
     return;
   }
   if (r.necesita === "cuenta") {
@@ -171,12 +172,13 @@ const reemplazar = async (viejo, nuevo) => { guardarImport(resultadosImport.map(
 function configurarFormato(card, r) {
   card.createDiv({ cls: "top", text: `${r.archivo}: formato nuevo` });
   card.createDiv({ cls: "txt", text: "Dime qué columna es cada cosa (solo esta vez: la próxima se reconocerá solo)." });
+  if (r.propuesta && Object.keys(r.propuesta).some((k) => k !== "_tipo")) card.createDiv({ cls: "fin-note", text: "✨ El asistente Jev ha elegido las columnas: revísalas antes de guardar." });
   const cab = (r.cabecera || []).map((c, i) => [c, c || `(columna ${i + 1})`]).filter(([c]) => c);
   const tw = card.createDiv({ cls: "fin-tablewrap" });
   const t = tw.createEl("table", { cls: "fin-table fb-muestra" });
   const hr = t.createEl("thead").createEl("tr"); for (const c of r.cabecera || []) hr.createEl("th", { text: c });
   const tb = t.createEl("tbody"); for (const f of r.ejemplos || []) { const tr = tb.createEl("tr"); for (const c of f) tr.createEl("td", { text: c }); }
-  let tipo = r.tipo || "banco";
+  let tipo = r.tipo || (r.propuesta || {})._tipo || "banco";  // _tipo: si Jev ve que es del banco o del bróker
   const form = card.createDiv({ cls: "fb-form" });
   const sel = {}, esTipo = {};
   const campos = () => tipo === "inversion"
@@ -195,7 +197,8 @@ function configurarFormato(card, r) {
       const s = form.createEl("select"); const o0 = s.createEl("option", { text: "—" }); o0.value = "";
       for (const [v, et] of cab) { const o = s.createEl("option", { text: et }); o.value = v; }
       const adivina = cab.find(([c]) => ({ fecha: /^fecha( de)? ?(operaci|contable)?/i, concepto: /concepto|descripci|detalle|movimiento/i, importe: /importe|cantidad|monto/i, saldo: /saldo/i, fecha_valor: /valor/i, cargo: /cargo|debe/i, abono: /abono|haber/i }[k] || /^$/).test(c));
-      s.value = sel[k] ?? (adivina && !(k === "fecha" && /valor/i.test(adivina[0])) ? adivina[0] : "");
+      const deJev = (r.propuesta || {})[k];
+      s.value = sel[k] ?? (deJev && cab.some(([c]) => c === deJev) ? deJev : adivina && !(k === "fecha" && /valor/i.test(adivina[0])) ? adivina[0] : "");
       sel[k] = s.value; s.onchange = () => (sel[k] = s.value);
     }
     form.createDiv({ cls: "et", text: "Nombre de este formato" });
@@ -255,6 +258,7 @@ function vistaRevisar() {
   const fil = root.createDiv({ cls: "fb-chips fb-filtro-rev" });
   for (const [k, t, n] of F) { const b = fil.createEl("button", { text: `${t} · ${n}`, cls: k === filtroRev ? "act" : "" }); b.onclick = () => { FB.estado.filtroRev = k; render(); }; }
   if (conProp.length) panelSugerencias(root, conProp);
+  botonJev(root, G, GI);
   const ver = (g, tipo) => filtroRev === "todo" || filtroRev === tipo || (filtroRev === "sug" && conSug.has(g));
   const Gv = G.filter((g) => ver(g, "banco")), GIv = GI.filter((g) => ver(g, "broker"));
   if (Gv.length) {
@@ -268,6 +272,30 @@ function vistaRevisar() {
     for (const g of GIv) tarjetaGrupoInversion(ci, g);
   }
 }
+// Asistente Jev (opcional): pedir categoría para los grupos del banco que no tienen sugerencia, y qué son los textos
+// del bróker que la app no reconoce.
+const JEV_SEGURA = 0.85;  // igual que jev.SEGURA: desde aquí, la sugerencia sale marcada al aceptar en bloque
+function botonJev(padre, G, GI) {
+  const J = (DB.config || {}).jev || {};
+  const sinB = (GI || []).filter((g) => g[0].sugerencia && g[0].sugerencia.nuevo && !g[0].sugerencia.isin && !g[0].jev);
+  const sin = [...G.filter((g) => !g[0].sugerencia && !g[0].jev && g[0].fila.clase !== "transferencia"), ...sinB];
+  if (!sin.length) return;
+  const f = padre.createDiv({ cls: "fb-fila fb-bloque-sug" });
+  if (!J.activo) {
+    const n = f.createSpan({ cls: "fin-note" });
+    n.appendText(`${sin.length} grupo${sin.length > 1 ? "s" : ""} sin sugerencia. `);
+    enlace(n, "Activa el asistente Jev para que proponga su categoría →", "#ajustes/jev");
+    return;
+  }
+  const b = f.createEl("button", { cls: "fb-btn sec", text: `✨ Pedir a Jev ${sinB.length === sin.length ? "qué son" : "la categoría de"} ${sin.length} grupo${sin.length > 1 ? "s" : ""}` });
+  f.createSpan({ cls: "fin-note", text: "Solo se envía el concepto (sin nombres de Bizum ni números de tarjeta) y el importe." });
+  b.onclick = async () => {
+    b.disabled = true; b.textContent = "Preguntando a Jev…";
+    const r = await FB.api("/api/jev/revisar", {});
+    FB.aviso(r.mensaje || (r.ok ? "Hecho" : "Error"), !r.ok);
+    await FB.refrescar();
+  };
+}
 const nombreGrupo = (g) => { const f = g[0].fila, s = g[0].sugerencia || {}; return g[0].tipo_import === "inversion" ? s.nuevo || s.activo || C_titulo(sugerirPatron(f.texto)) : f.concepto || C_titulo(sugerirPatron(f.texto)); };
 // Lo que la app propone para un grupo (o null): { texto, datos, motivo, segura }. «segura»: sale marcada al aceptar en bloque.
 function propuestaBanco(g) {
@@ -277,14 +305,16 @@ function propuestaBanco(g) {
     return otras.length === 1 ? { texto: `🔁 ${entra ? "Desde" : "A"} ${otras[0].nombre}`, datos: { accion: "guardar", clase: "transferencia", cuenta_otra: otras[0].nombre }, motivo: "a tu nombre", segura: true } : null;
   }
   const s = p.sugerencia;
-  return s && s.categoria ? { texto: `${catIcono(s.categoria)} ${s.categoria}`, datos: { accion: "guardar", clase: s.clase, categoria: s.categoria }, motivo: s.motivo, segura: !/^parecido/.test(s.motivo || "") } : null;
+  return s && s.categoria ? { texto: `${catIcono(s.categoria)} ${s.categoria}`, datos: { accion: "guardar", clase: s.clase, categoria: s.categoria }, motivo: s.motivo,
+    segura: s.fuente === "jev" ? num(s.confianza) >= JEV_SEGURA : !/^parecido/.test(s.motivo || "") } : null;
 }
 function propuestaBroker(g) {
   const f = g[0].fila, entra = f.importe > 0, s = g[0].sugerencia || {};
-  if (s.accion === "ignorar") return { texto: entra ? "🔁 Traspaso desde mi banco" : "🔁 Traspaso a mi banco", datos: { accion: "ignorar" }, motivo: "dinero entre tus cuentas", segura: true };
-  if (s.accion === "interes") return { texto: entra ? "💰 Intereses" : "🏦 Comisión", datos: { accion: "interes" }, motivo: "de la cuenta del bróker", segura: true };
+  const jv = s.fuente === "jev", segura = !jv || num(s.confianza) >= JEV_SEGURA;
+  if (s.accion === "ignorar") return { texto: entra ? "🔁 Traspaso desde mi banco" : "🔁 Traspaso a mi banco", datos: { accion: "ignorar" }, motivo: jv ? s.motivo : "dinero entre tus cuentas", segura };
+  if (s.accion === "interes") return { texto: entra ? "💰 Intereses" : "🏦 Comisión", datos: { accion: "interes" }, motivo: jv ? s.motivo : "de la cuenta del bróker", segura };
   if (s.accion === "activo" && s.activo) return { texto: `📈 ${entra ? "Venta" : "Compra"} de ${s.activo}`, datos: { accion: "activo", activo: s.activo }, motivo: "lo reconoce el activo", segura: true };
-  if (s.accion === "activo" && s.nuevo && !entra) return { texto: `✨ Crear «${s.nuevo}»`, datos: { accion: "activo", nuevo_activo: s.nuevo }, motivo: "activo nuevo", segura: true };
+  if (s.accion === "activo" && s.nuevo && !entra) return { texto: `✨ Crear «${s.nuevo}»${s.clase && s.clase !== "otro" ? ` (${TIPO_ACTIVO[s.clase] || s.clase})` : ""}`, datos: { accion: "activo", nuevo_activo: s.nuevo, clase: s.clase }, motivo: jv ? `tipo: ${s.motivo}` : "activo nuevo", segura: true };
   return null;
 }
 // Aceptar en bloque lo que propone la app: una lista con casillas (las dudosas, sin marcar) y un botón.
@@ -371,15 +401,16 @@ function tarjetaGrupoInversion(padre, g) {
   const chips = card.createDiv({ cls: "fb-cats" });
   const chip = (texto, datos, cls, title) => { const b = chips.createEl("button", { text: texto, cls: cls || "" }); if (title) b.title = title; b.onclick = () => hecho(datos(), b); return b; };
   const acts = opcActivos().map(([v]) => v);
-  if (!entra && sug.accion === "activo" && sug.nuevo) chip(`✨ Crear «${nombreNuevo}»`, () => ({ accion: "activo", nuevo_activo: nombreNuevo }), "sug", "Crea el activo y guarda estas compras en él");
+  const jv = sug.fuente === "jev" ? ` · ${sug.motivo}` : "";
+  const tipoNuevo = sug.clase && sug.clase !== "otro" ? ` (${TIPO_ACTIVO[sug.clase] || sug.clase})` : "";
+  if (!entra && sug.accion === "activo" && sug.nuevo) chip(`✨ Crear «${nombreNuevo}»${tipoNuevo}${jv}`, () => ({ accion: "activo", nuevo_activo: nombreNuevo, clase: sug.clase }), "sug", "Crea el activo y guarda estas compras en él");
   if (sug.accion === "activo" && sug.activo) chip(`✨ ${entra ? "Venta de" : "Compra de"} ${sug.activo}`, () => ({ accion: "activo", activo: sug.activo }), "sug");
-  if (entra && sug.accion === "ignorar") chip("✨ 🔁 Traspaso desde mi banco", () => ({ accion: "ignorar" }), "sug", "El dinero que pasas al bróker ya cuenta en el extracto del banco");
-  if (entra && sug.accion === "interes") chip("✨ 💰 Intereses", () => ({ accion: "interes" }), "sug");
+  if (sug.accion === "ignorar") chip(`✨ 🔁 Traspaso ${entra ? "desde" : "a"} mi banco${jv}`, () => ({ accion: "ignorar" }), "sug", "El dinero que pasas entre el banco y el bróker ya cuenta en el extracto del banco");
+  if (sug.accion === "interes") chip(`✨ ${entra ? "💰 Intereses" : "🏦 Comisión"}${jv}`, () => ({ accion: "interes" }), "sug");
   for (const a of acts.filter((a) => a !== sug.activo)) chip(`📈 ${a}`, () => ({ accion: "activo", activo: a }));
-  if (entra && sug.accion !== "interes") chip("💰 Intereses o dividendos", () => ({ accion: "interes" }));
-  if (!entra) chip("🏦 Comisión", () => ({ accion: "interes" }));
-  if (!(entra && sug.accion === "ignorar")) chip(entra ? "🔁 Traspaso desde mi banco" : "🔁 Traspaso a mi banco", () => ({ accion: "ignorar" }));
-  if (entra && sug.nuevo) chip(`Venta: nuevo activo «${nombreNuevo}»`, () => ({ accion: "activo", nuevo_activo: nombreNuevo }));
+  if (sug.accion !== "interes") chip(entra ? "💰 Intereses o dividendos" : "🏦 Comisión", () => ({ accion: "interes" }));
+  if (sug.accion !== "ignorar") chip(entra ? "🔁 Traspaso desde mi banco" : "🔁 Traspaso a mi banco", () => ({ accion: "ignorar" }));
+  if (entra && sug.nuevo) chip(`Venta: nuevo activo «${nombreNuevo}»`, () => ({ accion: "activo", nuevo_activo: nombreNuevo, clase: sug.clase }));
   plegable(card, "Opciones", (c) => {
     const f0 = c.createDiv({ cls: "fb-fila" });
     f0.createSpan({ cls: "fb-et", text: "Nombre del activo nuevo" });
@@ -406,7 +437,7 @@ function tarjetaGrupo(padre, g) {
   }
   const vistas = new Set();
   if (sug && sug.categoria) {
-    const b = chip(`✨ ${catIcono(sug.categoria)} ${sug.categoria}`, { accion: "guardar", clase: sug.clase, categoria: sug.categoria }, "sug");
+    const b = chip(`✨ ${catIcono(sug.categoria)} ${sug.categoria}${sug.fuente === "jev" ? ` · ${sug.motivo}` : ""}`, { accion: "guardar", clase: sug.clase, categoria: sug.categoria }, "sug");
     b.title = `Sugerida: ${sug.motivo}`;
     vistas.add(sug.categoria);
   }
@@ -496,11 +527,14 @@ function pintarFijos(cont, r) {
     vacio(p1, "No hay nada nuevo que se repita cada mes", " Hacen falta al menos dos meses de movimientos importados. Lo que ya tienes como fijo no se vuelve a proponer.");
   } else {
     p1.createDiv({ cls: "fin-note", text: "Revisa el nombre, la categoría y el importe, desmarca lo que no sea fijo y pulsa «Crear». Se usarán para la previsión y los próximos se reconocerán solos al importar." });
-    const sel = r.fijos.map((f) => ({ ...f, marcado: f.grupo !== "variable" }));
+    // En una categoría de gasto variable, Jev (si está activado) dice si parece una cuota fija o algo que coincide
+    const pareceFijo = (f) => f.jev_fijo != null && num(f.jev_fijo) >= 0.75;
+    const sel = r.fijos.map((f) => ({ ...f, marcado: f.grupo !== "variable" || pareceFijo(f) }));
     for (const f of sel) {
       const card = p1.createDiv({ cls: "fb-card" });
       const top = card.createDiv({ cls: "top" });
-      top.createSpan({ text: f.clase === "ingreso" ? "Ingreso que se repite" : f.grupo === "variable" ? "Se repite, pero es gasto variable (¿fijo?)" : "Gasto fijo" });
+      const jv = f.jev_fijo == null ? "" : pareceFijo(f) ? ` · ✨ Jev: parece una cuota (${Math.round(100 * f.jev_fijo)} %)` : num(f.jev_fijo) < 0.35 ? " · ✨ Jev: parece que solo coincide" : "";
+      top.createSpan({ text: (f.clase === "ingreso" ? "Ingreso que se repite" : f.grupo === "variable" ? "Se repite, pero es gasto variable (¿fijo?)" : "Gasto fijo") + jv });
       top.createSpan({ cls: "imp " + (f.clase === "ingreso" ? "pos" : "neg"), text: eurS(f.clase === "ingreso" ? f.importe : -f.importe) });
       card.createDiv({ cls: "txt", text: `«${f.ejemplo}» · ${f.meses} meses: ${f.importes.map((x) => eur(x)).join(" · ")}` });
       const fila = card.createDiv({ cls: "fb-fila" });
@@ -539,6 +573,73 @@ function pintarFijos(cont, r) {
   const VISIBLES = 8;
   tabla(p2, cols, r.origenes.slice(0, VISIBLES).map(fila));
   if (r.origenes.length > VISIBLES) plegable(p2, "Ver el resto", (c) => tabla(c, cols, r.origenes.slice(VISIBLES).map(fila)), { extra: `${r.origenes.length - VISIBLES}` });
+}
+
+// ───────────── revisar tus categorías con Jev ─────────────
+// Jev repasa lo ya clasificado (un comercio cada vez) y propone otra categoría si está en «Otros» o si está muy seguro
+// de que es otra. Nada cambia hasta que lo aceptas; lo que aceptas se aplica a todo ese comercio y queda como regla.
+function vistaRevision() {
+  titulo("Revisar tus categorías", "El asistente Jev repasa lo que ya tienes clasificado y te avisa de lo que parece estar en otra categoría");
+  const J = (DB.config || {}).jev || {}, R = J.revision || {};
+  if (!J.activo) {
+    const v = vacio(root, "El asistente Jev no está activado", " Sin él, la app no puede repasar tus categorías.");
+    enlace(v || root, "Activar el asistente Jev →", "#ajustes/jev");
+    return;
+  }
+  const p = panel(root, "Repasar", R.fecha ? { text: `último: ${DateTime.fromISO(R.fecha).toFormat("dd/MM")}` } : null,
+    "Un comercio cada vez, empezando por los que más se repiten. Lo ya repasado no se vuelve a preguntar (salvo que le cambies la categoría).");
+  const f = p.createDiv({ cls: "fb-fila" });
+  const b = f.createEl("button", { cls: "fb-btn" + (R.fecha ? " sec" : ""), text: R.fecha ? "✨ Repasar lo nuevo" : "✨ Repasar mis categorías" });
+  f.createSpan({ cls: "fin-note", text: R.preguntados ? `${R.preguntados} comercios repasados hasta ahora · hasta 150 cada vez` : "Hasta 150 comercios cada vez: tarda unos segundos" });
+  b.onclick = async () => {
+    b.disabled = true; b.textContent = "Jev está repasando…";
+    const r = await FB.api("/api/jev/auditar", {});
+    FB.aviso(r.mensaje || (r.ok ? "Hecho" : "Error"), !r.ok);
+    await FB.refrescar();
+  };
+  const H = R.hallazgos || [];
+  const pH = panel(root, "Para revisar", H.length ? { text: String(H.length) } : null);
+  if (!H.length) { vacio(pH, R.fecha ? "Todo en orden" : "Aún no se ha repasado nada", R.fecha ? " Jev no ve nada en otra categoría." : ""); return; }
+  pH.createDiv({ cls: "fin-note", text: "«Cambiar» pone la categoría que propone Jev a todos los movimientos de ese comercio y la recuerda para los próximos. «Está bien» lo deja como está." });
+  const resolver = async (h, accion) => {
+    const r = await FB.api("/api/jev/hallazgo", { clave: h.clave, accion });
+    if (!r.ok) { FB.aviso(r.mensaje || "Error", true); return false; }
+    return r.mensaje;
+  };
+  const seguros = H.filter((h) => num(h.confianza) >= JEV_SEGURA);
+  if (seguros.length > 1) {
+    const bT = pH.createDiv({ cls: "fb-fila" }).createEl("button", { cls: "fb-btn sec", text: `Cambiar los ${seguros.length} en los que Jev está seguro (≥ ${Math.round(100 * JEV_SEGURA)} %)` });
+    bT.onclick = async () => {
+      if (!confirm(`¿Cambiar la categoría de ${seguros.length} comercios (${sum(seguros.map((h) => h.n))} movimientos)?`)) return;
+      bT.disabled = true;
+      let n = 0;
+      for (const h of seguros) if (await resolver(h, "aplicar")) n++;
+      FB.aviso(`${n} comercios cambiados ✓`);
+      await FB.refrescar();
+    };
+  }
+  const cont = pH.createDiv({ cls: "fb-grupos" });
+  for (const h of H) {
+    const card = cont.createDiv({ cls: "fb-grupo" });
+    const cab = card.createDiv({ cls: "cab" });
+    avatar(cab, { cat: h.actual });
+    const t = cab.createDiv({ cls: "n" });
+    t.createDiv({ cls: "t", text: h.nombre });
+    t.createDiv({ cls: "s", text: `${h.n} movimiento${h.n > 1 ? "s" : ""} · ahora en ${h.actual} · Jev: ${h.propuesta} (${Math.round(100 * h.confianza)} %)` });
+    cab.createDiv({ cls: "v" + (h.ingreso ? " pos" : ""), text: eur(h.total) });
+    if (norm(h.ejemplo).trim() !== norm(h.nombre).trim()) { const ext = card.createDiv({ cls: "ext", text: h.ejemplo }); ext.title = h.ejemplo; }
+    const chips = card.createDiv({ cls: "fb-cats" });
+    const bA = chips.createEl("button", { cls: "sug", text: `✨ Cambiar a ${catIcono(h.propuesta)} ${h.propuesta}` });
+    const bD = chips.createEl("button", { text: `Está bien en ${h.actual}` });
+    const hacer = async (accion, btn) => {
+      bA.disabled = bD.disabled = true; btn.textContent = "…";
+      const m = await resolver(h, accion);
+      if (m) { FB.aviso(m); await FB.refrescar(); } else bA.disabled = bD.disabled = false;
+    };
+    bA.onclick = () => hacer("aplicar", bA);
+    bD.onclick = () => hacer("descartar", bD);
+    enlace(chips, "Otra categoría…", `#editar/movimiento/${h.id}`);
+  }
 }
 
 // ───────────── apuntar a mano ─────────────
@@ -688,6 +789,7 @@ function vistaAjustes() {
   accesos(pG, [
     ["🔍", "Detectar fijos", "nóminas, alquiler, recibos y de dónde viene tu dinero", "#fijos"],
     ["🧾", "Actualizar saldos", "cierra el mes: lo que tienes en cada cuenta", "#cerrar"],
+    ...(((cfg.jev || {}).activo) ? [["✨", "Revisar tus categorías", ((cfg.jev.revision || {}).hallazgos || []).length ? `${cfg.jev.revision.hallazgos.length} para revisar` : "el asistente Jev repasa lo ya clasificado", "#revision"]] : []),
   ]);
   const pT = panel(g, "Tú", null, "Tu nombre tal y como sale en el banco. Con él, el dinero que mueves entre cuentas a tu nombre se reconoce como traspaso y no como gasto o ingreso.");
   pT.createDiv({ cls: "fin-note", text: "Se rellena solo con el titular del primer extracto que lo traiga. Si hay más titulares (cuenta conjunta), sepáralos con «;»." });
@@ -695,10 +797,12 @@ function vistaAjustes() {
   const iT = fT.createEl("input", { attr: { type: "text", placeholder: "p. ej. GARCÍA LÓPEZ ANA" } }); iT.value = (cfg.titulares || []).join("; ");
   const bT = fT.createEl("button", { cls: "fb-btn", text: "Guardar" });
   bT.onclick = async () => { await FB.api("/api/titulares", { titulares: iT.value.split(";") }); FB.aviso("Guardado ✓"); await FB.refrescar(); };
+  panelJev(root);
   const pI = panel(root, "Tu inicio", null, "Elige qué ves en la pantalla de inicio y en qué orden. Se guarda al momento.");
   pI.id = "tu-inicio";
   personalizarInicio(pI);
   if (params[0] === "inicio") setTimeout(() => { pI.scrollIntoView({ block: "start" }); pI.classList.add("resalta"); }, 30);
+  if (params[0] === "jev") setTimeout(() => { const e = document.getElementById("jev"); if (e) { e.scrollIntoView({ block: "start" }); e.classList.add("resalta"); } }, 30);
   const pD = panel(root, "Tus datos");
   accesos(pD, [
     ["🔁", "Fijos", `${cnt("recurrente")} ingresos y gastos que se repiten`, "#gestionar/recurrente"],
@@ -745,6 +849,49 @@ function vistaAjustes() {
 
 // Tema (en este navegador) y color de acento (en tus datos).
 const ACENTOS = [["salvia", "#5E8266"], ["violeta", "#6A5AA8"], ["azul", "#44688A"], ["verde", "#3E7558"], ["coral", "#C9603F"], ["rosa", "#B84A6E"], ["grafito", "#3F3A34"]];
+// Asistente Jev (TypeSafe AI), opcional: la clave se guarda solo en tu carpeta de datos y nunca vuelve a la página.
+function panelJev(padre) {
+  const J = (DB.config || {}).jev || {};
+  const p = panel(padre, "Asistente Jev (opcional)", { text: J.activo ? "activado" : J.hay_clave ? "desactivado" : "sin clave" },
+    "Jev es un modelo de TypeSafe AI que elige entre opciones y dice con qué confianza. Solo sugiere: nunca guarda nada por su cuenta.");
+  p.id = "jev";
+  const usos = p.createEl("ul", { cls: "fb-lista-jev" });
+  for (const t of ["Por revisar: la categoría de lo que tu historial no reconoce, y qué es cada texto raro del bróker (compra, intereses, traspaso…)",
+    "Revisar tus categorías: lo que tienes en «Otros» o que parece estar en otra",
+    "Apuntar: la categoría según escribes el concepto",
+    "Fijos: si algo que se repite es una cuota o solo coincide",
+    "Un banco nuevo: qué columna es cada cosa"]) usos.createEl("li", { text: t });
+  p.createDiv({ cls: "fin-note", text: "Se envía a TypeSafe (EE. UU.) solo el concepto del movimiento —sin nombres de los Bizum, números de tarjeta, IBAN ni correos— y el importe. Nada de saldos, cuentas ni fechas. Sin clave, la app funciona igual." });
+  const f = p.createDiv({ cls: "fb-fila" });
+  const i = f.createEl("input", { attr: { type: "password", autocomplete: "off", placeholder: J.hay_clave ? `Clave guardada (…${J.fin_clave})` : "Pega aquí tu clave de Jev", "aria-label": "Clave de Jev" } });
+  const bG = f.createEl("button", { cls: "fb-btn", text: "Guardar" });
+  const bP = f.createEl("button", { cls: "fb-btn sec", text: "Probar" });
+  const msg = p.createDiv();
+  // El resultado de «Probar» se guarda en FB.estado: la pantalla se redibuja al guardar y el mensaje sobrevive
+  if (FB.estado.jevPrueba) mensaje(msg, FB.estado.jevPrueba.texto, FB.estado.jevPrueba.ok ? "ok" : "err");
+  const enviar = async (d) => { const r = await FB.api("/api/jev/config", d); if (!r.ok) { msg.empty(); mensaje(msg, r.mensaje || "Error", "err"); } return r.ok; };
+  const guardar = async (d, aviso) => { if (!(await enviar(d))) return false; FB.aviso(aviso); await FB.refrescar(); return true; };
+  bG.onclick = () => { if (i.value.trim()) guardar({ clave: i.value.trim(), activo: true }, "Clave guardada ✓"); };
+  bP.onclick = async () => {
+    if (i.value.trim() && !(await enviar({ clave: i.value.trim(), activo: true }))) return;
+    bP.disabled = true; msg.empty(); mensaje(msg, "Probando…");
+    const r = await FB.api("/api/jev/probar", {});
+    FB.estado.jevPrueba = { texto: r.mensaje || "Error", ok: !!r.ok };
+    await FB.refrescar();
+  };
+  if (J.hay_clave) {
+    const o = p.createDiv({ cls: "fb-fila fb-opciones" });
+    const chk = (texto, k, v) => { const l = o.createEl("label"); const c = l.createEl("input", { attr: { type: "checkbox" } }); c.checked = v; c.onchange = () => guardar({ [k]: c.checked }, "Guardado ✓"); l.appendText(" " + texto); };
+    chk("Activado", "activo", !!J.activo);
+    chk("Pedir sugerencias al importar", "al_importar", !!J.al_importar);
+    if (!J.de_entorno) { const q = o.createEl("button", { cls: "fin-link", text: "Quitar la clave" }); q.onclick = () => guardar({ clave: "", activo: false }, "Clave quitada"); }
+    const u = J.uso || {};
+    const n = p.createDiv({ cls: "fin-note" });
+    const coste = num(u.coste) < 0.01 ? "menos de un céntimo" : `unos ${nf(num(u.coste), 2, 2)} $`;
+    n.appendText(`Este mes: ${u.consultas || 0} consulta${u.consultas === 1 ? "" : "s"} · ${coste} (TypeSafe cobra 0,042 $ por millón de palabras enviadas). `);
+    if (J.activo) enlace(n, "Revisar tus categorías →", "#revision");
+  }
+}
 function apariencia(p) {
   const f1 = p.createDiv({ cls: "fb-fila" });
   f1.createSpan({ cls: "fb-et", text: "Tema" });
@@ -879,9 +1026,9 @@ function cambioCategoria(padre, reg, volver) {
 
 // ───────────── render ─────────────
 const TODAS = { ...VISTAS, bienvenida: vistaBienvenida, importar: vistaImportar, revisar: vistaRevisar, apuntar: vistaApuntar, cerrar: vistaCerrar,
-  valores: vistaValores, ajustes: vistaAjustes, gestionar: vistaGestionar, editar: vistaEditar, fijos: vistaFijos, activo: vistaActivo };
+  valores: vistaValores, ajustes: vistaAjustes, gestionar: vistaGestionar, editar: vistaEditar, fijos: vistaFijos, activo: vistaActivo, revision: vistaRevision };
 const TITULOS = { inicio: "Inicio", movimientos: "Movimientos", inversion: "Inversión",
-  bienvenida: "Bienvenida", importar: "Importar", revisar: "Por revisar", apuntar: "Apuntar", cerrar: "Cerrar el mes", valores: "Valores", ajustes: "Ajustes", gestionar: "Ajustes", editar: "Editar", fijos: "Fijos", activo: "Inversión" };
+  bienvenida: "Bienvenida", importar: "Importar", revisar: "Por revisar", apuntar: "Apuntar", cerrar: "Cerrar el mes", valores: "Valores", ajustes: "Ajustes", gestionar: "Ajustes", editar: "Editar", fijos: "Fijos", activo: "Inversión", revision: "Revisar categorías" };
 function render() {
   _movs = _movsMes = _aports = _objs = _pat = _cuentas = _recs = _activos = _cats = undefined; _finMes = new Map(); _pos = new Map();
   root.empty();

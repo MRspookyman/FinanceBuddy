@@ -417,6 +417,7 @@ def resolver(alm, pid, d):
             nombre = str(d["nuevo_activo"]).strip()
             if not any(a["nombre"].lower() == nombre.lower() for a in alm.todos("activo")):
                 clase = clase_activo(p["fila"]["texto"] + " " + nombre)
+                if clase == "otro" and d.get("clase") in modelo.CAMPOS["activo"]["clase"]: clase = d["clase"]  # el tipo que proponía Jev
                 nuevo = {"nombre": nombre, "clase": clase, "cuenta": p["cuenta"], "fecha_inicio": p["fila"]["op"], "aportado_inicial": 0}
                 cat = del_catalogo(L.norm(p["fila"]["texto"]))
                 if cat and L.norm(cat[1][0]) == L.norm(nombre): nuevo.update(clase=cat[1][1], isin=cat[0], patrones=list(cat[1][2]))
