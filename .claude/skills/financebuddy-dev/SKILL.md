@@ -5,6 +5,8 @@ description: Desarrollo de FinanceBuddy (app local de finanzas personales para W
 
 # FinanceBuddy · desarrollo
 
+> Contexto completo (reglas, historial, auditorías, pendientes) en `CONTEXTO.md` de la raíz: léelo primero al retomar el proyecto y actualízalo con los cambios importantes.
+
 App local: un servidor Python (stdlib + openpyxl/xlrd) en `127.0.0.1:8765` que sirve una interfaz web y guarda los datos en SQLite dentro de la carpeta de datos del usuario (por defecto `Documentos\FinanceBuddy`). Se distribuye como un `.exe` (PyInstaller). Todo el texto visible va **en español**, importes en **€**. Pensada para usuarios no técnicos: nada de jerga, lo esencial a la vista y el resto en secciones plegables (`plegable()`).
 
 ## Arquitectura
