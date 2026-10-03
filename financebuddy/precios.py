@@ -31,7 +31,7 @@ REFERENCIAS = {
     "6040": {"nombre": "Cartera 60/40", "detalle": "60 % MSCI World (IWDA) y 40 % bonos globales cubiertos a euros (EUNA), sin rebalancear.", "piezas": [("IWDA.AS", 0.6), ("EUNA.DE", 0.4)]},
     "sinriesgo": {"nombre": "Sin riesgo", "detalle": "ETF monetario del euro (XEON): lo que da el dinero aparcado, sin sustos.", "piezas": [("XEON.DE", 1.0)]},
 }
-_trabajo = {"en_marcha": False, "resultado": None}
+_trabajo = {"en_marcha": False, "resultado": None, "progreso": None}
 _lock = threading.Lock()
 
 class ErrorPrecios(Exception):
@@ -54,22 +54,26 @@ def _base(fuente):
     env = os.environ.get("FB_PRECIOS_URL")
     return f"{env.rstrip('/')}/{fuente}" if env else BASES[fuente]
 
-def _get(url, reintentos=2, timeout=15):
-    """JSON de una URL, con un reintento si es un fallo pasajero (red, 429, 5xx). Lanza ErrorPrecios con un motivo legible."""
-    ultimo = None
-    for i in range(reintentos + 1):
+_caidos = set()   # servidores que no han respondido en esta actualización: no se insiste con ellos (si no, cada petición espera su plazo)
+
+def _get(url, timeout=8):
+    """JSON de una URL. Un fallo pasajero del servidor (429, 5xx) se reintenta una vez; si no hay conexión o tarda demasiado, se
+    falla enseguida y no se vuelve a llamar a ese servidor en esta actualización. Lanza ErrorPrecios con un motivo legible."""
+    host = urllib.parse.urlsplit(url).netloc or "servidor"
+    if host in _caidos: raise ErrorPrecios(f"{host}: sin conexión")
+    for intento in range(2):
         try:
             with urllib.request.urlopen(urllib.request.Request(url, headers=UA), timeout=timeout) as r:
                 return json.loads(r.read().decode("utf-8", "replace"))
         except urllib.error.HTTPError as e:
-            ultimo = f"respuesta {e.code}"
-            if e.code not in (429, 500, 502, 503, 504): break
+            if e.code in (429, 500, 502, 503, 504) and intento == 0: time.sleep(1.0); continue
+            raise ErrorPrecios(f"{host}: respuesta {e.code}" + (" (demasiadas consultas: prueba más tarde)" if e.code == 429 else ""))
         except (urllib.error.URLError, TimeoutError, OSError) as e:
-            ultimo = "sin conexión" if not isinstance(e, urllib.error.URLError) else f"sin conexión ({getattr(e, 'reason', e)})"
+            _caidos.add(host)
+            raise ErrorPrecios(f"{host}: sin conexión o tarda demasiado ({getattr(e, 'reason', e)})")
         except ValueError:
-            ultimo = "respuesta no válida"; break
-        if i < reintentos: time.sleep(0.4 * (i + 1))
-    raise ErrorPrecios(f"{urllib.parse.urlsplit(url).netloc or 'servidor'}: {ultimo}")
+            raise ErrorPrecios(f"{host}: respuesta no válida")
+    raise ErrorPrecios(f"{host}: sin respuesta")
 
 def _fecha_ts(ts, ms=False):
     return datetime.datetime.fromtimestamp(ts / (1000 if ms else 1), datetime.timezone.utc).date().isoformat()
@@ -177,32 +181,36 @@ def _al_dia(alm, fuente, codigo):
 
 def actualizar(alm, forzar=False):
     """Descarga los precios de todos los activos con fuente y guarda su caché. → {actualizados, total, fallos: [{que, motivo}], hora}.
-    Lanza ErrorPrecios si están desactivados. Los fallos no paran el resto."""
+    Lanza ErrorPrecios si están desactivados. Los fallos no paran el resto. Todo en paralelo (también los cambios de moneda)."""
     _exigir(alm)
+    _caidos.clear()
     tareas = _tareas(alm)
-    fx = {(m, ) for d in tareas.values() for m in d["monedas"] if _fx(m)[0]}
-    fallos, ok = [], 0
-    def uno(item):
-        (fuente, codigo), d = item
+    monedas = sorted({m for d in tareas.values() for m in d["monedas"] if _fx(m)[0]})
+    trabajos = [("precio", item) for item in tareas.items()] + [("cambio", m) for m in monedas]
+    _trabajo["progreso"] = {"hechos": 0, "total": len(trabajos)}
+    def descargar_serie(fuente, codigo, desde=None):
         previa = alm.config(_k(fuente, codigo)) or {}
-        completa = not previa.get("serie") or (datetime.date.today() - datetime.date.fromisoformat(max(previa["serie"]))).days > 20 or d["desde"] < min(previa["serie"])
-        if not forzar and not completa and _al_dia(alm, fuente, codigo): return item, "al día", None
+        completa = not previa.get("serie") or (datetime.date.today() - datetime.date.fromisoformat(max(previa["serie"]))).days > 20
+        if not forzar and not completa and _al_dia(alm, fuente, codigo): return "al día"
+        serie, info = descargar(fuente, codigo, desde=desde, completa=completa)
+        guardar_serie(alm, fuente, codigo, serie, info)
+        return "ok"
+    def uno(trabajo):
+        tipo, x = trabajo
         try:
-            serie, info = descargar(fuente, codigo, desde=d["desde"] if fuente == "morningstar" else None, completa=completa)
-            guardar_serie(alm, fuente, codigo, serie, info)
-            return item, "ok", None
-        except ErrorPrecios as e: return item, "fallo", str(e)
-    with ThreadPoolExecutor(HILOS) as ex: res = list(ex.map(uno, tareas.items()))
-    for item, estado, motivo in res:
-        if estado == "fallo": fallos.append({"que": ", ".join(tareas[item[0]]["activos"]), "motivo": motivo})
-        else: ok += 1
-    # Cambios de moneda de lo que no cotiza en euros
-    for (m,) in fx:
-        sim = _fx(m)[0]
-        try:
-            if not _al_dia(alm, "yahoo", sim) or forzar:
-                serie, info = serie_yahoo(sim, "max" if not leer_serie(alm, "yahoo", sim) else "1mo"); guardar_serie(alm, "yahoo", sim, serie, info)
-        except ErrorPrecios as e: fallos.append({"que": f"cambio {m}→EUR", "motivo": str(e)})
+            if tipo == "precio":
+                (fuente, codigo), d = x
+                descargar_serie(fuente, codigo, d["desde"] if fuente == "morningstar" else None)
+                return tipo, x, None
+            descargar_serie("yahoo", _fx(x)[0])
+            return tipo, x, None
+        except ErrorPrecios as e: return tipo, x, str(e)
+        finally: _trabajo["progreso"]["hechos"] += 1
+    with ThreadPoolExecutor(HILOS) as ex: res = list(ex.map(uno, trabajos))
+    fallos, ok = [], 0
+    for tipo, x, motivo in res:
+        if tipo == "precio": ok += motivo is None
+        if motivo: fallos.append({"que": ", ".join(tareas[x[0]]["activos"]) if tipo == "precio" else f"cambio {x}→EUR", "motivo": motivo})
     guardar_ultimos(alm, tareas)
     hora = datetime.datetime.now().isoformat(timespec="seconds")
     resultado = {"actualizados": ok, "total": len(tareas), "fallos": fallos, "hora": hora}
@@ -250,7 +258,7 @@ def actualizar_en_segundo_plano(alm, forzar=False):
 
 def estado(alm):
     """Si hay una actualización en marcha y cómo acabó la última de este arranque ({ok, …}; None si aún no ha terminado ninguna)."""
-    return {**config(alm), "en_marcha": _trabajo["en_marcha"], "resultado": _trabajo["resultado"]}
+    return {**config(alm), "en_marcha": _trabajo["en_marcha"], "resultado": _trabajo["resultado"], "progreso": _trabajo["progreso"]}
 
 def mensaje_resultado(r):
     """UNA frase para todo lo que ha pasado (los detalles, plegados en la página)."""
@@ -286,6 +294,7 @@ def buscar(alm, texto):
     _exigir(alm)
     q = (texto or "").strip()
     if not q or len(q) > 60: return []
+    _caidos.clear()
     cands = []
     def añade(fuente, codigo, nombre, tipo, ficha=None):
         if not any(c["fuente"] == fuente and c["codigo"] == codigo for c in cands): cands.append({"fuente": fuente, "codigo": codigo, "nombre": nombre, "tipo": tipo, "ficha": ficha or {}})
