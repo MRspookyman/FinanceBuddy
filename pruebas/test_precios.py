@@ -190,6 +190,18 @@ class TestActualizar(Base):
         self.assertEqual((r["actualizados"], len(r["fallos"])), (0, 1)); self.assertIn("503", r["fallos"][0]["motivo"])
         self.assertEqual(self.alm.config("precio_ultimos")["Mundo"], antes)   # el precio de antes sigue ahí
 
+    def test_servidor_inalcanzable_falla_rapido_y_dice_por_que(self):
+        import time as _t
+        self.activar(); self.activo("A", fuente_precio="yahoo", codigo_precio="IWDA.AS"); self.activo("B", fuente_precio="yahoo", codigo_precio="SXR8.DE")
+        self.activo("C", clase="accion", fuente_precio="yahoo", codigo_precio="AAPL", moneda="USD")
+        os.environ["FB_PRECIOS_URL"], antes = "http://127.0.0.1:9", os.environ["FB_PRECIOS_URL"]
+        try:
+            t = _t.time(); r = precios.actualizar(self.alm, forzar=True)
+        finally: os.environ["FB_PRECIOS_URL"] = antes
+        self.assertLess(_t.time() - t, 5)
+        self.assertEqual((r["actualizados"], len(r["fallos"])), (0, 4))   # 3 precios + el cambio USD→EUR
+        self.assertTrue(all("sin conexión" in f["motivo"] for f in r["fallos"]), r["fallos"])
+
     def test_los_vendidos_y_los_sin_fuente_no_se_consultan(self):
         self.activar()
         self.activo("Vendido", fuente_precio="yahoo", codigo_precio="IWDA.AS", estado="vendido"); self.activo("Manual")

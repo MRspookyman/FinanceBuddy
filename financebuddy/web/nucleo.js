@@ -138,15 +138,18 @@
       try {
         const r = await FB.api("/api/precios/actualizar", { forzar });
         if (!r.ok) { if (!silencioso) FB.aviso(r.mensaje || "No se han podido actualizar los precios", true); return; }
-        for (let i = 0; i < 150; i++) {
+        for (let i = 0; i < 400; i++) {  // hasta unos 5 min; cada consulta falla en ≤ 8 s, así que normalmente acaba en segundos
           await new Promise((f) => setTimeout(f, 700));
           const e = await FB.api("/api/precios/estado");
+          if (e.ok && e.en_marcha && boton && e.progreso) boton.textContent = `Actualizando ${Math.min(e.progreso.hechos + 1, e.progreso.total)} de ${e.progreso.total}…`;
           if (!e.ok || e.en_marcha) continue;
           const mal = !(e.resultado && e.resultado.ok) || (e.resultado.fallos || []).length > 0;
-          if (!silencioso || mal) FB.aviso(e.mensaje || "Precios al día", mal);
+          const motivo = mal && e.resultado && (e.resultado.fallos || [])[0];  // el primer motivo, para saber qué falla sin entrar en Ajustes
+          if (!silencioso || mal) FB.aviso((e.mensaje || "Precios al día") + (motivo ? ` · ${motivo.que}: ${motivo.motivo}` : ""), mal);
           await FB.refrescar();
           return;
         }
+        FB.aviso("La actualización de precios sigue en marcha; vuelve a mirar en un momento.", true);
       } finally { FB._actualizando = false; if (boton && boton.isConnected) { boton.disabled = false; boton.textContent = texto; } }
     },
     log,
