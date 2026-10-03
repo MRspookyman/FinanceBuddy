@@ -520,3 +520,6 @@ button:focus-visible,a:focus-visible,summary:focus-visible,[tabindex]:focus-visi
 .fb-buscador .et{margin-top:0}.fb-buscador .fb-fila{margin:6px 0}.fb-buscador input{flex:1;min-width:0}
 .fb-candidato{display:grid;gap:4px;padding:10px 12px;margin-top:8px;border-radius:12px;background:var(--surface);border:1px solid var(--line)}
 .fb-candidato .c b{font-weight:650}.fb-candidato .s{font-size:.8em;color:var(--ink-2)}.fb-candidato button{justify-self:start;margin-top:2px}
+
+/* Movimientos: paginación */
+.fb-pagina{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:12px 0}.fb-pagina .fin-note{margin:0;text-align:center}.fb-pagina button:disabled{opacity:.45;cursor:default}
