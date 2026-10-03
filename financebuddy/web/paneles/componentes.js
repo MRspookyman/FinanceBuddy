@@ -247,3 +247,22 @@ function cifra(padre, l, v, s, h) {
   if (s) b.createDiv({ cls: "s", text: s });
   return b;
 }
+
+// Paginación de cualquier lista. `clave` guarda la página en FB.estado (sobrevive a refrescar, no a cambiar de pantalla).
+// Uso: const pg = paginacion(items, "ops", redibujar); …dibujar pg.parte…; pg.pie(padre). Pasa a la primera página con pg.reiniciar().
+function paginacion(items, clave, redibujar, por = 40) {
+  const k = "pag_" + clave, paginas = Math.max(1, Math.ceil(items.length / por));
+  const pag = Math.min(Math.max(0, FB.estado[k] || 0), paginas - 1);
+  return {
+    parte: items.slice(pag * por, (pag + 1) * por),
+    reiniciar: () => { FB.estado[k] = 0; },
+    pie(padre) {
+      if (paginas < 2) return;
+      const p = padre.createDiv({ cls: "fb-pagina" });
+      const ir = (n) => { FB.estado[k] = n; redibujar(); };
+      const a = p.createEl("button", { cls: "fb-btn sec", text: "← Anterior", attr: { type: "button" } }); a.disabled = pag === 0; a.onclick = () => ir(pag - 1);
+      p.createSpan({ cls: "fin-note", text: `${pag * por + 1}–${Math.min(items.length, (pag + 1) * por)} de ${items.length} · página ${pag + 1} de ${paginas}` });
+      const s = p.createEl("button", { cls: "fb-btn sec", text: "Siguiente →", attr: { type: "button" } }); s.disabled = pag >= paginas - 1; s.onclick = () => ir(pag + 1);
+    },
+  };
+}

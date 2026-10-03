@@ -297,7 +297,7 @@ function vistaRevisar() {
   let filtroRev = FB.estado.filtroRev || "todo";  // FB.estado: sobrevive a refrescar la pantalla, no a cambiar de pantalla
   if (!F.some(([k]) => k === filtroRev)) filtroRev = "todo";
   const fil = root.createDiv({ cls: "fb-chips fb-filtro-rev" });
-  for (const [k, t, n] of F) { const b = fil.createEl("button", { text: `${t} · ${n}`, cls: k === filtroRev ? "act" : "" }); b.onclick = () => { FB.estado.filtroRev = k; render(); }; }
+  for (const [k, t, n] of F) { const b = fil.createEl("button", { text: `${t} · ${n}`, cls: k === filtroRev ? "act" : "" }); b.onclick = () => { FB.estado.filtroRev = k; FB.estado.pag_rev_banco = 0; FB.estado.pag_rev_broker = 0; render(); }; }
   if (conProp.length) panelSugerencias(root, conProp);
   botonJev(root, G, GI);
   const ver = (g, tipo) => filtroRev === "todo" || filtroRev === tipo || (filtroRev === "sug" && conSug.has(g));
@@ -305,12 +305,16 @@ function vistaRevisar() {
   if (Gv.length) {
     root.createDiv({ cls: "fin-note fb-pista", text: "Pulsa la categoría y listo: se aplica a todo el grupo y la próxima vez se clasificará solo." });
     const cont = root.createDiv({ cls: "fb-grupos" });
-    for (const g of Gv) tarjetaGrupo(cont, g);
+    const pg = paginacion(Gv, "rev_banco", render, 25);
+    for (const g of pg.parte) tarjetaGrupo(cont, g);
+    pg.pie(root);
   }
   if (GIv.length) {
     if (Gv.length) root.createEl("h3", { cls: "fb-sec", text: "Tu bróker" });
     const ci = root.createDiv({ cls: "fb-grupos" });
-    for (const g of GIv) tarjetaGrupoInversion(ci, g);
+    const pg = paginacion(GIv, "rev_broker", render, 25);
+    for (const g of pg.parte) tarjetaGrupoInversion(ci, g);
+    pg.pie(root);
   }
 }
 // Bizums recibidos iguales (≥ 2) el mismo día: son el reparto de UN gasto que pagaste tú, se resuelven juntos. Igual que bizums.repartos().
@@ -1074,7 +1078,7 @@ function vistaGestionar() {
   const cont = root.createDiv({ cls: "fin-panel" });
   let todos = [...(DB.registros[tipo] || [])];
   if (F.orden) todos.sort(F.orden);
-  let verTodos = false, deSerie = false;
+  let deSerie = false;
   const pintar = () => {
     cont.innerHTML = "";
     const q = norm(inp.value.trim());
@@ -1089,15 +1093,15 @@ function vistaGestionar() {
       if (!filas.length) return;
     }
     if (!filas.length) { vacio(cont, q ? "Nada coincide" : `Aún no hay ${F.plural.toLowerCase()}`); return; }
-    const vis = verTodos ? filas : filas.slice(0, 200);
+    const pg = paginacion(filas, "gestionar_" + tipo, pintar), vis = pg.parte;
     tabla(cont, F.cols.map((t, i) => ({ t, num: t === "Importe" || t === "Valor" || t === "Cuentas" || t === "Inversión" })), vis.map((r) => {
       const celdas = F.fila(r);
       celdas[0] = { text: typeof celdas[0] === "object" ? celdas[0].text : String(celdas[0] ?? ""), ruta: `#editar/${tipo}/${r.id}` };
       return celdas;
     }));
-    if (vis.length < filas.length) { const b = cont.createEl("button", { cls: "fin-vermas", text: `Ver los ${filas.length}` }); b.onclick = () => { verTodos = true; pintar(); }; }
+    pg.pie(cont);
   };
-  inp.oninput = pintar;
+  inp.oninput = () => { FB.estado["pag_gestionar_" + tipo] = 0; pintar(); };
   pintar();
 }
 function vistaEditar() {

@@ -275,8 +275,9 @@ function vistaActivo() {
       return x.importe > 0 ? `Traspaso desde ${y ? y.activo : "otro fondo"}` : `Traspaso a ${y ? y.activo : "otro fondo"}`;
     };
     const TC = tamañoCompras(normales.filter((x) => x.importe > 0 && !x.p.traspaso).map((x) => x.importe));  // frente a tus compras de este activo
+    const pgOps = paginacion([...ops].reverse(), "ops_" + reg.id, () => FB.montar());
     tabla(po, [{ t: "Fecha" }, { t: "Operación" }, { t: "Importe", num: true }, TC && { t: "Tamaño", opt: true }, { t: "Particip.", num: true }, { t: "Precio", num: true, opt: true }, { t: "De", opt: true }].filter(Boolean),
-      [...ops].reverse().map((x) => {
+      pgOps.parte.map((x) => {
         const pa = hasNum(x.p.participaciones) ? num(x.p.participaciones) : null;
         const marcas = [x.p.supuesta ? "¿compra?" : "", pa == null && !x.p.ajuste ? "sin particip." : "", dudosas.has(x.p.id) ? "¿duplicada?" : ""].filter(Boolean);
         return [
@@ -289,6 +290,7 @@ function vistaActivo() {
           ORIGEN_OP(x),
         ];
       }));
+    pgOps.pie(po);
     po.createDiv({ cls: "fin-note", text: "Pulsa la fecha para cambiar o borrar una operación. «¿compra?»: la orden no decía si era compra o venta." });
     if (TC) po.createDiv({ cls: "fin-note", text: `Tamaño: lo que has comprado de este activo, en tres partes iguales: pequeña (menos de ${eur(TC.p33, 0)}), habitual y grande (más de ${eur(TC.p67, 0)}).` });
   }
@@ -297,7 +299,7 @@ function vistaActivo() {
   const cb = cobros().filter((c) => c.activo === a.nombre);
   const pc2 = panel(root, `Dividendos y comisiones (${cb.length})`, { text: "+ Añadir", ruta: `#editar/cobro/nuevo/${reg.id}` }, "Lo que este activo te da (dividendo, cupón) o te cobra (custodia) sin vender participaciones. Cuenta para su rentabilidad.");
   if (!cb.length) pc2.createDiv({ cls: "fin-note", text: "Ninguno. Los dividendos del extracto de tu bróker se reconocen solos, o los apuntas aquí." });
-  else tabla(pc2, [{ t: "Fecha" }, { t: "Qué" }, { t: "Importe", num: true }], [...cb].reverse().map((c) => [{ text: c.fecha.toFormat("dd/MM/yy"), ruta: `#editar/cobro/${c.p.id}` }, c.tipo === "comision" ? "Comisión" : "Dividendo", { text: (c.tipo === "comision" ? "−" : "+") + eur(c.importe, 2), cls: c.tipo === "comision" ? "neg" : "pos" }]));
+  else { const pgC = paginacion([...cb].reverse(), "cobros_" + reg.id, () => FB.montar(), 20); tabla(pc2, [{ t: "Fecha" }, { t: "Qué" }, { t: "Importe", num: true }], pgC.parte.map((c) => [{ text: c.fecha.toFormat("dd/MM/yy"), ruta: `#editar/cobro/${c.p.id}` }, c.tipo === "comision" ? "Comisión" : "Dividendo", { text: (c.tipo === "comision" ? "−" : "+") + eur(c.importe, 2), cls: c.tipo === "comision" ? "neg" : "pos" }])); pgC.pie(pc2); }
 
   // Unir con otro activo
   const otros = (DB.registros.activo || []).filter((r) => r.id !== reg.id);
