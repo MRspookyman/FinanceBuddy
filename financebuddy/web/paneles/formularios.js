@@ -72,7 +72,7 @@ const FORMS = {
   activo: { uno: "activo", plural: "Activos", ayuda: "Fondos, acciones, ETF o cripto. Actualiza su valor de vez en cuando (Inversión → Actualizar valores).",
     campos: [
       { k: "nombre", l: "Nombre", req: true, ph: "p. ej. Fondo indexado MSCI World" },
-      { k: "clase", l: "Tipo", t: "opc", opc: [["fondo", "Fondo"], ["etf", "ETF / ETC"], ["accion", "Acción"], ["cripto", "Cripto"], ["materia", "Materias primas (oro, cobre…)"], ["otro", "Otro"]] },
+      { k: "clase", l: "Tipo", t: "opc", opc: [["fondo", "Fondo"], ["etf", "ETF / ETC"], ["accion", "Acción"], ["cripto", "Cripto"], ["materia", "Materias primas (oro, cobre…)"], ["pension", "Plan de pensiones"], ["bono", "Bono / renta fija"], ["inmueble", "Inmueble (piso, local…)"], ["otro", "Otro"]] },
       { k: "cuenta", l: "Cuenta del bróker", t: "opc", opc: opcCuentas((c) => c.tipo === "broker"), vacio: "— ninguna —" },
       { k: "valor", l: "Valor actual (€)", t: "num" },
       { k: "fecha_valor", l: "Fecha de ese valor", t: "fecha", defecto: () => hoy.toISODate() },
@@ -80,6 +80,13 @@ const FORMS = {
       { k: "fecha_inicio", l: "Fecha de la primera compra", t: "fecha", ayuda: "Aproximada: sirve para la rentabilidad anual." },
       { k: "patrones", l: "Cómo aparece en el extracto del bróker", t: "lista", ayuda: "Textos separados por comas (p. ej. «msci world»). Al importar, las compras con ese texto se asignan a este activo." },
       { k: "isin", l: "ISIN (opcional)" },
+      { t: "buscador", si: () => preciosActivos() },
+      { k: "fuente_precio", l: "Precio por internet", t: "opc", si: (d) => preciosActivos() || d.fuente_precio,
+        opc: [["", "— lo anoto yo —"], ["morningstar", "Morningstar (fondos, por su ISIN)"], ["yahoo", "Yahoo Finance (ETF, acciones, materias primas)"], ["coingecko", "CoinGecko (cripto)"]],
+        ayuda: "De dónde sale su precio si activas «Precios por internet» (Ajustes). Lo más fácil: «Buscar el precio por internet», justo encima." },
+      { k: "codigo_precio", l: "Código para consultar el precio", ph: "p. ej. IWDA.AS · 0P0000YXQE · bitcoin", si: (d) => d.fuente_precio, ayuda: "Solo este código sale de tu ordenador." },
+      { k: "moneda", l: "Moneda del precio", t: "opc", opc: MONEDAS_PRECIO, si: (d) => d.fuente_precio, defecto: () => "EUR", ayuda: "Si no es el euro, se pasa a euros con el cambio de cada día." },
+      { k: "largo_plazo", l: "Inversión a largo plazo", t: "bool", ayuda: "Desmárcalo para lo que no es inversión a largo plazo (un colchón en un fondo monetario, una apuesta…): el botón «Solo largo plazo» de Inversión lo deja fuera de las cifras." },
       { k: "ter", l: "Gastos corrientes (% al año, opcional)", t: "num", ayuda: "El TER del fondo o ETF (p. ej. 0,06). Con él verás cuánto te cuesta al año." },
       { k: "estado", l: "Estado", t: "opc", opc: [["activo", "Lo tengo"], ["vendido", "Vendido"]] }],
     fila: (r) => [r.nombre, r.clase, r.valor != null ? eur(r.valor, 0) : "—", r.fecha_valor ? `a ${fechaCorta(r.fecha_valor)}` : ""], cols: ["Nombre", "Tipo", "Valor", ""] },
@@ -94,6 +101,16 @@ const FORMS = {
       { k: "nota", l: "Nota" }],
     antes: (d) => { d.supuesta = ""; },  // al guardarla a mano, la compra/venta ya no es supuesta
     fila: (r) => [fechaCorta(r.fecha), r.activo, { text: eurS(r.importe), cls: r.importe < 0 ? "neg" : "" }], cols: ["Fecha", "Activo", "Importe"],
+    orden: (a, b) => String(b.fecha).localeCompare(String(a.fecha)) },
+  cobro: { uno: "dividendo o comisión", plural: "Dividendos y comisiones", ayuda: "Lo que un activo te da (dividendo, cupón) o te cobra (custodia) sin vender participaciones. Cuenta para su rentabilidad y para tu declaración.",
+    campos: [
+      { k: "fecha", l: "Fecha", t: "fecha", req: true, defecto: () => hoy.toISODate() },
+      { k: "activo", l: "Activo", t: "opc", opc: opcActivos, req: true },
+      { k: "tipo", l: "Qué es", t: "opc", opc: [["dividendo", "Dividendo o cupón (te lo ingresan)"], ["comision", "Comisión o custodia (te la cobran)"]] },
+      { k: "importe", l: "Importe (€, sin signo)", t: "num", req: true },
+      { k: "cuenta", l: "Cuenta del bróker", t: "opc", opc: opcCuentas((c) => c.tipo === "broker"), vacio: "— la del activo —", ayuda: "El dinero entra (o sale) del efectivo de esta cuenta." },
+      { k: "nota", l: "Nota" }],
+    fila: (r) => [fechaCorta(r.fecha), r.activo, r.tipo === "comision" ? "Comisión" : "Dividendo", { text: (r.tipo === "comision" ? "−" : "+") + eur(r.importe), cls: r.tipo === "comision" ? "neg" : "pos" }], cols: ["Fecha", "Activo", "Qué", "Importe"],
     orden: (a, b) => String(b.fecha).localeCompare(String(a.fecha)) },
   patrimonio: { uno: "registro de saldos", plural: "Registros de saldos", ayuda: "El saldo de cada cuenta y el valor de cada activo en una fecha (se crean al cerrar el mes).",
     campos: [
@@ -164,6 +181,7 @@ function formulario(padre, tipo, reg, opciones = {}) {
     for (const c of F.campos) {
       if (c.si && !c.si(d)) continue;
       if (c.t === "oculto") continue;
+      if (c.t === "buscador") { buscadorPrecio(form, d, dibujar); continue; }
       if (c.t === "mapa") {
         const claves = c.claves(d);
         if (!claves.length) continue;
@@ -237,7 +255,7 @@ function formulario(padre, tipo, reg, opciones = {}) {
   bG.onclick = async () => {
     const datos = { ...d };
     if (F.antes) F.antes(datos);
-    for (const c of F.campos) if (c.virtual) delete datos[c.k];
+    for (const c of F.campos) if (c.virtual || !c.k) delete datos[c.k];
     for (const k of Object.keys(datos)) if (k[0] === "_") delete datos[k];  // ayudas de la pantalla (p. ej. _sug)
     bG.disabled = true;
     const r = await FB.api("/api/guardar", { tipo, id: reg && reg.id, datos });

@@ -17,15 +17,23 @@ CAMPOS = {
                    "importe": "num+*", "cuenta": "texto", "concepto": "texto*", "recurrente": "texto", "destino": "texto",
                    "origen": "texto", "nota": "texto", "ext_texto": "texto", "ext_importe": "num", "ext_fecha": "fecha",
                    "reembolsa": "int"},  # reembolsa: id del gasto que devuelve este reembolso (Bizums, bizums.py)
+    # Dinero que te da (dividendo, cupón) o te cobra (comisión, custodia) un activo, sin cambiar sus participaciones: importe siempre
+    # positivo, el tipo dice el sentido. Cuenta para la rentabilidad del activo y entra/sale del efectivo de su bróker.
+    "cobro": {"fecha": "fecha*", "activo": "texto*", "tipo": ("dividendo", "comision"), "importe": "num+*", "cuenta": "texto", "nota": "texto",
+              "ext_texto": "texto", "ext_importe": "num", "ext_fecha": "fecha"},
     # meses: solo esos meses del año (p. ej. [7] = anual en julio).
     "recurrente": {"nombre": "texto*", "clase": ("gasto", "ingreso", "aportacion"), "categoria": "texto", "importe": "num+*",
                    "dia": "int", "desde": "fecha*", "hasta": "fecha", "meses": "meses", "activo": "bool",
                    "activo_inversion": "texto", "cuenta": "texto"},
     # patrones: textos del extracto del bróker que identifican el activo (p. ej. «s&p 500 index»).
-    # ter: gastos corrientes anuales (%) · materia: materias primas (oro, cobre…).
-    "activo": {"nombre": "texto*", "clase": ("fondo", "etf", "accion", "cripto", "materia", "otro"), "cuenta": "texto", "valor": "num",
+    # ter: gastos corrientes anuales (%) · materia: materias primas (oro, cobre…) · fuente_precio / codigo_precio / moneda: de dónde
+    # se consulta su precio por internet, si el usuario lo activa (precios.py): el código es un ISIN, un ticker o el nombre de la
+    # cripto; la moneda, la del precio (se convierte a euros).
+    "activo": {"nombre": "texto*", "clase": ("fondo", "etf", "accion", "cripto", "materia", "pension", "bono", "inmueble", "otro"), "cuenta": "texto", "valor": "num",
                "fecha_valor": "fecha", "aportado_inicial": "num", "fecha_inicio": "fecha", "estado": ("activo", "vendido"),
-               "patrones": "lista", "isin": "texto", "ter": "num+"},
+               "patrones": "lista", "isin": "texto", "ter": "num+",
+               "largo_plazo": "bool",
+               "fuente_precio": ("", "morningstar", "yahoo", "coingecko"), "codigo_precio": "texto", "moneda": "texto"},  # largo_plazo: es inversión a largo plazo (vale sí si falta); el interruptor «solo largo plazo» deja fuera lo demás
     # importe: + compra, − venta · participaciones: las compradas (+) o vendidas (−), si el extracto las dice («… @ 2»).
     # orden: huella de la orden del bróker de la que sale (operaciones.py) · supuesta: «si», si la orden no decía si era
     # compra o venta y se ha supuesto (el extracto de la cuenta, si llega, lo corrige) · traspaso: «si», si es la mitad de
@@ -56,15 +64,15 @@ CAMPOS = {
     # Operación con participaciones pero sin importe (Excel de operaciones) que espera a su movimiento de la cuenta del bróker.
     "operacion": {"fecha": "fecha*", "activo": "texto*", "participaciones": "cant*", "orden": "texto"},
 }
-POR_DEFECTO_SI = {("activo", "recurrente"), ("compras_negativas", "perfil")}  # booleanos que, si faltan, valen sí
+POR_DEFECTO_SI = {("activo", "recurrente"), ("compras_negativas", "perfil"), ("largo_plazo", "activo")}  # booleanos que, si faltan, valen sí
 EDITABLES = set(CAMPOS) - {"pendiente", "ignorado", "operacion"}
 # Referencias por nombre: al renombrar, se actualizan en los demás registros.
 REFERENCIAS = {
     "cuenta": [("movimiento", "cuenta"), ("movimiento", "destino"), ("movimiento", "origen"), ("recurrente", "cuenta"),
-               ("activo", "cuenta"), ("aportacion", "cuenta"), ("objetivo", "cuenta"), ("perfil", "cuenta"),
+               ("activo", "cuenta"), ("aportacion", "cuenta"), ("cobro", "cuenta"), ("objetivo", "cuenta"), ("perfil", "cuenta"),
                ("regla", "cuenta_otra"), ("pendiente", "cuenta"), ("patrimonio", "saldos*")],
     "categoria": [("movimiento", "categoria"), ("recurrente", "categoria"), ("regla", "categoria")],
-    "activo": [("aportacion", "activo"), ("recurrente", "activo_inversion"), ("patrimonio", "valores*"), ("operacion", "activo")],
+    "activo": [("aportacion", "activo"), ("recurrente", "activo_inversion"), ("patrimonio", "valores*"), ("operacion", "activo"), ("cobro", "activo")],
     "recurrente": [("movimiento", "recurrente"), ("aportacion", "recurrente"), ("regla", "recurrente")],
 }
 UNICOS = {"cuenta": "nombre", "categoria": "nombre", "activo": "nombre", "recurrente": "nombre", "cierre": "mes", "perfil": "nombre"}
@@ -122,6 +130,11 @@ def limpiar(tipo, datos):
     if tipo == "categoria":
         if out.get("color") and not re.fullmatch(r"#[0-9a-fA-F]{6}", out["color"]): raise ValueError("color: usa el formato #RRGGBB")
         if len(out.get("icono", "")) > 8: raise ValueError("icono: pon un solo emoji")
+    if tipo == "activo":
+        if out.get("codigo_precio") and not re.fullmatch(r"[A-Za-z0-9._=\-\^]{1,40}", out["codigo_precio"]): raise ValueError("codigo_precio: solo letras, números, punto o guion")
+        if out.get("moneda") and not re.fullmatch(r"[A-Za-z]{3}", out["moneda"]): raise ValueError("moneda: un código de tres letras (EUR, USD…)")
+        if out.get("fuente_precio") and not out.get("codigo_precio"): raise ValueError("codigo_precio: falta el código con el que consultar el precio")
+        if not out.get("fuente_precio"): out.pop("codigo_precio", None)
     # Mapas numéricos
     for k in ("saldos", "valores"):
         if k in out: out[k] = {str(a): numero(b) for a, b in out[k].items() if numero(b) is not None}

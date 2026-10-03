@@ -6,7 +6,7 @@
 > Complementa a `README.md` (para quien usa la app) y a `.claude/skills/financebuddy-dev/SKILL.md` (referencia técnica
 > detallada de cada módulo). **Si cambias algo importante, actualiza este archivo en el mismo commit.**
 >
-> Última actualización: 1 oct 2026 · rama `claude/intelligent-cerf-wuzuc9` · versión de la app `1.0.0` · plantilla de datos `v3`.
+> Última actualización: 3 oct 2026 · rama `claude/intelligent-cerf-wuzuc9` · versión de la app `1.0.0` · plantilla de datos `v4`.
 
 ---
 
@@ -20,20 +20,25 @@
 - **Usuario tipo:** una persona (no técnica) con Santander (banco) y MyInvestor (bróker), que usa mucho **Bizum** (envía su
   parte de cenas/copas y recibe lo que le devuelven de lo que paga ella), invierte en un fondo indexado a S&P 500 y en
   ETC de cripto/cobre/oro, y quiere mínimo trabajo manual.
-- **Estado:** PRs #1–#9 fusionadas en `main`. Trabajo posterior (**Bizums + más contexto para Jev + este documento**) está
-  commiteado y subido a la rama `claude/intelligent-cerf-wuzuc9`, **sin PR todavía** (commit `e5f5272` y siguientes).
-- **Último gran tema:** el asistente opcional **Jev** (TypeSafe AI) y la lógica de **Bizums**. Jev **no se ha probado nunca
-  contra la API real** (el entorno de desarrollo bloquea `api.typesafe.ai`); todo se verificó con un servidor Jev falso.
-- **Tests:** 75 de Python (`unittest`), 45 de cálculos y 16 pantallas sin errores en navegador. Siempre en verde al
-  cerrar cada tarea.
+- **Estado:** PRs #1–#10 fusionadas en `main` (la #10: Bizums, más contexto para Jev y este documento). Después, sin PR todavía y
+  subido a la rama `claude/intelligent-cerf-wuzuc9`: la **auditoría de Rumbo** (`e91e80e`) y sus **cuatro olas** (§9.8):
+  Ola 1 `9efefe6` (Tu progreso, modo discreto…), Ola 2 `f9877a4` (vista previa, dividendos, «Para la renta»), Ola 3 `35da6fd`
+  (precios por internet) y Ola 4 (exportar resumen, plantilla de Excel, aviso de versión).
+- **Último gran tema:** las olas de Rumbo. **Nada que salga a internet se ha probado contra el servicio real** (el entorno de
+  desarrollo bloquea Jev, Yahoo, Morningstar y CoinGecko): todo se verificó con servidores falsos y hay scripts para que el
+  usuario lo compruebe en su PC (`evaluar_jev.py`, `evaluar_precios.py`). GitHub (aviso de versión) sí responde desde el entorno.
+- **Tests:** 109 de Python (`unittest`), 70 de cálculos y 18 pantallas sin errores en navegador. Siempre en verde al cerrar
+  cada tarea.
 
 ---
 
 ## 1. Reglas que no se rompen (leer antes de tocar nada)
 
 ### Producto
-1. **Todo local.** Nada de nube, cuentas ni conexión con el banco. La única salida a internet es el asistente Jev, que es
-   **opcional**, lo activa el usuario con su clave y solo envía conceptos saneados (ver §7). «La idea de la app es que sea
+1. **Todo local.** Nada de nube, cuentas ni conexión con el banco. Las **únicas salidas a internet** son tres, todas
+   **opcionales y apagadas de serie**: el asistente Jev (con su clave; solo conceptos saneados, §7), los **precios por internet**
+   (solo el identificador del producto: ISIN, ticker o nombre de la cripto; §9.8) y el **aviso de versión** (una consulta pública
+   a GitHub al día). Sin ellas, la app no abre ninguna conexión. «La idea de la app es que sea
    local en cada ordenador.»
 2. **La app debe funcionar sin Claude ni Jev.** Cualquier acción tiene su pantalla; Jev solo *sugiere* y nunca guarda nada
    por su cuenta.
@@ -54,6 +59,11 @@
 8. El servidor solo escucha en `127.0.0.1`, rechaza cualquier cabecera `Host` que no sea local y exige un token por arranque
    (`X-FB-Token`).
 9. **Privacidad hacia Jev:** solo sale el concepto saneado + importe + contexto del historial (sin nombres). Ver §7.
+9b. **Privacidad en los precios:** a Yahoo/Morningstar/CoinGecko solo viaja el código del producto (la URL). Nunca importes,
+    participaciones, cuentas, nombres de activos ni movimientos (hay una prueba que lo comprueba). Las series descargadas se
+    guardan en `config` (`precio_serie:*`) y **no se envían a la página** (`App.datos()` las excluye).
+9c. **El resumen HTML «sin importes» no contiene cantidades en euros**: se calcula en porcentajes e índice *antes* de escribir el
+    archivo (taparlas con CSS no valdría). Una prueba comprueba que ninguna cifra real del ejemplo aparece en él.
 
 ### Cómo trabaja Claude en este repo
 10. Se desarrolla en la rama **`claude/intelligent-cerf-wuzuc9`** (nombre fijo). Tras fusionar una PR, la rama se reinicia
@@ -79,7 +89,7 @@ Detalle módulo a módulo: **`.claude/skills/financebuddy-dev/SKILL.md`**. Aquí
  navegador ──GET /api/datos──▶ servidor.py ──▶ almacen.py ──▶ SQLite (datos.db)
      │  ▲                         │  App.manejar(ruta, datos) = toda la escritura (POST /api/…)
      │  └── JSON: registros por tipo, pendientes (con sugerencias), config, info
-     └── paneles/*.js (se concatenan y comparten ámbito): datos → calculos → componentes → graficos → inicio → inversion → formularios → pantallas
+     └── paneles/*.js (se concatenan y comparten ámbito): datos → calculos → componentes → graficos → inicio → inversion → progreso → renta → precios → exportar → formularios → pantallas
 ```
 
 | Capa | Archivos | Idea clave |
@@ -89,6 +99,8 @@ Detalle módulo a módulo: **`.claude/skills/financebuddy-dev/SKILL.md`**. Aquí
 | Datos | `almacen.py`, `modelo.py` | Tabla `registros(id, tipo, datos JSON)` + `config(clave, valor JSON)`. `modelo.CAMPOS` define y valida cada tipo; `limpiar()` descarta vacíos. Copia diaria en `Copias\` (30). |
 | Importación | `importar.py`, `lectura.py`, `clasificar.py`, `operaciones.py`, `cartera.py`, `detectar.py` | Formato de archivo = registro `perfil`. Duplicados por **huella** (`ext_fecha`+`ext_importe`). Dudas → `pendiente`. |
 | Bizums | `bizums.py` | Casar el Bizum recibido con el gasto que devuelve (§6). |
+| Precios (opcional) | `precios.py` | Yahoo/Morningstar/CoinGecko → caché en `config`, euros, buscador, comparador (§9.8). |
+| Salidas | `exportar.py`, `actualizaciones.py` | Plantilla de Excel con desplegable; aviso de versión opcional (§9.8). El resumen HTML se monta en `web/paneles/exportar.js`. |
 | IA opcional | `jev.py` | Cliente de Jev + contexto + todos los usos (§7). |
 | Interfaz | `web/` | `nucleo.js` (DOM, `FB.api`, menú, rutas `#pantalla/params`), `estilos.css`, `paneles/*.js`. |
 | Pruebas | `pruebas/` | §8. |
@@ -103,17 +115,24 @@ Detalle módulo a módulo: **`.claude/skills/financebuddy-dev/SKILL.md`**. Aquí
 - `categoria.descripcion` (texto libre) ayuda a Jev; `categoria.icono/color` los usan `catIcono`/`catColor`.
 - `aportacion` = compra/venta de un activo (`importe` + si es venta, negativo; `participaciones` con 6 decimales,
   `orden`, `supuesta`, `traspaso`, `ajuste`, `nota`).
-- `activo`: `clase` (fondo, etf, accion, cripto, materia, otro), `patrones` (textos del extracto que lo identifican),
-  `isin`, `ter`, `valor`/`fecha_valor`, `aportado_inicial`.
+- `activo`: `clase` (fondo, etf, accion, cripto, materia, pension, bono, inmueble, otro), `patrones` (textos del extracto que lo
+  identifican), `isin`, `ter`, `valor`/`fecha_valor`, `aportado_inicial`, `largo_plazo` (bool, sí si falta) y, para los precios por
+  internet, `fuente_precio` (morningstar/yahoo/coingecko), `codigo_precio` y `moneda` (validados en `modelo.limpiar`).
+- `cobro` = dividendo o comisión de un activo (`tipo`, `importe` siempre positivo, `cuenta`): suma a su rentabilidad y a la TIR y
+  entra o sale del efectivo del bróker. Se detecta en el extracto del bróker (`importar.RE_DIVIDENDO`) o se anota a mano.
 
 ### 2.2 Claves de `config`
 `titulares` (nombre(s) del usuario, para reconocer traspasos propios y para **no enviarlos a Jev**), `limite_variable`,
 `configurado`, `plantilla_version`, `version_esquema`, `avisos_descartados`, `saldo_extracto:<cuenta>`, `acento`, `inicio`/
 `inicio_ocultos` (paneles del Inicio), y las de Jev: `jev` (clave + opciones), `jev_uso` (consultas/tokens por mes),
-`jev_revision` (repaso de categorías), `jev_fijos` (caché de «¿cuota fija?»), `jev_enviado` (últimas 30 consultas).
+`jev_revision` (repaso de categorías), `jev_fijos` (caché de «¿cuota fija?»), `jev_enviado` (últimas 30 consultas). Precios:
+`precios` ({activo, ultima, resultado}), `precio_serie:<fuente>:<código>` (caché {serie, moneda, actualizado}; **no sale a la página**) y
+`precio_ultimos` ({activo: {precio, fecha, fuente, moneda, mensual}}). Aviso de versión: `actualizaciones` ({activo, ultima, resultado}).
 
 ### 2.3 Rutas de la API (`App.manejar`)
-`guardar`, `borrar`, `config`, `titulares`, `recategorizar`, `parecidos`, `importar/carpeta|subir|reintentar`, `resolver`,
+`guardar`, `borrar`, `config`, `titulares`, `recategorizar`, `parecidos`, `importar/carpeta|subir|reintentar|descartar` (con `previa`:
+vista previa en `Almacen.simular()`), `resolver`, `plantilla` (Excel en base64), `precios/config|actualizar|estado|buscar|autoconfigurar|comparar`,
+`actualizaciones/config|comprobar`,
 `detectar`, `fijos`, `bienvenida`, `cierre`, `valores`, `activo/unir|borrar|cuadrar`, `jev/config|probar|revisar|enviado|
 categoria|auditar|hallazgo`, `config/descartar_aviso`, `carpeta`, `ejemplo`, `abrir_carpeta`, `copia`, `restaurar`, `vaciar`.
 
@@ -168,13 +187,15 @@ Piezas relacionadas:
 | `#inicio` | Inicio minimalista | Selector de mes; «Puedes gastar» + barra + frase de estado; Ritmo del mes; A dónde va tu dinero; Patrimonio; Próximos cargos (14 días). Paneles configurables (`PANELES_INICIO`). |
 | `#movimientos` (+`/categorias`) | Movimientos | Lista por día con búsqueda y filtros; «Por categoría» frente a tu media. En los gastos con Bizums enlazados: «te devolvieron X». |
 | `#inversion`, `#activo/ID` | Inversión y ficha de activo | Cifras, evolución, aportaciones, reparto; «Revisa tu inversión»; ficha con operaciones editables, **Cuadrar con el bróker**, **Unir**, borrar. |
-| `#importar` | Importar | Arrastrar archivos o carpeta `Importar\`; formato nuevo → mapeo de columnas. |
+| `#importar` | Importar | Arrastrar archivos o carpeta `Importar\`; **vista previa** antes de guardar (`tarjetaPrevia`); plantilla de Excel; formato nuevo → mapeo de columnas. |
+| `#progreso` | Tu progreso | Hitos, «Si sigo así…» (deslizadores), esfuerzo vs mercado por mes, rentabilidad por año y peor caída, y el **comparador con indexados** (necesita precios). |
+| `#renta` | Para la renta | Ganancias realizadas por año (FIFO, traspasos que heredan coste), dividendos y comisiones, lo que no se puede calcular. |
 | `#revisar` | Por revisar | Dudas agrupadas por comercio (o por **reparto** de Bizums); filtros; aceptar sugerencias en bloque; selector de gastos candidatos para Bizums recibidos. |
 | `#revision` | Revisar tus categorías (Jev) | Hallazgos del repaso: Cambiar / Está bien / Otra categoría. |
 | `#apuntar` | Apuntar | Alta a mano; propone categoría al escribir el concepto. |
 | `#fijos` | Fijos y de dónde viene tu dinero | Detección de recurrentes; Jev dice si una «variable» parece cuota. |
 | `#cerrar`, `#valores` | Actualizar saldos / valores | Cierre mensual: comprueba que no falta nada. |
-| `#ajustes` (+`/jev`, `/inicio`) | Ajustes | Tú, apariencia, Jev, Tu inicio, Tus datos (cuentas, categorías, reglas…), copias, carpeta. |
+| `#ajustes` (+`/jev`, `/precios`, `/inicio`) | Ajustes | Tú, apariencia, Jev, **Precios por internet**, Tu inicio, Tus datos, **Compartir y exportar** (resumen HTML con/sin importes, plantilla), copias, carpeta, FinanceBuddy (atajos y aviso de versión). |
 | `#gestionar/<tipo>`, `#editar/<tipo>/<id|nuevo>` | Listas y formularios genéricos | Basados en `FORMS`. En la ficha de un movimiento: paneles de reembolsos y campo «Devuelve parte de este gasto». |
 | `#bienvenida` | Primer uso | Cuentas, límite, fijos, o «Probar con datos de ejemplo». |
 
@@ -187,15 +208,19 @@ guarda en `localStorage`) y 7 acentos. Móvil: barra inferior con seis secciones
 ## 5. Pruebas y cómo verificar (siempre tras un cambio)
 
 ```bat
-python -m unittest pruebas.test_importar pruebas.test_servidor pruebas.test_jev   :: 75 pruebas (sin red)
-python pruebas\run.py --tests                                        :: 16 pantallas sin errores + 45 pruebas de cálculos
+python -m unittest pruebas.test_importar pruebas.test_servidor pruebas.test_jev pruebas.test_precios pruebas.test_actualizaciones   :: 109 pruebas (sin red)
+python pruebas\run.py --tests                                        :: 18 pantallas sin errores + 70 pruebas de cálculos
 python pruebas\run.py inicio,movimientos --shot [--tema=oscuro]      :: capturas en %TEMP%\fb-pruebas
 python pruebas\evaluar_jev.py [--mostrar]                            :: precisión de Jev con TUS datos (lo ejecuta el usuario)
+python pruebas\evaluar_precios.py [ISIN|ticker…]                     :: ¿responden HOY Yahoo/Morningstar/CoinGecko? (lo ejecuta el usuario)
 build.bat                                                            :: pasa pruebas y genera dist\FinanceBuddy.exe
 ```
 
 - `test_importar.py` (50): importación, clasificación, traspasos, bróker, órdenes, fijos, reglas, y `TestBizums`.
-- `test_servidor.py` (9): API y seguridad. `test_jev.py` (16): Jev contra un **servidor falso** (`JevFalso`) con el mismo formato
+- `test_precios.py` (22): precios contra un servidor falso (`PreciosFalso`, `FB_PRECIOS_URL`): apagado de serie, solo identificadores,
+  caché, USD/GBp, fallos agrupados, buscador, autoconfigurar por ISIN y comparador. `test_actualizaciones.py` (5): aviso de versión
+  contra un GitHub falso (`FB_ACTUALIZACIONES_URL`).
+- `test_servidor.py` (15): API y seguridad, vista previa, plantilla de Excel. `test_jev.py` (16): Jev contra un **servidor falso** (`JevFalso`) con el mismo formato
   que la API, apuntado con `FB_JEV_URL`; comprueban privacidad, errores 401/sin conexión, sugerencias, repaso, bróker,
   fijos, contexto, repartos y registro de lo enviado.
 - `pruebas_calculos.js`: cálculos del navegador (recibe `F` = `window.__fin`). Al tocar un cálculo, añade un caso.
@@ -209,8 +234,12 @@ build.bat                                                            :: pasa pru
 - Servidores en segundo plano: `pgrep/pkill -f` casa con su propio comando (código 144); usa
   `ps aux | grep "[p]uerto NNNN"` y mata por PID, en comandos separados.
 - Un servidor con la carpeta de datos borrada hay que reiniciarlo en otro puerto.
-- **Jev real no se puede llamar desde el entorno** (política de red: `api.typesafe.ai` → 403). Para probarlo habría que
-  permitir ese dominio en *Network access* del entorno. Mientras tanto: servidor falso `pruebas/test_jev.py::JevFalso`.
+- **Jev, Yahoo, Morningstar y CoinGecko no se pueden llamar desde el entorno** (política de red: 403 del túnel). Para probarlos
+  habría que permitir esos dominios en *Network access*. Mientras tanto: servidores falsos (`JevFalso`, `PreciosFalso`).
+  `api.github.com` sí responde (el aviso de versión recibe un 404: el repo no tiene releases o es privado).
+- Servidor de precios falso para ver la interfaz: `from pruebas.test_precios import PreciosFalso`, servirlo en un puerto y arrancar
+  la app con `FB_PRECIOS_URL=http://127.0.0.1:PUERTO`. Con `--ejemplo` los activos no traen participaciones: para ver el «precio de
+  mercado» en una ficha hay que «Cuadrar con el bróker» (p. ej. 70 participaciones).
 
 ---
 
@@ -311,7 +340,8 @@ Todo el desarrollo ocurrió el **30 sep–1 oct 2026** en una sola sesión larga
 | **#7** | **Órdenes de fondos y operaciones con títulos** (`operaciones.py`, ISIN, traspasos entre fondos); **fuera el X-Ray**. |
 | **#8** | **Inversión que se deja corregir** (ficha de activo, `cartera.py`, «Revisa tu inversión», valor estimado) + Por revisar con filtros y aceptar en bloque + **auditoría general** de formularios/accesibilidad/contraste/menú/móvil. |
 | **#9** | **Jev** (cliente, clave local, Por revisar, formato nuevo) y **«Jev al máximo»** (bróker, repaso de categorías `#revision`, Apuntar, Fijos, uso/coste, tandas con corte). |
-| *(sin PR)* | `e5f5272` **Bizums** (`bizums.py`) + **contexto para Jev** + privacidad (titulares, direcciones) + registro de lo enviado. Este archivo (`CONTEXTO.md`). |
+| **#10** | `e5f5272` **Bizums** (`bizums.py`) + **contexto para Jev** + privacidad (titulares, direcciones) + registro de lo enviado. Este archivo (`CONTEXTO.md`). |
+| *(sin PR)* | `e91e80e` **auditoría de Rumbo** (`docs/AUDITORIA-RUMBO.md`) y sus cuatro olas: `9efefe6` Ola 1, `f9877a4` Ola 2, `35da6fd` Ola 3 y la Ola 4 (§9.8). |
 
 Decisiones con «por qué» que conviene no deshacer:
 - **Sin X-Ray de Morningstar:** el usuario pensó que daba más información de la que daba; solo importa los Excel/CSV que ya
@@ -398,6 +428,45 @@ Hallazgos y correcciones:
 Con Jev: aparte de la transparencia, se verificó que el **registro de lo enviado coincide exactamente con lo recibido** por el
 servidor falso en las pruebas.
 
+### 9.7 Auditoría de Rumbo (app parecida, `danidm98/rumbo`, MIT) — 3 oct 2026
+Informe completo en [`docs/AUDITORIA-RUMBO.md`](docs/AUDITORIA-RUMBO.md). Rumbo es un seguimiento de **patrimonio e inversión**
+(Flask + JSON, sin tests ni gasto diario). **Ventajas suyas:** precios automáticos (Morningstar/Yahoo/CoinGecko con caché, respaldo
+y cambio de moneda), serie diaria, «El mes» (esfuerzo vs mercado), TWR por año, peor caída, hitos y objetivo, «Si sigo así…»,
+comisiones, comparador «¿y si indexado?», importación con **vista previa**, exportar HTML con importes ocultos. **Nuestras
+ventajas:** gasto diario completo y clasificación, 75+45+16 pruebas, token + `Host` local (Rumbo acepta `Host` falso: riesgo de
+*DNS rebinding*), no sale a internet, ficha de activo corregible, `.exe`. **Mejoras propuestas por olas:** Ola 1 (sin red:
+hitos/objetivo, «Si sigo así», comisiones, tamaño de aportación, modo discreto, avisos agrupados, «solo largo plazo»); Ola 2
+(vista previa de importación, dividendos/FIFO, tipos de activo, esfuerzo vs mercado aproximado); Ola 3 (**precios online opt-in**
++ buscador + comparador con indexados; requiere decisión de privacidad); Ola 4 (exportar HTML, aviso de versión, plantilla).
+Se ejecutó Rumbo con precios sintéticos porque Yahoo/Morningstar/CoinGecko están bloqueados en el entorno.
+
+### 9.8 Las cuatro olas de la auditoría de Rumbo, implementadas — 3 oct 2026
+**Ola 1 (sin red).** `progreso.js` + `calculos.js`: hitos (`HITOS`, `hitosPatrimonio`), proyección «Si sigo así» (`proyeccion`, interés
+mensual, aportación a fin de mes), tiempo hasta el siguiente hito (`mesesHasta50`), esfuerzo vs mercado por mes (`puntosInversion`,
+**aproximado**: con los valores anotados al cerrar cada mes), rentabilidad encadenada por año y peor caída (`rendimientoPuntos`),
+comisiones (`comisionesInversion`, TER), tamaño de aportación (`tamañoCompras`), `activo.largo_plazo` y «Solo largo plazo»
+(`resumenInversion(soloLargo)`, `evolucionInversion(solo)`), **modo discreto** (`nucleo.js`: un `MutationObserver` envuelve los importes en
+`<span class="blur">`; también el texto de los gráficos y los ejes) y atajos (D, 1–6, A).
+**Ola 2.** Vista previa de importación (`Almacen.simular()` ejecuta **el mismo código** de importar dentro de una transacción que se
+deshace; `servidor._informe_previa`; el archivo sigue en `Importar` hasta confirmar o `descartar`); dividendos y comisiones (`cobro`,
+`RE_DIVIDENDO`, entran en la TIR y en el efectivo del bróker); **«Para la renta»** (`renta.js`: `fifoVentas` con herencia de coste en
+traspasos, `opsParaRenta`); tipos de activo nuevos (pensión, bono, inmueble).
+**Ola 3 (precios).** `precios.py`: `FUENTES`, `serie_yahoo|morningstar|coingecko`, caché `precio_serie:*`, `a_euros` (Yahoo `USDEUR=X`;
+`GBp`×0,01 → `GBPEUR=X`), `actualizar()` con hilos (una descarga por (fuente, código)), `buscar()` (ISIN → Morningstar primero con TER/riesgo;
+nombre → Yahoo + CoinGecko; atajos «oro», «plata»…; solo devuelve lo que tiene precio), `autoconfigurar()` (activos con ISIN y sin fuente),
+`comparar()` (mismas compras y ventas, sin traspasos, en MSCI World / S&P 500 / 60-40 / monetario; TIR por bisección). **`valorInfo()`**
+devuelve `fuente: "mercado"` si `usaMercado()`: participaciones conocidas y precio igual o más nuevo que lo anotado. Se actualiza al abrir
+(`FB.actualizarPrecios`, si pasaron 6 h) y con botones, en un hilo del servidor; el resultado se cuenta en **un solo aviso** y el detalle de
+fallos va plegado en Ajustes (E4 de la auditoría). Formatos de las APIs (no oficiales, aislados en `precios.py`): ver su cabecera.
+`FB_PRECIOS_URL` redirige todo a un servidor falso.
+**Ola 4.** `exportar.js`: `generarResumen(ocultar)` → HTML autónomo (sin scripts ni enlaces); **sin importes** = porcentajes e índice 100
+calculados antes de escribir. `exportar.py` + `/api/plantilla`: Excel con hojas Movimientos (desplegable de categorías y validación de
+fecha e importe), Listas y Cómo se usa; el perfil `Plantilla de FinanceBuddy` (plantilla v4) lee la columna `categoria` y
+`importar.categoria_del_archivo` la aplica (lista cerrada; no pisa traspasos; positivo en categoría de gasto = reembolso).
+`actualizaciones.py`: aviso de versión opcional (releases/latest de GitHub, ≤ 1 consulta al día, no instala nada).
+**Pendiente de las olas:** probar los precios con los servicios reales (`evaluar_precios.py`), y usar los precios mensuales para
+afinar «esfuerzo vs mercado» (hoy solo usa los valores anotados). Descartado: exportar `.xlsx` de datos (ver backlog).
+
 ---
 
 ## 10. Pendiente y backlog (por valor aproximado)
@@ -409,13 +478,15 @@ servidor falso en las pruebas.
 3. El usuario debe **rotar la clave de Jev** (se pegó en el chat).
 4. Actualizar el remoto de git al nuevo nombre del repo.
 
-**Producto**
+**Producto** (ver también las olas de `docs/AUDITORIA-RUMBO.md`: Ola 1 sin red es lo más barato y visible)
+0. **Probar los precios por internet con los servicios reales** (el usuario en su PC: `python pruebas\evaluar_precios.py`) y arreglar
+   en `precios.py` lo que haya cambiado (sobre todo Morningstar, el menos documentado).
 5. **Guardar ya lo importado con la categoría sugerida** (como Copilot/Lunch Money): hoy lo dudoso no cuenta hasta revisarlo.
    Es un cambio de fondo; PR aparte.
-6. **Vista «Para la renta»:** ganancias realizadas por FIFO sin contar traspasos entre fondos.
-7. **Rentabilidad por periodo** (mes, año, 1 año, total) con los valores anotados.
+6. ~~Vista «Para la renta»~~ (hecho, Ola 2).
+7. ~~Rentabilidad por periodo~~ (hecho en parte: por año en «Tu progreso»; falta mes/1 año/total).
 8. **Reparto objetivo y rebalanceo:** % ideal por activo y a dónde va la próxima aportación.
-9. **Dividendos** como operación propia.
+9. ~~Dividendos~~ (hecho: registro `cobro`). Mejora posible: usar los precios mensuales para «esfuerzo vs mercado» sin anotar valores.
 10. **Fase 4 del plan original (Ajustes por secciones):** reorganizar Ajustes, **día en que empieza tu mes** (el de la
     nómina), **colchón configurable** (hoy se calcula solo), **exportar datos a Excel**, probar una regla antes de guardarla y
     aplicarla a lo ya importado, fusionar/ocultar categorías.
@@ -434,9 +505,10 @@ servidor falso en las pruebas.
 
 1. Lee este archivo, luego `README.md` (uso) y `.claude/skills/financebuddy-dev/SKILL.md` (módulos).
 2. `git fetch origin && git log --oneline -15` y `git status`: ¿qué hay sin fusionar? (Estado conocido: rama
-   `claude/intelligent-cerf-wuzuc9` por delante de `main` con el commit de Bizums y este documento.)
+   `claude/intelligent-cerf-wuzuc9` por delante de `main` con la auditoría de Rumbo y las cuatro olas, sin PR.)
 3. Instala y comprueba: `pip install -r requirements.txt -r requirements-dev.txt` y
-   `python -m unittest pruebas.test_importar pruebas.test_servidor pruebas.test_jev` (deben ser **75 correctas**).
+   `python -m unittest pruebas.test_importar pruebas.test_servidor pruebas.test_jev pruebas.test_precios pruebas.test_actualizaciones`
+   (deben ser **109 correctas**).
 4. Arranca con datos inventados: `python -m financebuddy --ejemplo --sin-navegador --puerto 8830 --hoy 2026-09-30`.
 5. Antes de cambiar nada, relee §1 (reglas): sobre todo **clave de Jev, datos reales, español sin jerga, la app funciona sin
    IA y nada de subir extractos**.
@@ -471,3 +543,7 @@ jerga ni de cifras engañosas) que añadir funciones.
 - **Valor estimado «≈»**: valor de un activo calculado con el precio de su última operación al no haber valor anotado.
 - **TIR**: rentabilidad anual del activo (solo con ≥ 1 año de historia).
 - **Plantilla**: categorías, reglas y perfiles de serie, versionados (`plantilla.VERSION`).
+- **Valor «de mercado»**: el valor de un activo = participaciones × precio de internet (si lo activaste); manda sobre lo anotado si es más nuevo.
+- **Resumen sin importes**: HTML con porcentajes e índice 100; no contiene euros (no están tapados: no están).
+- **Plantilla de Excel**: hoja con desplegable de tus categorías; el perfil «Plantilla de FinanceBuddy» la importa con la categoría elegida.
+- **Cobro**: dividendo o comisión de un activo (no cambia sus participaciones).

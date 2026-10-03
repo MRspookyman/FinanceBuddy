@@ -65,6 +65,13 @@ body{display:grid;grid-template-columns:236px minmax(0,1fr);min-height:100vh}
 #datos{font-size:.76em;color:var(--ink-3);padding:0 6px}
 #tema{all:unset;cursor:pointer;padding:7px 12px;border-radius:10px;font-size:.84em;color:var(--ink-2)}
 #tema:hover{background:var(--surface-2)}
+#discreto{all:unset;cursor:pointer;padding:7px 12px;border-radius:10px;font-size:.84em;color:var(--ink-2)}
+#discreto:hover{background:var(--surface-2)} #discreto:focus-visible{outline:2px solid var(--brand);outline-offset:2px} #discreto[aria-pressed="true"]{color:var(--brand);font-weight:650}
+/* Modo discreto: los importes se desenfocan (al pasar el ratón o enfocar un campo, se ven) */
+body.discreto .blur{filter:blur(7px);user-select:none;transition:filter .15s}
+body.discreto svg text.blur{filter:blur(5px)}
+body.discreto .fin-tile:hover .blur,body.discreto .fb-item:hover .blur,body.discreto .fin-rows .r:hover .blur{filter:none}
+body.discreto input[type=number]{filter:blur(6px)} body.discreto input[type=number]:focus{filter:none}
 #principal{min-width:0;padding:26px clamp(14px,3.2vw,40px) 64px}
 #app{max-width:1100px;margin:0 auto}
 #ejemplo{max-width:1100px;margin:0 auto 14px;padding:9px 16px;border-radius:12px;font-size:.87em;background:color-mix(in srgb,var(--amber) 16%,var(--surface))}
@@ -498,3 +505,18 @@ body.theme-dark .fb-grupo{border-color:transparent}
 button:focus-visible,a:focus-visible,summary:focus-visible,[tabindex]:focus-visible,label:focus-within>input[type=checkbox]{outline:2px solid var(--brand)!important;outline-offset:2px}
 @media (max-width:560px){.fin .fin-table .fin-badge{display:table;margin:3px 0 0}.fin .fin-table td{white-space:normal;padding:10px 6px}.fin .fin-table td.num{min-width:64px}.fin .fin-table td:first-child{min-width:110px}}
 .fin button.fin-link{all:unset;cursor:pointer;color:var(--brand);font-weight:650;border-bottom:1px dashed currentColor}
+/* Tu progreso: hitos y proyección */
+.fb-hitos{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:12px}
+.fb-hitos .h{min-width:104px;padding:10px 14px;border-radius:14px;background:var(--surface-2);border:1px dashed var(--line)}
+.fb-hitos .h.ok{background:color-mix(in srgb,var(--mint) 14%,var(--surface));border:1px solid color-mix(in srgb,var(--mint) 35%,transparent)}
+.fb-hitos .v{font-family:var(--serif);font-size:1.15em;font-weight:650}.fb-hitos .s{font-size:.76em;color:var(--ink-2);margin-top:2px}
+.fb-slider{margin:10px 0 14px;max-width:560px}.fb-slider .c{display:flex;justify-content:space-between;font-size:.9em;margin-bottom:4px}
+.fb-slider .et{font-weight:600}.fb-slider .v{font-variant-numeric:tabular-nums;font-weight:700}
+.fb-slider input[type=range]{width:100%;accent-color:var(--brand);margin:0;padding:0;background:none;border:0;height:24px}
+.fb-slider .s{font-size:.76em;color:var(--ink-2)}
+.fb-proy-res{font-size:.95em;color:var(--ink);margin:6px 0 10px}
+/* Precios por internet: buscador del formulario de un activo */
+.fb-buscador{grid-column:1/-1;margin:6px 0 12px;padding:12px 14px;border-radius:14px;background:var(--surface-2);border:1px solid var(--line)}
+.fb-buscador .et{margin-top:0}.fb-buscador .fb-fila{margin:6px 0}.fb-buscador input{flex:1;min-width:0}
+.fb-candidato{display:grid;gap:4px;padding:10px 12px;margin-top:8px;border-radius:12px;background:var(--surface);border:1px solid var(--line)}
+.fb-candidato .c b{font-weight:650}.fb-candidato .s{font-size:.8em;color:var(--ink-2)}.fb-candidato button{justify-self:start;margin-top:2px}

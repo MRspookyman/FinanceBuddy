@@ -7,9 +7,11 @@ Tus finanzas personales **en tu ordenador**. Importas los extractos de tu banco 
 - a dónde va tu dinero (gastos por categoría) y de dónde viene;
 - cuánto tienes en cada cuenta y cómo va tu **inversión**.
 
-Pantallas: **Inicio**, **Movimientos**, **Inversión**, **Importar** y **Ajustes**.
+Pantallas: **Inicio**, **Movimientos**, **Inversión** (con **Tu progreso** y **Para la renta**), **Importar** y **Ajustes**.
 
 Nada sale de tu ordenador: no hay cuentas, ni nube, ni conexión con el banco. Los datos se guardan en un archivo de tu carpeta Documentos.
+Hay tres cosas **opcionales y apagadas de serie** que sí se conectan a internet si tú las activas, cada una con su explicación de
+qué sale: el asistente **Jev**, los **precios por internet** y el **aviso de versión nueva** (*Ajustes*). Sin ellas, la app no sale a la red.
 
 Solo para **Windows**. Todo en español y en euros.
 
@@ -24,6 +26,9 @@ Solo para **Windows**. Todo en español y en euros.
    Si prefieres verla antes, pulsa **«Probar con datos de ejemplo»**.
 3. **Importa** el extracto de tu banco: pestaña *Importar* → arrastra el Excel o CSV.
    - La primera vez con un banco nuevo te pregunta qué columna es la fecha, el concepto y el importe. Solo esa vez.
+   - **Vista previa**: antes de guardar nada te enseña lo que va a importar (movimientos nuevos, los que ya estaban, dudas, ingresos y
+     gastos, saldo final y una muestra) para compararlo con tu banco. No se guarda hasta que lo confirmas (se puede desactivar).
+   - ¿Sin extracto? *Importar → Descargar la plantilla de Excel*: fecha, concepto, importe y un desplegable con tus categorías.
 4. **Por revisar**: lo que la app no sabe clasificar sola te lo pregunta, agrupado por comercio.
    - Un clic en la categoría (la más probable sale la primera, marcada con ✨) resuelve el grupo entero y lo recuerda.
    - **Aprende sola**: lo que ya clasificaste antes de un comercio se usa la siguiente vez, aunque no marques «recordar».
@@ -42,6 +47,38 @@ no cuentan como dinero nuevo), que no salen en la cuenta de efectivo. Un Excel d
 Tipo, Activo, Estado, Títulos) completa las participaciones de ETF y cripto. Nada se duplica con el extracto de la
 cuenta, se importe antes uno u otro. Con las participaciones, en *Actualizar valores* basta con poner el precio.
 Sin valor anotado, un activo con participaciones se estima con el precio de su última compra o venta (marcado «≈»).
+
+**Tu progreso** (*Inversión → Tu progreso*): **hitos** de patrimonio (1 k€, 2,5 k€, 5 k€…) con la fecha en que los cruzaste y la barra
+hacia el siguiente; **«Si sigo así…»** (tres deslizadores —años, rentabilidad, aportación— y la curva frente a lo que habrías
+aportado; orientativo, sin impuestos ni inflación); **tu inversión mes a mes** (de lo que cambia cada mes, cuánto lo has puesto tú
+y cuánto el mercado); **rentabilidad por año** (encadenada, sin el efecto de cuándo metiste el dinero) y la **peor caída**.
+**Comisiones**: cuánto pagas al año por el TER de tus fondos y ETF. **Solo largo plazo**: desmarca un activo («Inversión a
+largo plazo») para dejar fuera un colchón o una apuesta de las cifras.
+
+**Para la renta** (*Inversión → Para la renta*): ganancias y pérdidas realizadas por año con el método **FIFO** (se vende lo
+primero que compraste); un traspaso entre fondos no es venta y el nuevo hereda el coste; **dividendos y comisiones** (se
+detectan en el extracto o se anotan a mano) y lo que no se puede calcular (ventas sin participaciones). Es una ayuda para
+preparar la declaración, no asesoramiento fiscal. Tipos de activo: fondo, ETF, acción, cripto, materias primas, plan de pensiones,
+bono e inmueble.
+
+**Precios por internet (opcional, apagado de serie)** (*Ajustes → Precios por internet*): en vez de anotar a mano lo que vale cada
+fondo, ETF o cripto, la app lo consulta a **Yahoo Finance, Morningstar o CoinGecko**. Solo sale el identificador del producto
+(ISIN, ticker o nombre de la cripto): **nunca importes, cuentas ni movimientos**. En cada activo, *Buscar el precio por internet*
+encuentra el producto por ISIN, ticker o nombre (con su TER y riesgo si es un fondo) y comprueba su precio al momento; con ISIN,
+un botón los configura todos de una vez. Las monedas que no son euros se pasan a euros con el cambio del día. El valor de un
+activo usa el precio de mercado si conoce sus participaciones y es más nuevo que lo que anotaste. Se actualiza al abrir la app
+(si hace más de 6 h) y con un botón; sin conexión, sigue con el último precio guardado y si algo falla lo cuenta **una sola vez**.
+Y el **comparador** de *Tu progreso*: «¿y si lo hubieras metido en un indexado?» con tus mismas compras y fechas en un MSCI World,
+un S&P 500, una cartera 60/40 o dinero sin riesgo. Son servicios gratuitos no oficiales: pueden fallar o cambiar;
+`python pruebas\evaluar_precios.py` comprueba desde tu ordenador si funcionan hoy.
+
+**Compartir y exportar** (*Ajustes*): un **resumen en HTML** de un solo archivo (patrimonio, ahorro, en qué gastas, inversión) que
+se abre sin conexión; «**sin importes**» no tapa las cifras, **no las incluye** (solo porcentajes e índice 100), así que ni el
+código fuente del archivo revela cuánto dinero es. La **plantilla de Excel** con desplegable de tus categorías (se importa con
+la categoría que elijas). **Aviso de versión** (opcional): una consulta pública a GitHub como mucho al día.
+
+**Modo discreto y atajos**: el botón *Discreto* (tecla **D**) desenfoca los importes para mirar la app con gente al lado (los
+porcentajes se ven). **A** = apuntar un movimiento; **1 a 6** = las secciones del menú.
 
 **Cuando lo importado no cuadra**: *Inversión* avisa en **Revisa tu inversión** de lo que ve raro (un traspaso desde
 tu banco tomado por venta, participaciones vendidas de más, operaciones sin participaciones, compras que no se sabe si
@@ -137,7 +174,7 @@ Requisitos: Python 3.10+ en Windows.
 pip install -r requirements.txt -r requirements-dev.txt
 python -m financebuddy                 :: arranca con tus datos (Documentos\FinanceBuddy)
 python -m financebuddy --ejemplo       :: con datos inventados en una carpeta temporal
-python -m unittest pruebas.test_importar pruebas.test_servidor
+python -m unittest pruebas.test_importar pruebas.test_servidor pruebas.test_jev pruebas.test_precios pruebas.test_actualizaciones
 python pruebas\run.py --tests          :: todas las pantallas en Chrome/Edge sin ventana + pruebas de cálculos
                                        :: (otro navegador: variable FB_NAVEGADOR con la ruta de chrome)
 build.bat                              :: genera dist\FinanceBuddy.exe
@@ -157,6 +194,9 @@ financebuddy/
   detectar.py      fijos que se repiten cada mes y de dónde viene el dinero
   operaciones.py   órdenes y operaciones del bróker con participaciones (ISIN, traspasos entre fondos)
   cartera.py       arreglos a mano: unir activos, deshacer un traspaso tomado por venta, cuadrar participaciones
+  precios.py       precios por internet (opcional): Yahoo, Morningstar, CoinGecko, caché, cambio de moneda, buscador y comparador
+  actualizaciones.py  aviso de versión nueva (opcional)
+  exportar.py      plantilla de Excel con desplegable de categorías
   bizums.py        Bizums recibidos: casar con el gasto que devuelven (aritmética de repartos) y enlazarlo
   jev.py           asistente opcional Jev (TypeSafe AI): dudas del banco y del bróker, repaso de categorías, apuntar, fijos y formatos nuevos
   plantilla.py     categorías, reglas y formatos de serie
@@ -165,9 +205,11 @@ financebuddy/
 pruebas/           pruebas (Python y cálculos en el navegador)
 ```
 
-Los módulos de `web/paneles/` se concatenan y comparten ámbito, en este orden: `datos`, `calculos`, `componentes`, `graficos`, `inicio`, `inversion`, `formularios`, `pantallas`.
+Los módulos de `web/paneles/` se concatenan y comparten ámbito, en este orden: `datos`, `calculos`, `componentes`, `graficos`, `inicio`, `inversion`, `progreso`, `renta`, `precios`, `exportar`, `formularios`, `pantallas`.
 
 Con [Claude Code](https://claude.com/claude-code), la skill `.claude/skills/financebuddy-dev` explica la arquitectura y cómo probar y extender la app.
+
+Comparativa con otra app similar: [`docs/AUDITORIA-RUMBO.md`](docs/AUDITORIA-RUMBO.md).
 
 **[`CONTEXTO.md`](CONTEXTO.md)** reúne todo el contexto del proyecto —reglas que no se rompen, arquitectura, historial de
 cambios, auditorías realizadas con sus hallazgos, decisiones y pendientes— para poder retomar el trabajo sin la conversación

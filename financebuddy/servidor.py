@@ -1,11 +1,11 @@
 # Servidor local de la app: sirve las pantallas (web/) y una API JSON sobre la base de datos.
 # Solo escucha en 127.0.0.1 y cada arranque genera una clave que la página envía en la cabecera X-FB-Token.
 import base64, datetime, http.server, io, json, mimetypes, os, re, secrets, socketserver, tempfile, threading, traceback, urllib.parse
-from . import VERSION, bizums, cartera, clasificar as C, detectar, importar as IM, jev, modelo, plantilla, rutas
+from . import VERSION, actualizaciones, bizums, cartera, clasificar as C, detectar, exportar, importar as IM, jev, modelo, plantilla, precios, rutas
 from .almacen import Almacen
 
 mimetypes.add_type("font/woff2", ".woff2")
-MODULOS = ["datos", "calculos", "componentes", "graficos", "inicio", "inversion", "formularios", "pantallas"]
+MODULOS = ["datos", "calculos", "componentes", "graficos", "inicio", "inversion", "progreso", "renta", "precios", "exportar", "formularios", "pantallas"]
 MAX_SUBIDA = 25 * 1024 * 1024
 ACENTOS = ["salvia", "violeta", "azul", "verde", "coral", "rosa", "grafito"]  # colores de acento (estilos.css: body[data-acento])
 
@@ -53,23 +53,60 @@ class App:
                              "fuente": "jev", "confianza": j.get("confianza")}
                     p["sugerencia"] = s
         regs.pop("ignorado", None)
-        cfg = self.alm.config()
+        cfg = self.alm.config(sin="precio_serie:")  # las series de precios (caché) se quedan en el servidor
         cfg["jev"] = jev.config_publica(self.alm)  # la clave nunca sale hacia la página
+        cfg["precios"] = precios.para_la_pagina(self.alm)
+        cfg["actualizaciones"] = actualizaciones.para_la_pagina(self.alm)
         return {"registros": regs, "pendientes": pend, "config": cfg,
                 "info": {"version": VERSION, "carpeta": self.carpeta.raiz, "hoy": self.hoy, "ejemplo": self.ejemplo,
                          "archivos": [{"nombre": os.path.basename(p), "tipo": t} for p, t in IM.archivos_pendientes(self.carpeta)]}}
 
     # ───── acciones ─────
-    def importar_carpeta(self):
+    def importar_carpeta(self, previa=False):
         resultados = []
         for ruta, tipo in IM.archivos_pendientes(self.carpeta):
-            resultados.append(self._importar(ruta, tipo))
+            resultados.append(self._importar(ruta, tipo, previa=previa))
         if not resultados: return {"ok": True, "resultados": [], "mensaje": "No hay archivos en la carpeta Importar."}
         return {"ok": all(r.get("ok") or r.get("necesita") for r in resultados), "resultados": resultados}
 
-    def _importar(self, ruta, tipo=None, cuenta=None, perfil=None):
+    # ───── vista previa de una importación: el mismo código que importa de verdad, dentro de una simulación que se deshace ─────
+    def _ids(self):
+        return {t: {x["id"] for x in self.alm.todos(t)} for t in ("movimiento", "aportacion", "pendiente", "activo")}
+
+    def _informe_previa(self, antes, r):
+        nuevos = lambda t: [x for x in self.alm.todos(t) if x["id"] not in antes[t]]
+        movs, aps, pend, acts = nuevos("movimiento"), nuevos("aportacion"), nuevos("pendiente"), nuevos("activo")
+        firmado = lambda m: -m["importe"] if m["clase"] == "gasto" else m["importe"] if m["clase"] in ("ingreso", "reembolso") else 0
+        fechas = [m["fecha"] for m in movs] + [a["fecha"] for a in aps] + [p["fila"]["op"] for p in pend]
+        gasto_cat = {}
+        for m in movs:
+            if m["clase"] == "gasto": gasto_cat[m.get("categoria") or "Sin categoría"] = gasto_cat.get(m.get("categoria") or "Sin categoría", 0) + m["importe"]
+        saldo = (self.alm.config(f"saldo_extracto:{r['cuenta']}") or None) if r.get("cuenta") else None
+        return {
+            "movimientos": {"n": len(movs), "ingresos": round(sum(m["importe"] for m in movs if m["clase"] in ("ingreso", "reembolso")), 2),
+                            "gastos": round(sum(m["importe"] for m in movs if m["clase"] == "gasto"), 2), "traspasos": sum(1 for m in movs if m["clase"] == "transferencia")},
+            "aportaciones": {"n": len(aps), "compras": round(sum(a["importe"] for a in aps if a["importe"] > 0), 2), "ventas": round(-sum(a["importe"] for a in aps if a["importe"] < 0), 2)},
+            "activos_nuevos": [a["nombre"] for a in acts], "existentes": r.get("existentes", 0),
+            "dudas": {"n": len(pend), "muestra": [{"fecha": p["fila"]["op"], "texto": p["fila"].get("texto", ""), "importe": p["fila"].get("importe", 0)}
+                                                   for p in sorted(pend, key=lambda p: p["fila"]["op"], reverse=True)[:6]]},
+            "desde": min(fechas) if fechas else None, "hasta": max(fechas) if fechas else None,
+            "saldo_final": saldo,
+            "muestra": [{"fecha": m["fecha"], "concepto": m.get("concepto", ""), "importe": firmado(m), "categoria": m.get("categoria", ""), "clase": m["clase"]}
+                        for m in sorted(movs, key=lambda m: (m["fecha"], m["id"]), reverse=True)[:12]],
+            "categorias": [{"categoria": c, "total": round(v, 2)} for c, v in sorted(gasto_cat.items(), key=lambda kv: -kv[1])[:6]],
+        }
+
+    def _importar(self, ruta, tipo=None, cuenta=None, perfil=None, previa=False, antes=None):
+        """previa: no guarda nada, enseña el informe de lo que pasaría (`antes`: algo que hacer dentro de la simulación, p. ej. crear el formato)."""
         nombre = os.path.basename(ruta)
         try:
+            if previa:
+                with self.alm.simular():
+                    if antes: antes()
+                    ids = self._ids()
+                    r = IM.importar_archivo(self.alm, self.carpeta, ruta, tipo, cuenta, perfil, simulando=True)
+                    if r.get("ok"): r["previa"] = self._informe_previa(ids, r)
+                return {**r, "archivo": nombre}
             r = IM.importar_archivo(self.alm, self.carpeta, ruta, tipo, cuenta, perfil)
             if r.get("ok") and r.get("tipo") == "banco": bizums.enlazar(self.alm)
             c, fallo = jev.config(self.alm), None
@@ -101,7 +138,7 @@ class App:
         tipo = d.get("tipo") if d.get("tipo") in ("banco", "inversion", "operaciones") else None
         ruta = os.path.join(self.carpeta.carpeta_import(tipo), nombre)
         with io.open(ruta, "wb") as fh: fh.write(datos)
-        return self._importar(ruta, tipo)
+        return {**self._importar(ruta, tipo, previa=bool(d.get("previa"))), "subido": True}
 
     def reintentar(self, d):
         """Tras configurar el formato o elegir la cuenta: vuelve a importar el archivo."""
@@ -109,10 +146,21 @@ class App:
         ruta = next((p for p, t in IM.archivos_pendientes(self.carpeta) if os.path.basename(p) == nombre), None)
         if not ruta: return {"ok": False, "mensaje": f"No encuentro «{nombre}» en la carpeta Importar."}
         tipo = d.get("tipo") if d.get("tipo") in ("banco", "inversion", "operaciones") else None
-        if d.get("columnas"):
-            IM.crear_perfil(self.alm, d.get("perfil") or os.path.splitext(nombre)[0], tipo or "banco", d["columnas"], d.get("cuenta"),
-                            d.get("compras_negativas", True))
+        crear = (lambda: IM.crear_perfil(self.alm, d.get("perfil") or os.path.splitext(nombre)[0], tipo or "banco", d["columnas"], d.get("cuenta"),
+                                         d.get("compras_negativas", True))) if d.get("columnas") else None
+        if d.get("previa"):  # el formato nuevo también se crea solo dentro de la simulación
+            r = self._importar(ruta, tipo, d.get("cuenta"), d.get("perfil"), previa=True, antes=crear)
+            return {**r, "subido": bool(d.get("subido")), "peticion": {k: d.get(k) for k in ("archivo", "tipo", "cuenta", "perfil", "columnas", "compras_negativas") if d.get(k) is not None}} if r.get("previa") else r
+        if crear: crear()
         return self._importar(ruta, tipo, d.get("cuenta"), d.get("perfil"))
+
+    def descartar_archivo(self, d):
+        """Quita de la carpeta Importar un archivo subido que al ver la vista previa no se quiere importar."""
+        nombre = os.path.basename(d.get("archivo") or "")
+        ruta = next((p for p, t in IM.archivos_pendientes(self.carpeta) if os.path.basename(p) == nombre), None)
+        if not ruta: return {"ok": False, "mensaje": f"No encuentro «{nombre}» en la carpeta Importar."}
+        os.remove(ruta)
+        return {"ok": True, "mensaje": f"«{nombre}» descartado: no se ha importado nada."}
 
     def bienvenida(self, d):
         """Primer arranque: cuentas con su saldo de hoy, límite de gasto y fondo de emergencia."""
@@ -150,6 +198,27 @@ class App:
             c = next((r for r in self.alm.todos("cierre") if r["mes"] == mes), None)
             self.alm.guardar("cierre", {"mes": mes, "fecha": fecha, "notas": d.get("notas") or ""}, c["id"] if c else None)
         return {"ok": True, "mensaje": f"Mes cerrado: registro de patrimonio del {IM.fmt(fecha)} guardado."}
+
+    def precios(self, accion, d):
+        """Precios por internet (opcional, apagado de serie): ajustes, actualizar en segundo plano, buscar y comparar."""
+        a = self.alm
+        try:
+            if accion == "config":
+                precios.guardar_config(a, d)
+                return {"ok": True, "precios": precios.para_la_pagina(a)}
+            if accion == "actualizar":
+                precios._exigir(a)
+                return {"ok": True, "iniciado": precios.actualizar_en_segundo_plano(a, bool(d.get("forzar")))}
+            if accion == "estado":
+                e = precios.estado(a)
+                r = e.get("resultado") or {}
+                return {"ok": True, **e, "mensaje": precios.mensaje_resultado(r) if r.get("ok") else r.get("mensaje", ""), "precios": precios.para_la_pagina(a)}
+            if accion == "autoconfigurar": return {"ok": True, **precios.autoconfigurar(a)}
+            if accion == "buscar": return {"ok": True, "candidatos": precios.buscar(a, str(d.get("texto") or ""))}
+            if accion == "comparar": return {"ok": True, **precios.comparar(a, str(d.get("ref") or "mundo"))}
+        except precios.ErrorPrecios as e:
+            return {"ok": False, "mensaje": str(e)}
+        raise ValueError("Acción de precios desconocida.")
 
     def valores(self, d):
         fecha = modelo.fecha(d.get("fecha")) or (self.hoy or datetime.date.today().isoformat())
@@ -220,7 +289,8 @@ class App:
             return {"ok": True}
         if ruta == "/api/recategorizar": return {"ok": True, "mensaje": IM.recategorizar(a, int(d["id"]), d)}
         if ruta == "/api/parecidos": return {"ok": True, **IM.parecidos(a, int(d["id"]))}
-        if ruta == "/api/importar/carpeta": return self.importar_carpeta()
+        if ruta == "/api/importar/carpeta": return self.importar_carpeta(bool(d.get("previa")))
+        if ruta == "/api/importar/descartar": return self.descartar_archivo(d)
         if ruta == "/api/importar/subir": return self.subir(d)
         if ruta == "/api/importar/reintentar": return self.reintentar(d)
         if ruta == "/api/resolver":
@@ -256,6 +326,13 @@ class App:
             if not n: return {"ok": True, "mensaje": f"Jev ya lo había repasado todo: {h} para revisar" if h else "Jev ya lo había repasado todo: está en orden"}
             return {"ok": True, "mensaje": f"Jev ha repasado {n} comercios: {h} para revisar" if h else f"Jev ha repasado {n} comercios: todo en orden"}
         if ruta == "/api/jev/hallazgo": return {"ok": True, "mensaje": jev.resolver_hallazgo(a, str(d.get("clave") or ""), d.get("accion"))}
+        if ruta == "/api/actualizaciones/config":
+            actualizaciones.guardar_config(a, d); return {"ok": True, "actualizaciones": actualizaciones.para_la_pagina(a)}
+        if ruta == "/api/actualizaciones/comprobar":
+            try: return {"ok": True, **actualizaciones.comprobar(a, bool(d.get("forzar")))}
+            except actualizaciones.ErrorActualizacion as e: return {"ok": False, "mensaje": str(e)}
+        if ruta == "/api/plantilla": return {"ok": True, "nombre": "FinanceBuddy-plantilla.xlsx", "contenido": base64.b64encode(exportar.plantilla_excel(a)).decode()}
+        if ruta.startswith("/api/precios/"): return self.precios(ruta[len("/api/precios/"):], d)
         if ruta == "/api/config/descartar_aviso":  # avisos de la revisión de la cartera que el usuario da por buenos
             k = str(d.get("clave") or "")[:120]
             if k: a.set_config("avisos_descartados", list(dict.fromkeys((a.config("avisos_descartados") or []) + [k]))[-200:])

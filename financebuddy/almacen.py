@@ -37,6 +37,18 @@ class Almacen:
             self._tx -= 1
             if self._tx == 0: self.con.execute("COMMIT")
 
+    @contextmanager
+    def simular(self):
+        """Todo lo que se escriba dentro se deshace al salir: sirve para enseñar qué pasaría (vista previa de una importación)
+        con exactamente el mismo código que lo haría de verdad. No se puede anidar dentro de otra transacción."""
+        with self.lock:
+            if self._tx != 0: raise RuntimeError("No se puede simular dentro de otra operación.")
+            self.con.execute("BEGIN"); self._tx = 1
+            try: yield self
+            finally:
+                self._tx = 0
+                self.con.execute("ROLLBACK")
+
     # ───── registros ─────
     def todos(self, tipo):
         with self.lock:
@@ -109,9 +121,13 @@ class Almacen:
             return self.con.execute("SELECT COUNT(*) FROM registros WHERE tipo=?", (tipo,)).fetchone()[0]
 
     # ───── configuración ─────
-    def config(self, clave=None, defecto=None):
+    def config(self, clave=None, defecto=None, sin=None):
+        """Un ajuste (o todos). `sin`: al pedir todos, deja fuera los que empiezan por ese prefijo (sin leerlos)."""
         with self.lock:
-            if clave is None: return {k: json.loads(v) for k, v in self.con.execute("SELECT clave, valor FROM config")}
+            if clave is None:
+                filas = self.con.execute("SELECT clave, valor FROM config WHERE clave NOT LIKE ? ESCAPE '\\'", (sin.replace("%", "\\%").replace("_", "\\_") + "%",)).fetchall() if sin \
+                    else self.con.execute("SELECT clave, valor FROM config").fetchall()
+                return {k: json.loads(v) for k, v in filas}
             f = self.con.execute("SELECT valor FROM config WHERE clave=?", (clave,)).fetchone()
         return json.loads(f[0]) if f else defecto
 

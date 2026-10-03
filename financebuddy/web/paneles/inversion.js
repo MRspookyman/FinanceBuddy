@@ -2,12 +2,14 @@
 // Lo que has metido y lo que vale cada activo, cómo evoluciona, cuánto aportas cada mes, cómo está repartido y lo
 // que rinde el dinero sin invertir. Los datos salen de las aportaciones (importadas del bróker), del valor de cada
 // activo (Actualizar valores) y de los registros de saldos (evolución).
-const TIPO_ACTIVO = { fondo: "Fondo", etf: "ETF / ETC", accion: "Acción", cripto: "Cripto", materia: "Materias primas", otro: "Otro" };
-const ICONO_ACTIVO = { fondo: "📊", etf: "🧺", accion: "🏢", cripto: "🪙", materia: "🥇", otro: "💼" };
+const TIPO_ACTIVO = { fondo: "Fondo", etf: "ETF / ETC", accion: "Acción", cripto: "Cripto", materia: "Materias primas", pension: "Plan de pensiones", bono: "Bono / renta fija", inmueble: "Inmueble", otro: "Otro" };
+const ICONO_ACTIVO = { fondo: "📊", etf: "🧺", accion: "🏢", cripto: "🪙", materia: "🥇", pension: "🏖️", bono: "📜", inmueble: "🏠", otro: "💼" };
 
 function vistaInversion() {
   cabecera("Inversión", false, "Lo que has metido en tus fondos, ETF y cripto, y lo que vale hoy");
-  const I = resumenInversion();
+  const hayCorto = activos().some((a) => !a.largo);
+  const solo = hayCorto && !!FB.estado.soloLargo;  // FB.estado: sobrevive a refrescar la pantalla, no a cambiar de pantalla
+  const I = resumenInversion(solo);
   if (!I.filas.length) {
     const v = root.createDiv({ cls: "fb-hecho" });
     v.createDiv({ cls: "i", text: "🌱" });
@@ -25,32 +27,42 @@ function vistaInversion() {
   enlace(botones, "Actualizar valores", "#valores").className = "fb-btn";
   enlace(botones, "+ Activo", "#editar/activo/nuevo").className = "fb-btn sec";
   enlace(botones, "Compras y ventas", "#gestionar/aportacion").className = "fb-btn sec";
+  enlace(botones, "Tu progreso", "#progreso").className = "fb-btn sec";
+  enlace(botones, "Para la renta", "#renta").className = "fb-btn sec";
+  if (hayCorto) {  // «Solo largo plazo»: deja fuera lo que no es inversión a largo (un colchón en un fondo monetario, una apuesta…)
+    const seg = root.createDiv({ cls: "fb-chips" });
+    for (const [k, t] of [[false, "Todo"], [true, "Solo largo plazo"]]) {
+      const b = seg.createEl("button", { text: t, cls: solo === k ? "act" : "" });
+      b.onclick = () => { FB.estado.soloLargo = k; montar(); };
+    }
+  }
 
   panelSalud(root, saludInversion());
   const pct0 = I.aportado > 0 ? I.gan / I.aportado : NaN;
-  const notaValor = [I.estimados ? `≈ ${I.estimados === 1 ? "uno" : I.estimados} con el precio de su última compra` : "", I.sinValor ? `${I.sinValor === 1 ? "uno" : I.sinValor} por lo metido` : ""].filter(Boolean).join(" · ");
+  const notaValor = [I.mercado ? `${I.mercado === I.filas.length ? "todo" : I.mercado === 1 ? "uno" : I.mercado} al precio de mercado del ${I.fechaMercado.toFormat("dd/MM")}` : "", I.estimados ? `≈ ${I.estimados === 1 ? "uno" : I.estimados} con el precio de su última compra` : "", I.sinValor ? `${I.sinValor === 1 ? "uno" : I.sinValor} por lo metido` : ""].filter(Boolean).join(" · ");
   tiles(root, [
     { l: "Vale hoy", v: eur(I.total, 0), s: notaValor || "según tus últimos valores" },
     { l: "Has metido", v: eur(I.aportadoTodo, 0), s: `${I.filas.reduce((s, f) => s + f.operaciones, 0)} compras y ventas` },
-    isFinite(I.gan) && I.aportado > 0 ? { l: "Ganancia", v: (I.estimados ? "≈ " : "") + eurS(I.gan, 0), t: tone(I.gan), s: `${pct(pct0, true)} sobre lo metido${I.estimados ? " · estimada" : ""}` } : null,
+    isFinite(I.gan) && I.aportado > 0 ? { l: "Ganancia", v: (I.estimados ? "≈ " : "") + eurS(I.gan, 0), t: tone(I.gan), s: `${pct(pct0, true)} sobre lo metido${I.estimados ? " · estimada" : ""}${I.dividendos ? ` · con ${eur(I.dividendos, 0)} de dividendos` : ""}` } : null,
     isFinite(I.tir) ? { l: "Rentabilidad anual", v: pct(I.tir, true), t: tone(I.tir), s: I.tirCorta ? "menos de un año: orientativa" : I.tirParcial ? "de los activos con datos" : "TIR, cuenta cuándo metiste cada euro" } : null,
     efectivo != null ? { l: "Sin invertir", v: eur(efectivo, 0), s: nombresBroker() } : null,
     INT.n ? { l: `Intereses ${hoy.year}`, v: eur(INT.año, 2), s: INT.comisiones ? `comisiones ${eur(INT.comisiones, 2)}` : "del dinero sin invertir" } : null,
   ]);
 
   const g1 = root.createDiv({ cls: "fin-grid dos" });
-  tarjetaEvolucion(panel(g1, "Evolución", null, "Lo que llevas metido (línea discontinua) y lo que valía al final de cada mes en que anotaste los valores, más el de hoy."));
+  tarjetaEvolucion(panel(g1, "Evolución", null, "Lo que llevas metido (línea discontinua) y lo que valía al final de cada mes en que anotaste los valores, más el de hoy."), solo);
   tarjetaReparto(panel(g1, "Cómo está repartido"), I);
 
   tablaActivos(panel(root, "Tus activos", { text: "Editar", ruta: "#gestionar/activo" }), I);
 
+  panelComisiones(root, I);
   const g2 = root.createDiv({ cls: "fin-grid dos" });
-  tarjetaAportaciones(panel(g2, "Lo que metes cada mes"));
+  tarjetaAportaciones(panel(g2, "Lo que metes cada mes"), solo);
   tarjetaSinInvertir(panel(g2, "Tu dinero sin invertir", { text: "Aportaciones periódicas", ruta: "#gestionar/recurrente" }), efectivo, INT);
 }
 
-function tarjetaEvolucion(p) {
-  const EV = evolucionInversion();
+function tarjetaEvolucion(p, solo) {
+  const EV = evolucionInversion(solo);
   if (!EV) { vacio(p, "Sin aportaciones todavía", ""); return; }
   const n = EV.keys.length, paso = Math.max(1, Math.ceil(n / 6));
   const marcas = EV.keys.map((_, i) => i).filter((i) => i % paso === (n - 1) % paso);
@@ -96,21 +108,16 @@ function tablaActivos(p, I) {
   const cols = [{ t: "Activo" }, conPart && { t: "Particip.", num: true, opt: true }, conPart && { t: "Precio medio", num: true, opt: true }, { t: "Metido", num: true, opt: true },
     { t: "Vale", num: true }, { t: "Ganancia", num: true }, { t: "Anual", num: true, opt: true }, { t: "Peso", num: true, opt: true }];
   const filas = [...I.filas].sort((a, b) => b.valor - a.valor).map((f) => [
-    { text: f.nombre, ruta: `#activo/${f.p.id}`, dot: colorActivo(f.nombre), badge: { metido: "sin valor", precio: "estimado" }[f.fuente] || "" },
+    { text: f.nombre, ruta: `#activo/${f.p.id}`, dot: colorActivo(f.nombre), badge: { metido: "sin valor", precio: "estimado", mercado: "mercado" }[f.fuente] || "" },
     conPart && (f.participaciones != null ? nf(f.participaciones, 0, 4) : "—"),
     conPart && (f.precioMedio != null ? eur(f.precioMedio) : "—"),
     eur(f.aportado, 0),
-    (f.fuente === "anotado" ? "" : "≈ ") + eur(f.valor, 0),
+    (f.fuente === "anotado" || f.fuente === "mercado" ? "" : "≈ ") + eur(f.valor, 0),
     isFinite(f.gan) ? { text: `${eurS(f.gan, 0)} · ${pct(f.aportado > 0 ? f.gan / f.aportado : NaN, true)}`, cls: tone(f.gan) } : "—",
     isFinite(f.tir) && unAño(f) ? { text: pct(f.tir, true), cls: tone(f.tir) } : "—",
     I.total > 0 ? pct(f.valor / I.total) : "—",
   ].filter((c) => c !== false));
   tabla(p, cols.filter(Boolean), filas);
-  const sinTer = I.filas.filter((f) => f.ter != null);
-  if (sinTer.length) {
-    const coste = sum(sinTer.map((f) => (f.valor * f.ter) / 100));
-    p.createDiv({ cls: "fin-note", text: `Gastos corrientes: unos ${eur(coste, 2)} al año (${sinTer.map((f) => `${f.nombre} ${nf(f.ter, 2, 2)} %`).join(", ")}).` });
-  }
   if (I.cerradas.length) {
     const n = p.createDiv({ cls: "fin-note" });
     n.appendText("Ya vendido: ");
@@ -118,11 +125,32 @@ function tablaActivos(p, I) {
     n.appendText(".");
   }
   if (I.estimados) p.createDiv({ cls: "fin-note", text: "≈ estimado: participaciones × el precio de tu última compra o venta. Para el valor exacto, anota lo que vale en tu bróker (Actualizar valores)." });
+  if (I.mercado) notaPrecios(p);
   if (I.sinAport) p.createDiv({ cls: "fin-note", text: "Sin «aportado antes de usar la app», la ganancia de ese activo no se puede calcular: edítalo y pon lo que habías metido (0 si empezaste con la app)." });
 }
 
-function tarjetaAportaciones(p) {
-  let A = aportacionesMes(12);
+// Lo que cuestan tus fondos y ETF (gastos corrientes, TER): € al año y al mes. Un 0,2 % parece poco, pero se paga cada año.
+function panelComisiones(padre, I) {
+  const C = comisionesInversion(I.filas);
+  if (!C.lista.length) {
+    if (I.filas.some((f) => f.clase === "fondo" || f.clase === "etf")) {
+      const p = panel(padre, "Lo que pagas en comisiones", null, "Los gastos corrientes (TER) de cada fondo o ETF se descuentan del valor poco a poco, sin que veas ningún cobro.");
+      p.createDiv({ cls: "fin-note", text: "Pon el TER de tus fondos y ETF (lo ves en su ficha del bróker) y aquí verás cuánto te cuestan al año." });
+      enlace(p.createDiv({ cls: "fin-note" }), "Editar mis activos →", "#gestionar/activo");
+    }
+    return;
+  }
+  const p = panel(padre, "Lo que pagas en comisiones", { text: `${eur(C.año, 0)} al año` }, "Los gastos corrientes (TER) de cada fondo o ETF se descuentan del valor poco a poco, sin que veas ningún cobro. Es una estimación: valor de hoy × TER.");
+  tabla(p, [{ t: "Activo" }, { t: "TER", num: true }, { t: "Sobre", num: true, opt: true }, { t: "Al año", num: true }, { t: "Al mes", num: true, opt: true }],
+    [...C.lista.map((x) => [{ text: x.nombre, ruta: `#activo/${x.p.id}`, dot: colorActivo(x.nombre) }, `${nf(x.ter, 2, 2)} %`, eur(x.valor, 0), eur(x.año, 2), eur(x.año / 12, 2)]),
+      conFila(["Total", `${nf(C.media, 2, 2)} %`, eur(C.sobre, 0), eur(C.año, 2), eur(C.mes, 2)], "total")]);
+  const años = [10, 20, 30].map((n) => `${n} años: ${eur(C.año * n, 0)}`).join(" · ");
+  p.createDiv({ cls: "fin-note", text: `Si el valor y el TER se mantuvieran: ${años} (sin contar lo que habría crecido ese dinero).` });
+  if (C.sinTer.length) p.createDiv({ cls: "fin-note", text: `Sin TER anotado: ${C.sinTer.map((f) => f.nombre).join(", ")}.` });
+}
+
+function tarjetaAportaciones(p, solo) {
+  let A = aportacionesMes(12, solo);
   const conAlgo = A.filter((x) => x.compras || x.ventas);
   if (!conAlgo.length) { vacio(p, "Sin compras en el último año", ""); return; }
   // Sin columnas vacías antes de la primera compra (se enseñan al menos 6 meses)
@@ -195,14 +223,14 @@ function vistaActivo() {
   enlace(bot, "+ Operación", `#editar/aportacion/nuevo/${reg.id}`).className = "fb-btn sec";
   enlace(bot, "Editar", `#editar/activo/${reg.id}`).className = "fb-btn sec";
 
-  const real = V.fuente === "anotado" || V.fuente === "precio";
+  const real = V.fuente === "anotado" || V.fuente === "precio" || V.fuente === "mercado";
   const gan = real && a.aportadoIni != null && aportado > 0 ? V.valor - aportado : NaN;
   tiles(root, [
     { l: "Participaciones", v: P.part != null ? nf(P.part, 0, 4) : "—", s: P.part != null ? (P.ajustes ? "con tus ajustes" : "según tus operaciones") : `faltan en ${P.faltan} operaci${P.faltan === 1 ? "ón" : "ones"}` },
     { l: "Precio medio", v: P.precioMedio != null ? eur(P.precioMedio) : "—", s: P.precioMedio != null ? "de tus compras" : "necesita las participaciones" },
     { l: "Has metido", v: eur(aportado, 0), s: `${normales.length} operaci${normales.length === 1 ? "ón" : "ones"}` },
-    { l: "Vale hoy", v: (V.fuente === "anotado" ? "" : "≈ ") + eur(V.valor, 0),
-      s: V.fuente === "anotado" ? `anotado el ${a.fechaValor.toFormat("dd/MM/yy")}` : V.fuente === "precio" ? `precio del ${V.precio.fecha.toFormat("dd/MM/yy")}: ${eur(V.precio.precio, 4)}` : V.fuente === "vendido" ? "vendido del todo" : "sin valor: lo metido" },
+    { l: "Vale hoy", v: (V.fuente === "anotado" || V.fuente === "mercado" ? "" : "≈ ") + eur(V.valor, 0),
+      s: V.fuente === "mercado" ? `precio de mercado del ${V.precio.fecha.toFormat("dd/MM/yy")}: ${eur(V.precio.precio, 4)} · ${FUENTES_PRECIO[V.precio.fuente] || V.precio.fuente}` : V.fuente === "anotado" ? `anotado el ${a.fechaValor.toFormat("dd/MM/yy")}` : V.fuente === "precio" ? `precio del ${V.precio.fecha.toFormat("dd/MM/yy")}: ${eur(V.precio.precio, 4)}` : V.fuente === "vendido" ? "vendido del todo" : "sin valor: lo metido" },
     isFinite(gan) ? { l: "Ganancia", v: eurS(gan, 0), t: tone(gan), s: `${pct(gan / aportado, true)} sobre lo metido` } : null,
   ]);
   panelSalud(root, saludInversion(a.nombre), { titulo: "Revisa este activo", max: 10 });
@@ -243,7 +271,8 @@ function vistaActivo() {
       const y = pareja(x);
       return x.importe > 0 ? `Traspaso desde ${y ? y.activo : "otro fondo"}` : `Traspaso a ${y ? y.activo : "otro fondo"}`;
     };
-    tabla(po, [{ t: "Fecha" }, { t: "Operación" }, { t: "Importe", num: true }, { t: "Particip.", num: true }, { t: "Precio", num: true, opt: true }, { t: "De", opt: true }],
+    const TC = tamañoCompras(normales.filter((x) => x.importe > 0 && !x.p.traspaso).map((x) => x.importe));  // frente a tus compras de este activo
+    tabla(po, [{ t: "Fecha" }, { t: "Operación" }, { t: "Importe", num: true }, TC && { t: "Tamaño", opt: true }, { t: "Particip.", num: true }, { t: "Precio", num: true, opt: true }, { t: "De", opt: true }].filter(Boolean),
       [...ops].reverse().map((x) => {
         const pa = hasNum(x.p.participaciones) ? num(x.p.participaciones) : null;
         const marcas = [x.p.supuesta ? "¿compra?" : "", pa == null && !x.p.ajuste ? "sin particip." : "", dudosas.has(x.p.id) ? "¿duplicada?" : ""].filter(Boolean);
@@ -251,13 +280,21 @@ function vistaActivo() {
           { text: x.fecha.toFormat("dd/MM/yy"), ruta: `#editar/aportacion/${x.p.id}` },
           { text: tipoOp(x), badge: marcas.join(" · ") },
           x.p.ajuste ? "—" : { text: eurS(x.importe), cls: x.importe < 0 ? "neg" : "" },
+          ...(TC ? [x.importe > 0 && !x.p.ajuste && !x.p.traspaso ? { text: TC.de(x.importe), cls: TC.de(x.importe) === "grande" ? "pos" : "" } : ""] : []),
           pa != null ? (pa > 0 && x.p.ajuste ? "+" : "") + nf(pa, 0, 6) : "—",
           pa && Math.abs(x.importe) > 0.005 ? eur(Math.abs(x.importe / pa), 4) : "—",
           ORIGEN_OP(x),
         ];
       }));
     po.createDiv({ cls: "fin-note", text: "Pulsa la fecha para cambiar o borrar una operación. «¿compra?»: la orden no decía si era compra o venta." });
+    if (TC) po.createDiv({ cls: "fin-note", text: `Tamaño: lo que has comprado de este activo, en tres partes iguales: pequeña (menos de ${eur(TC.p33, 0)}), habitual y grande (más de ${eur(TC.p67, 0)}).` });
   }
+
+  // Dividendos y comisiones del activo
+  const cb = cobros().filter((c) => c.activo === a.nombre);
+  const pc2 = panel(root, `Dividendos y comisiones (${cb.length})`, { text: "+ Añadir", ruta: `#editar/cobro/nuevo/${reg.id}` }, "Lo que este activo te da (dividendo, cupón) o te cobra (custodia) sin vender participaciones. Cuenta para su rentabilidad.");
+  if (!cb.length) pc2.createDiv({ cls: "fin-note", text: "Ninguno. Los dividendos del extracto de tu bróker se reconocen solos, o los apuntas aquí." });
+  else tabla(pc2, [{ t: "Fecha" }, { t: "Qué" }, { t: "Importe", num: true }], [...cb].reverse().map((c) => [{ text: c.fecha.toFormat("dd/MM/yy"), ruta: `#editar/cobro/${c.p.id}` }, c.tipo === "comision" ? "Comisión" : "Dividendo", { text: (c.tipo === "comision" ? "−" : "+") + eur(c.importe, 2), cls: c.tipo === "comision" ? "neg" : "pos" }]));
 
   // Unir con otro activo
   const otros = (DB.registros.activo || []).filter((r) => r.id !== reg.id);

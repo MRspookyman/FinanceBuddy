@@ -360,6 +360,48 @@ class TestBizums(Base):
         self.assertTrue(B.parte(97.84, 19.56, 5) and B.parte(97.84, 19.6, 5) and not B.parte(97.84, 20.5, 5))
         self.assertEqual(B.iguales(19.56, "2026-09-16", [{"fecha": "2026-09-16", "importe": 19.6}, {"fecha": "2026-09-17", "importe": 19.56}, {"fecha": "2026-09-20", "importe": 19.56}]), 2)
 
+class TestCobros(Base):
+    """Dividendos y comisiones de un activo (registro `cobro`)."""
+    CSV = ("Fecha de operación;Fecha valor;Concepto;Importe\n"
+           "10/09/2026;10/09/2026;FIDELITY MSCI WORLD INDEX;-150,00\n"
+           "20/09/2026;20/09/2026;DIVIDENDO FIDELITY MSCI WORLD INDEX;3,40\n"
+           "25/09/2026;25/09/2026;CUPON ISHARES GOLD ETC;1,10\n")
+    def importar_csv(self):
+        ruta = os.path.join(self.c.inversion, "d.csv"); escribir(ruta, "utf-8", self.CSV)
+        return IM.importar_archivo(self.a, self.c, ruta, "inversion", "Bróker")
+    def test_dividendo_de_un_activo_conocido_no_es_una_venta(self):
+        r = self.importar_csv()  # (el activo «Fondo MSCI» ya existe en la base de las pruebas, con el patrón «msci world»)
+        self.assertIn("1 dividendos", r["mensaje"], r)
+        cobros = self.a.todos("cobro")
+        self.assertEqual([(c["activo"], c["tipo"], c["importe"], c["fecha"]) for c in cobros], [("Fondo MSCI", "dividendo", 3.4, "2026-09-20")])
+        self.assertEqual([x["importe"] for x in self.a.todos("aportacion")], [150.0])  # solo la compra: el dividendo no es venta
+        # El cupón de un activo que aún no existe espera en «Por revisar», sugerido como dividendo
+        p = next(p for p in self.a.todos("pendiente") if "CUPON" in p["fila"]["texto"])
+        self.assertEqual(IM.sugerencia_inversion(p, self.a.todos("activo"))["accion"], "dividendo")
+        # Reimportar no duplica
+        ruta = os.path.join(self.c.inversion, "d2.csv"); escribir(ruta, "utf-8", self.CSV)
+        IM.importar_archivo(self.a, self.c, ruta, "inversion", "Bróker")
+        self.assertEqual(len(self.a.todos("cobro")), 1)
+    def test_resolver_un_dividendo_y_arreglos_de_cartera(self):
+        from financebuddy import cartera
+        self.a.guardar("activo", {"nombre": "Oro", "clase": "etf", "cuenta": "Bróker"})
+        self.importar_csv()
+        p = next(p for p in self.a.todos("pendiente") if "CUPON" in p["fila"]["texto"])
+        with self.assertRaises(ValueError): IM.resolver(self.a, p["id"], {"accion": "dividendo"})  # falta el activo
+        IM.resolver(self.a, p["id"], {"accion": "dividendo", "activo": "Oro"})
+        self.assertEqual(sorted((c["activo"], c["importe"]) for c in self.a.todos("cobro")), [("Fondo MSCI", 3.4), ("Oro", 1.1)])
+        self.assertEqual(self.a.todos("pendiente"), [])
+        # Renombrar propaga y unir lo pasa al destino; borrar se lleva los dividendos y no reaparecen
+        oro = next(a for a in self.a.todos("activo") if a["nombre"] == "Oro")
+        self.a.guardar("activo", {**oro, "nombre": "Oro físico"}, oro["id"])
+        self.assertIn("Oro físico", [c["activo"] for c in self.a.todos("cobro")])
+        ids = {a["nombre"]: a["id"] for a in self.a.todos("activo")}
+        cartera.unir(self.a, ids["Oro físico"], ids["Fondo MSCI"])
+        self.assertEqual({c["activo"] for c in self.a.todos("cobro")}, {"Fondo MSCI"})
+        cartera.borrar(self.a, ids["Fondo MSCI"])
+        self.assertEqual(self.a.todos("cobro"), [])
+        self.assertEqual(len([i for i in self.a.todos("ignorado")]), 3)  # compra + 2 dividendos: no reaparecen
+
 class TestParticipaciones(Base):
     def test_participaciones_y_tipo(self):
         self.assertEqual((IM.participaciones("ETF ETFS Copper ETC @ 2", -90.6), IM.participaciones("ETF ETFS Copper ETC @ 2", 90.6)), (-2.0, 2.0))
