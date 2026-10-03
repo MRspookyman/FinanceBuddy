@@ -169,6 +169,8 @@ Los módulos de `web/paneles/` se concatenan y comparten ámbito, en este orden:
 
 Con [Claude Code](https://claude.com/claude-code), la skill `.claude/skills/financebuddy-dev` explica la arquitectura y cómo probar y extender la app.
 
+Comparativa con otra app similar: [`docs/AUDITORIA-RUMBO.md`](docs/AUDITORIA-RUMBO.md).
+
 **[`CONTEXTO.md`](CONTEXTO.md)** reúne todo el contexto del proyecto —reglas que no se rompen, arquitectura, historial de
 cambios, auditorías realizadas con sus hallazgos, decisiones y pendientes— para poder retomar el trabajo sin la conversación
 original. Si cambias algo importante, actualízalo.

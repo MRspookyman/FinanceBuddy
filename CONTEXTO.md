@@ -398,6 +398,18 @@ Hallazgos y correcciones:
 Con Jev: aparte de la transparencia, se verificó que el **registro de lo enviado coincide exactamente con lo recibido** por el
 servidor falso en las pruebas.
 
+### 9.7 Auditoría de Rumbo (app parecida, `danidm98/rumbo`, MIT) — 3 oct 2026
+Informe completo en [`docs/AUDITORIA-RUMBO.md`](docs/AUDITORIA-RUMBO.md). Rumbo es un seguimiento de **patrimonio e inversión**
+(Flask + JSON, sin tests ni gasto diario). **Ventajas suyas:** precios automáticos (Morningstar/Yahoo/CoinGecko con caché, respaldo
+y cambio de moneda), serie diaria, «El mes» (esfuerzo vs mercado), TWR por año, peor caída, hitos y objetivo, «Si sigo así…»,
+comisiones, comparador «¿y si indexado?», importación con **vista previa**, exportar HTML con importes ocultos. **Nuestras
+ventajas:** gasto diario completo y clasificación, 75+45+16 pruebas, token + `Host` local (Rumbo acepta `Host` falso: riesgo de
+*DNS rebinding*), no sale a internet, ficha de activo corregible, `.exe`. **Mejoras propuestas por olas:** Ola 1 (sin red:
+hitos/objetivo, «Si sigo así», comisiones, tamaño de aportación, modo discreto, avisos agrupados, «solo largo plazo»); Ola 2
+(vista previa de importación, dividendos/FIFO, tipos de activo, esfuerzo vs mercado aproximado); Ola 3 (**precios online opt-in**
++ buscador + comparador con indexados; requiere decisión de privacidad); Ola 4 (exportar HTML, aviso de versión, plantilla).
+Se ejecutó Rumbo con precios sintéticos porque Yahoo/Morningstar/CoinGecko están bloqueados en el entorno.
+
 ---
 
 ## 10. Pendiente y backlog (por valor aproximado)
@@ -409,7 +421,7 @@ servidor falso en las pruebas.
 3. El usuario debe **rotar la clave de Jev** (se pegó en el chat).
 4. Actualizar el remoto de git al nuevo nombre del repo.
 
-**Producto**
+**Producto** (ver también las olas de `docs/AUDITORIA-RUMBO.md`: Ola 1 sin red es lo más barato y visible)
 5. **Guardar ya lo importado con la categoría sugerida** (como Copilot/Lunch Money): hoy lo dudoso no cuenta hasta revisarlo.
    Es un cambio de fondo; PR aparte.
 6. **Vista «Para la renta»:** ganancias realizadas por FIFO sin contar traspasos entre fondos.
