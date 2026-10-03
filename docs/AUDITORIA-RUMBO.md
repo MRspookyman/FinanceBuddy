@@ -3,6 +3,10 @@
 > Fecha: 3 oct 2026 · Repo auditado: <https://github.com/danidm98/rumbo> (público, licencia MIT, v1.1.1, un solo commit visible
 > `a024a09`). Auditoría de solo lectura: no se ha modificado nada de Rumbo. Para el contexto general de FinanceBuddy, ver
 > [`CONTEXTO.md`](../CONTEXTO.md).
+>
+> **Estado (3 oct 2026): las cuatro olas de §4 están implementadas** (commits `9efefe6`, `f9877a4`, `35da6fd` y la Ola 4); qué
+> se hizo y qué quedó pendiente, en `CONTEXTO.md` §9.8. Lo único que no se pudo verificar es el funcionamiento contra los servicios
+> reales de precios (el entorno de desarrollo los bloquea): `python pruebas\evaluar_precios.py` lo comprueba en tu ordenador.
 
 ## 0. Cómo se hizo (y sus límites)
 

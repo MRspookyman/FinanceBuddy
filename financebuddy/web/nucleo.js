@@ -76,10 +76,11 @@
   };
   const alternarDiscreto = () => { discreto = !discreto; try { localStorage.setItem("fb-discreto", discreto ? "1" : "0"); } catch (_) {} aplicarDiscreto(); };
   document.getElementById("discreto").onclick = alternarDiscreto;
-  // Atajos de teclado (fuera de los campos de texto): D = discreto · 1…6 = secciones del menú
+  // Atajos de teclado (fuera de los campos de texto): D = discreto · A = apuntar un movimiento · 1…6 = secciones del menú
   document.addEventListener("keydown", (e) => {
     if (e.ctrlKey || e.metaKey || e.altKey || /^(INPUT|TEXTAREA|SELECT)$/.test((e.target || {}).tagName || "") || (e.target && e.target.isContentEditable)) return;
     if (e.key === "d" || e.key === "D") { e.preventDefault(); alternarDiscreto(); return; }
+    if (e.key === "a" || e.key === "A") { e.preventDefault(); FB.ir("#apuntar"); return; }
     const n = parseInt(e.key, 10);
     if (n >= 1 && n <= 6) { const a = document.querySelectorAll("#menu a")[n - 1]; if (a) { e.preventDefault(); FB.ir(a.getAttribute("href")); } }
   });
@@ -214,6 +215,9 @@
     montar({ exponer: params.has("pruebas") });
     const pr = ((FB.DB || {}).config || {}).precios;  // al abrir: si los precios por internet están activados y son de hace más de 6 h, se ponen al día
     if (pr && pr.activo && pr.viejo && !pr.en_marcha && !params.has("pruebas")) FB.actualizarPrecios({ silencioso: true, forzar: false });
+    const ac = ((FB.DB || {}).config || {}).actualizaciones;  // aviso de versión (opcional): como mucho una consulta al día
+    if (ac && ac.activo && ac.viejo && !params.has("pruebas")) FB.api("/api/actualizaciones/comprobar", {}).then((r) => { if (r.ok && r.nueva) FB.aviso(`Hay una versión nueva de FinanceBuddy (${r.version}). Mira en Ajustes.`); });
+    else if (ac && ac.activo && ac.resultado && ac.resultado.nueva && !params.has("pruebas")) FB.aviso(`Hay una versión nueva de FinanceBuddy (${ac.resultado.version}). Mira en Ajustes.`);
     if (params.has("pruebas")) {
       const src = await fetch("/pruebas.js").then((r) => (r.ok ? r.text() : null));
       if (src) {

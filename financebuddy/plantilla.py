@@ -99,13 +99,16 @@ DESCRIPCIONES = {
     "Apuestas": "apuestas deportivas, casinos, loterías", "Otros": "lo que no encaja en ninguna otra",
     "Nómina": "sueldo o pensión", "Intereses": "intereses o dividendos", "Otros ingresos": "ventas, premios, ayudas y otros ingresos",
 }
-VERSION = 3  # sube al cambiar CATEGORIAS, REGLAS o PERFILES: las instalaciones existentes reciben lo nuevo (sin tocar lo del usuario)
+VERSION = 4  # sube al cambiar CATEGORIAS, REGLAS o PERFILES: las instalaciones existentes reciben lo nuevo (sin tocar lo del usuario)
 
 # Formatos de archivo reconocidos de serie. columnas: {campo: texto de la cabecera (sin tildes, en minúsculas)}.
 #   banco: fecha, fecha_valor?, concepto, importe | cargo+abono, saldo?
 #   inversión: fecha, concepto, importe (compras en negativo si compras_negativas)
 #   operaciones: fecha, isin | activo, importe?, participaciones, tipo? (compra/venta), estado? (ver operaciones.py)
 PERFILES = [
+    # La plantilla de Excel que descarga la propia app (exportar.plantilla_excel): fecha, concepto, importe y la categoría que eliges
+    {"nombre": "Plantilla de FinanceBuddy", "tipo": "banco",
+     "columnas": {"fecha": "fecha", "concepto": "concepto", "importe": "importe", "categoria": "categoria"}},
     {"nombre": "Santander", "tipo": "banco",
      "columnas": {"fecha": "fecha operacion", "fecha_valor": "fecha valor", "concepto": "concepto", "importe": "importe", "saldo": "saldo"}},
     {"nombre": "MyInvestor (cuenta de efectivo)", "tipo": "inversion", "compras_negativas": True,

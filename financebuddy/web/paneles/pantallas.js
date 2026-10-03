@@ -119,6 +119,9 @@ function vistaImportar() {
   const bA = fb.createEl("button", { cls: "fb-btn sec", text: "Abrir la carpeta" });
   bA.onclick = () => FB.api("/api/abrir_carpeta", {});
 
+  const pP = panel(g, "¿Sin extracto? Usa la plantilla");
+  pP.createDiv({ cls: "fin-note", text: "Una hoja de Excel con fecha, concepto, importe y un desplegable con tus categorías: para pasar movimientos de otro sitio o de una cuenta sin extracto. La categoría que elijas es la que se usa." });
+  const bP = pP.createEl("button", { cls: "fb-btn sec", text: "Descargar la plantilla de Excel" }); bP.onclick = descargarPlantilla;
   if (resultadosImport.length) {
     const pR = panel(root, "Resultado");
     for (const r of resultadosImport) resultadoImport(pR, r);
@@ -911,6 +914,7 @@ function vistaAjustes() {
     ["💵", "Dividendos y comisiones", `${cnt("cobro")} registrados · para la renta`, "#gestionar/cobro"],
   ]);
 
+  panelCompartir(root);
   const pC = panel(root, "Carpeta de datos y copias de seguridad");
   pC.createDiv({ cls: "fin-note", text: `Tus datos están en ${DB.info.carpeta} (archivo datos.db). Cada día que abres la app se guarda una copia en la carpeta Copias (las 30 últimas).` });
   const fc = pC.createDiv({ cls: "fb-fila" });
@@ -937,10 +941,27 @@ function vistaAjustes() {
 
   const pS = panel(root, "FinanceBuddy");
   pS.createDiv({ cls: "fin-note", text: `Versión ${DB.info.version}. La app funciona en tu ordenador: cerrar la pestaña no la cierra.` });
-  const bS = pS.createEl("button", { cls: "fb-btn sec", text: "Cerrar FinanceBuddy" });
+  pS.createDiv({ cls: "fin-note", text: "Atajos de teclado: D = modo discreto · A = apuntar un movimiento · 1 a 6 = las secciones del menú." });
+  panelVersion(pS);
+  const bS = pS.createDiv({ cls: "fb-fila" }).createEl("button", { cls: "fb-btn sec", text: "Cerrar FinanceBuddy" });
   bS.onclick = async () => { await FB.api("/api/salir", {}); document.body.innerHTML = "<p style='padding:40px;font-family:sans-serif'>FinanceBuddy se ha cerrado. Puedes cerrar esta pestaña.</p>"; };
 }
 
+// Aviso de versión nueva (opcional, apagado de serie): una consulta pública a GitHub como mucho al día; no descarga ni instala nada.
+function panelVersion(p) {
+  const C = cfg.actualizaciones || {}, R = C.resultado || {};
+  const o = p.createDiv({ cls: "fb-fila fb-opciones" });
+  const l = o.createEl("label"); const c = l.createEl("input", { attr: { type: "checkbox" } }); c.checked = !!C.activo;
+  l.appendText(" Avisarme si hay una versión nueva");
+  c.onchange = async () => { await FB.api("/api/actualizaciones/config", { activo: c.checked }); FB.aviso(c.checked ? "Activado: se comprobará al abrir la app" : "Apagado"); await FB.refrescar(); };
+  p.createDiv({ cls: "fin-note", text: "Consulta la página pública de versiones de FinanceBuddy en GitHub, como mucho una vez al día. No envía nada tuyo ni instala nada: solo te dice si hay algo nuevo y te lleva a su página. Apagado de serie." });
+  if (!C.activo) return;
+  const n = p.createDiv({ cls: "fin-note" });
+  n.appendText(R.mensaje ? `${R.mensaje} ` : "Aún no se ha comprobado. ");
+  if (R.nueva && R.url && /^https:\/\/github\.com\//.test(R.url)) { const a = n.createEl("a", { text: "Ver la versión nueva →", href: R.url, attr: { target: "_blank", rel: "noopener noreferrer" } }); a.className = "fin-link"; }
+  const b = n.createEl("button", { cls: "fin-link", text: " Comprobar ahora" });
+  b.onclick = async () => { b.disabled = true; const r = await FB.api("/api/actualizaciones/comprobar", { forzar: true }); if (!r.ok) FB.aviso(r.mensaje || "No se ha podido comprobar", true); await FB.refrescar(); };
+}
 // Tema (en este navegador) y color de acento (en tus datos).
 const ACENTOS = [["salvia", "#5E8266"], ["violeta", "#6A5AA8"], ["azul", "#44688A"], ["verde", "#3E7558"], ["coral", "#C9603F"], ["rosa", "#B84A6E"], ["grafito", "#3F3A34"]];
 // Asistente Jev (TypeSafe AI), opcional: la clave se guarda solo en tu carpeta de datos y nunca vuelve a la página.
@@ -1171,5 +1192,5 @@ if (input && input.exponer) {
   window.__fin = { finMes, repartoAhorro, estimacion, conciliacion, prevision, resumenInversion, fondoEmergencia, gastoVariable, tasa12,
     movimientos, aportaciones, objetivos, patrimonio, avisos, categorias, grupoDe, limiteVar, mesesHasta, mesAnterior, hoyKey,
     fechaDatos, presupuestoSemana, planReparto, cuentas, proyectar, resumenCategorias, ritmoMes, evolucionInversion, aportacionesMes, constancia, interesesBroker, saludInversion, posicion, valorInfo,
-    hitosPatrimonio, proyeccion, mesesHasta50, puntosInversion, rendimientoPuntos, comisionesInversion, tamañoCompras, fifoVentas, cobros, usaMercado };
+    hitosPatrimonio, proyeccion, mesesHasta50, puntosInversion, rendimientoPuntos, comisionesInversion, tamañoCompras, fifoVentas, cobros, usaMercado, generarResumen };
 }

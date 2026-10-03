@@ -1,5 +1,5 @@
 # Prueba de extremo a extremo de la API (lo que hace la página) y de la seguridad del servidor.
-import base64, http.client, json, os, shutil, sys, tempfile, threading, unittest
+import base64, datetime, http.client, json, os, shutil, sys, tempfile, threading, unittest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from financebuddy import servidor
 from pruebas.test_importar import FILAS, excel_santander
@@ -53,6 +53,40 @@ class TestFlujo(unittest.TestCase):
         self.assertEqual(alm.todos("cuenta"), [])
         alm.guardar("cuenta", {"nombre": "Real", "tipo": "corriente"})   # y la base sigue funcionando
         self.assertEqual([c["nombre"] for c in alm.todos("cuenta")], ["Real"])
+
+    def test_plantilla_de_excel_tiene_desplegable_y_se_importa_con_su_categoria(self):
+        import io, openpyxl
+        self.api("/api/bienvenida", {"cuentas": [{"nombre": "Nómina", "tipo": "corriente", "saldo": 1000}]})
+        r = self.api("/api/plantilla")
+        self.assertTrue(r["ok"]); self.assertTrue(r["nombre"].endswith(".xlsx"))
+        wb = openpyxl.load_workbook(io.BytesIO(base64.b64decode(r["contenido"])))
+        self.assertEqual(wb.sheetnames[0], "Movimientos")
+        self.assertEqual([c.value for c in wb["Movimientos"][1]], ["Fecha", "Concepto", "Importe", "Categoría"])
+        lista = [c[0].value for c in wb["Listas"].iter_rows(min_row=2)]
+        self.assertEqual(set(lista), {c["nombre"] for c in self.app.alm.todos("categoria")})
+        validaciones = {v.type for v in wb["Movimientos"].data_validations.dataValidation}
+        self.assertEqual(validaciones, {"list", "date", "decimal"})
+        # La rellena como lo haría el usuario y la importa: la categoría elegida manda (aunque ninguna regla conozca el comercio)
+        ws = wb["Movimientos"]
+        for fila in [(datetime.datetime(2026, 9, 3), "Bar de la esquina", -12.5, "Ocio"), (datetime.datetime(2026, 9, 4), "Regalo de la abuela", 50, "Otros ingresos"),
+                     (datetime.datetime(2026, 9, 5), "Cosa rara xyz", -8, None), (datetime.datetime(2026, 9, 6), "Devolución del cine", 9, "Ocio"),
+                     (datetime.datetime(2026, 9, 7), "Gasto en categoría de ingreso", -5, "Nómina"), (datetime.datetime(2026, 9, 8), "Categoría inventada", -7, "No existe")]:
+            ws.append(list(fila))
+        ruta = os.path.join(self.dir, "plantilla.xlsx"); wb.save(ruta)
+        with open(ruta, "rb") as fh: b64 = base64.b64encode(fh.read()).decode()
+        r = self.api("/api/importar/subir", {"nombre": "plantilla.xlsx", "tipo": "banco", "contenido": b64, "cuenta": "Nómina"})
+        if r.get("necesita") == "cuenta":
+            r = self.api("/api/importar/reintentar", {"archivo": r["archivo"], "tipo": "banco", "cuenta": "Nómina", "perfil": r["perfil"]})
+        self.assertTrue(r["ok"], r); self.assertEqual(r["perfil"], "Plantilla de FinanceBuddy")
+        movs = {m["concepto"]: m for m in self.app.alm.todos("movimiento")}
+        bar = movs["Bar De La Esquina"] if "Bar De La Esquina" in movs else next(m for m in movs.values() if "esquina" in m["concepto"].lower())
+        self.assertEqual((bar["clase"], bar["categoria"], bar["importe"]), ("gasto", "Ocio", 12.5))
+        regalo = next(m for m in movs.values() if "abuela" in m["concepto"].lower())
+        self.assertEqual((regalo["clase"], regalo["categoria"]), ("ingreso", "Otros ingresos"))
+        dev = next(m for m in movs.values() if m["fecha"] == "2026-09-06")
+        self.assertEqual((dev["clase"], dev["categoria"]), ("reembolso", "Ocio"))   # positivo en categoría de gasto = te devuelven
+        # Sin categoría, en una de ingreso con signo de gasto o inventada: lo decide el resto (reglas) y, si no sabe, queda por revisar
+        self.assertEqual(len(self.app.alm.todos("pendiente")), 3)
 
     def test_activo_largo_plazo(self):
         r = self.api("/api/guardar", {"tipo": "activo", "datos": {"nombre": "Fondo A", "clase": "fondo"}})

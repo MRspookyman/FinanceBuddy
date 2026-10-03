@@ -137,4 +137,13 @@ caso("Mercado: un valor anotado más nuevo (30/09) gana al precio del 29/09", !F
 caso("Mercado: el mismo día o uno anterior al precio, gana el precio", F.usaMercado(Pn, Mx, { conValor: true, fechaValor: d("2026-09-29") }) && F.usaMercado(Pn, Mx, { conValor: true, fechaValor: d("2026-08-31") }), null);
 caso("Mercado: sin participaciones, vendido o sin precio, no se usa", !F.usaMercado({ ...Pn, conPart: false }, Mx, { conValor: false }) && !F.usaMercado({ ...Pn, vendido: true }, Mx, { conValor: false }) && !F.usaMercado(Pn, null, { conValor: false }), null);
 
+// 15. Resumen en HTML: «sin importes» no lleva ninguna cantidad en euros (ni oculta: ausente)
+const HTc = F.generarResumen(false), HTs = F.generarResumen(true);
+const E15 = F.estimacion(), RI15 = F.resumenInversion();
+const cifras = [E15.neto, RI15.total, RI15.aportadoTodo, ...F.patrimonio().map((x) => x.neto)].filter((v) => Math.abs(v) >= 1000).flatMap((v) => [String(Math.round(v)), v.toLocaleString("es-ES", { maximumFractionDigits: 0 }), String(Math.round(v / 1000))].slice(0, 2));
+caso("Resumen con importes: lleva euros y es un documento completo", /€/.test(HTc) && HTc.startsWith("<!doctype html>") && !/<script|src=|href=/i.test(HTc), HTc.length);
+caso("Resumen sin importes: ni un euro en el archivo", !/€|EUR/.test(HTs), (HTs.match(/.{20}€.{10}/) || [])[0]);
+caso("Resumen sin importes: ninguna cifra real del patrimonio ni de la inversión", cifras.length > 0 && cifras.every((c) => !HTs.includes(c)), cifras.filter((c) => HTs.includes(c)));
+caso("Resumen sin importes: sí lleva porcentajes y el índice (100)", /\d %/.test(HTs) && /Índice/.test(HTs), null);
+
 return casos;

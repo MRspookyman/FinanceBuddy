@@ -39,6 +39,7 @@ def leer(ruta, alm, tipo=None, perfil_nombre=None, info=None):
         if imp is None: continue
         texto = L.texto(cel("concepto")) or "Movimiento"
         fila = {"op": op, "texto": texto, "importe": round(imp, 2)}
+        if "categoria" in idx and L.texto(cel("categoria")): fila["cat_archivo"] = L.texto(cel("categoria"))  # la plantilla de FinanceBuddy
         val = L.fecha(cel("fecha_valor")) if "fecha_valor" in idx else None
         if val: fila["val"] = val
         if "saldo" in idx:
@@ -47,6 +48,17 @@ def leer(ruta, alm, tipo=None, perfil_nombre=None, info=None):
         filas.append(fila)
     if not filas: raise ValueError("El archivo no tiene movimientos (o las columnas elegidas no son las correctas).")
     return perfil, filas
+
+def categoria_del_archivo(f, grupos):
+    """La plantilla de FinanceBuddy trae la categoría que el usuario eligió en un desplegable con SUS categorías: manda sobre las
+    reglas, salvo en un traspaso entre sus cuentas. Solo vale una categoría que exista (lista cerrada) y que encaje con el
+    signo: un gasto en una categoría de ingresos se deja a las reglas. Un importe positivo en una categoría de gasto es un reembolso."""
+    cat = next((n for n in grupos if C.norm(n) == C.norm(f.get("cat_archivo") or "")), None)
+    if not cat or f.get("clase") == "transferencia" or not f["importe"]: return
+    es_ingreso = grupos[cat] == "ingreso"
+    if f["importe"] < 0 and es_ingreso: return
+    f.update(clase="gasto" if f["importe"] < 0 else "ingreso" if es_ingreso else "reembolso", cat=cat, aprendido=False)
+    f.pop("duda", None)
 
 def ordenar_y_comprobar_saldos(filas):
     """Deja las filas de la más reciente a la más antigua y comprueba la cadena de saldos (si el archivo los trae).
@@ -126,6 +138,7 @@ def importar_banco(alm, ruta, cuenta=None, perfil_nombre=None):
     previos = bizums.previos(alm, min(f["op"] for f in filas), max(f["op"] for f in filas))
     for f in reversed(filas):
         f.update(C.clasificar_fila(f, filas, reglas, cuentas, recs, cuenta, categorias=grupos, mem=mem, titulares=titulares, previos=previos))
+    for f in filas: categoria_del_archivo(f, grupos)
     bizums.propagar(filas)  # los hermanos de un reparto heredan la categoría del que ya la tiene
     huellas = huellas_existentes(alm, cuenta)
     # Movimientos apuntados a mano (sin huella) en esa cuenta: mismo importe y sentido, fecha a ±3 días (el banco
