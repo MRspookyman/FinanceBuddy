@@ -778,6 +778,15 @@ function vistaCerrar() {
       i.oninput = () => (campos["s:" + c.nombre] = i.value);
       refs.s[c.nombre] = i;
       form.createDiv({ cls: "s", text: est != null ? `según los movimientos: ${eur(est)}${ext ? ` · último extracto: ${eur(ext.saldo)} el ${fmtISO(ext.fecha)}` : ""}` : "saldo de ese día" });
+      if (est != null && ext && ext.fecha <= fecha.toISODate() && Math.abs(ext.saldo - est) >= 0.01) {  // el banco dice otra cosa: por qué puede ser
+        const dif = ext.saldo - est, desde = u ? u.fecha.toISODate() : "";
+        const pend = (DB.pendientes || []).filter((x) => x.tipo_import !== "inversion" && x.cuenta === c.nombre && x.fila && x.fila.op > desde && x.fila.op <= fecha.toISODate());
+        const sumaP = sum(pend.map((x) => x.fila.importe));
+        const n = form.createDiv({ cls: "s aviso-saldo" });
+        n.appendText(`El banco dice ${eur(ext.saldo)}: ${eurS(dif, 2)} respecto a la cuenta de la app. `);
+        if (pend.length) { n.appendText(`Hay ${pend.length} movimiento${pend.length > 1 ? "s" : ""} de esta cuenta sin revisar (${eurS(sumaP, 2)}${Math.abs(sumaP - dif) < 0.01 ? ", justo la diferencia" : ""}): no cuentan hasta que los clasifiques. `); enlace(n, "Por revisar →", "#revisar"); }
+        else n.appendText("Falta algún movimiento (o sobra uno apuntado a mano o previsto) entre el último registro y hoy. Si tu banco dice " + eur(ext.saldo) + ", anota ese saldo.");
+      }
     }
     const A = activos().filter((a) => !vendidoDelTodo(a));
     if (A.length) {
