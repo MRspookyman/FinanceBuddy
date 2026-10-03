@@ -55,6 +55,7 @@ function vistaInversion() {
 
   tablaActivos(panel(root, "Tus activos", { text: "Editar", ruta: "#gestionar/activo" }), I);
 
+  hitosEnPantalla(root);
   panelComisiones(root, I);
   const g2 = root.createDiv({ cls: "fin-grid dos" });
   tarjetaAportaciones(panel(g2, "Lo que metes cada mes"), solo);
