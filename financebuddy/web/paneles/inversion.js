@@ -7,6 +7,7 @@ const ICONO_ACTIVO = { fondo: "📊", etf: "🧺", accion: "🏢", cripto: "🪙
 
 function vistaInversion() {
   cabecera("Inversión", false, "Lo que has metido en tus fondos, ETF y cripto, y lo que vale hoy");
+  if (params[0] === "actualizar" && preciosActivos() && !FB.estado.yaActualizo) { FB.estado.yaActualizo = true; setTimeout(() => FB.actualizarPrecios({}), 50); }  // viene del Inicio: «Actualizar inversión»
   const hayCorto = activos().some((a) => !a.largo);
   const solo = hayCorto && !!FB.estado.soloLargo;  // FB.estado: sobrevive a refrescar la pantalla, no a cambiar de pantalla
   const I = resumenInversion(solo);
@@ -24,10 +25,11 @@ function vistaInversion() {
   const efectivo = E ? E.c["Efectivo bróker"] : null;
   const INT = interesesBroker();
   const botones = root.createDiv({ cls: "fb-filtros" });
-  enlace(botones, "Actualizar valores", "#valores").className = "fb-btn";
+  if (preciosActivos()) { const b = botones.createEl("button", { cls: "fb-btn", text: cfg.precios.en_marcha ? "Actualizando…" : "Actualizar precios" }); b.title = "Pone al día el precio de mercado de los activos con fuente en internet"; b.onclick = () => FB.actualizarPrecios({ boton: b }); }
+  else enlace(botones, "Activar precios automáticos", "#ajustes/precios").className = "fb-btn";
+  enlace(botones, "Anotar valores a mano", "#valores").className = "fb-btn sec";
   enlace(botones, "+ Activo", "#editar/activo/nuevo").className = "fb-btn sec";
   enlace(botones, "Compras y ventas", "#gestionar/aportacion").className = "fb-btn sec";
-  enlace(botones, "Tu progreso", "#progreso").className = "fb-btn sec";
   enlace(botones, "Para la renta", "#renta").className = "fb-btn sec";
   if (hayCorto) {  // «Solo largo plazo»: deja fuera lo que no es inversión a largo (un colchón en un fondo monetario, una apuesta…)
     const seg = root.createDiv({ cls: "fb-chips" });

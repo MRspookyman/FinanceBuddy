@@ -523,3 +523,8 @@ button:focus-visible,a:focus-visible,summary:focus-visible,[tabindex]:focus-visi
 
 /* Movimientos: paginación */
 .fb-pagina{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:12px 0}.fb-pagina .fin-note{margin:0;text-align:center}.fb-pagina button:disabled{opacity:.45;cursor:default}
+
+/* Inicio: acciones a la vista */
+.fb-acciones{margin:0 0 16px;grid-template-columns:repeat(auto-fit,minmax(min(100%,205px),1fr))}.fb-acciones .fb-acceso{position:relative;padding:14px 16px}
+.fb-acciones .fb-acceso.toca{border-color:var(--brand);background:color-mix(in srgb,var(--brand) 9%,var(--surface))}
+.fb-toca{position:absolute;top:8px;right:10px;font-size:.66em;font-weight:750;text-transform:uppercase;letter-spacing:.06em;color:#fff;background:var(--brand);border-radius:99px;padding:2px 8px}

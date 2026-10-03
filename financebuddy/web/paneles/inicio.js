@@ -58,7 +58,7 @@ function vistaInicio() {
   per.className += " fb-personalizar";
   per.title = "Elige qué ves en el inicio y en qué orden";
 
-  if (actual) alertas(root);
+  if (actual) { accionesRapidas(root); alertas(root); }
   const DIBUJAR = {
     gasto: (padre) => heroGasto(padre, S, M),
     ritmo: (padre) => tarjetaRitmo(panel(padre, "Ritmo del mes", null, "Tu gasto variable acumulado día a día, comparado con lo que sueles llevar a estas alturas del mes."), mes),
@@ -234,6 +234,25 @@ function tarjetaRitmo(p, key = hoyKey) {
   leyenda(p, series.map((s) => [s.nombre, s.color, s.discontinua ? "rayas" : "continua"]).reverse());
 }
 
+// Las cuatro cosas que se hacen cada semana o cada mes, a un clic y a la vista (lo que toca ahora, resaltado).
+function accionesRapidas(padre) {
+  const P = patrimonio(), u = P[P.length - 1], fd = fechaDatos();
+  const diasSaldos = u ? diasDesde(u.fecha) : null, diasMov = fd ? diasDesde(fd) : null;
+  const A = [
+    { ic: "📥", t: "Importar movimientos", s: fd ? `último movimiento: ${fd.toFormat("dd/MM")}` : "sube el extracto de tu banco", ruta: "#importar", toca: !fd || diasMov > 6 },
+    { ic: "🧾", t: "Actualizar saldos", s: u ? `anotados el ${u.fecha.toFormat("dd/MM")}` : "lo que tienes en cada cuenta", ruta: "#cerrar", toca: !u || diasSaldos > 35 || (keyDe(u.fecha) < hoyKey && (hoy.day <= 5 || hoy.day >= 25)) },
+    { ic: "📈", t: "Actualizar inversión", s: preciosActivos() ? `precios de ${(cfg.precios.ultima || "nunca").slice(0, 10).split("-").reverse().join("/")}` : "lo que vale cada activo", ruta: preciosActivos() ? "#inversion/actualizar" : "#valores" },
+    { ic: "✏️", t: "Apuntar un gasto", s: "uno a mano, al momento", ruta: "#apuntar" },
+  ];
+  const box = padre.createDiv({ cls: "fb-accesos fb-acciones" });
+  for (const x of A) {
+    const a = box.createEl("a", { cls: "fb-acceso internal-link" + (x.toca ? " toca" : ""), href: x.ruta });
+    setVar(a.createDiv({ cls: "fb-av", text: x.ic }), "--cc", "var(--brand)");
+    const d = a.createDiv(); d.createDiv({ cls: "t", text: x.t }); d.createDiv({ cls: "s", text: x.s });
+    if (x.toca) a.createSpan({ cls: "fb-toca", text: "toca" });
+  }
+}
+
 // Tu patrimonio: un total (cuentas + inversión − deudas), su evolución y una línea por grupo. El detalle, en su pantalla.
 function tarjetaPatrimonio(p) {
   const E = estimacion();
@@ -255,6 +274,12 @@ function tarjetaPatrimonio(p) {
     E.deudas ? { l: "Deudas", v: eur(-E.deudas, 0) } : null,
   ];
   filasDato(p, filas);
+  const ult = P[P.length - 1], dAn = E.neto - ult.neto;
+  if (Math.abs(dAn) >= 1) {  // por qué no coincide con lo que anotaste
+    const n = p.createDiv({ cls: "fin-note" });
+    n.appendText(`Anotaste ${eur(ult.neto, 0)} el ${ult.fecha.toFormat("dd/MM")}; desde entonces ${eurS(dAn, 0)} por los movimientos y el cambio de valor de tu inversión. `);
+    enlace(n, "Anotar saldos de hoy →", "#cerrar");
+  }
   enlace(p.createDiv({ cls: "fin-note" }), "Hitos, proyección y mes a mes →", "#progreso");
   const o = objetivos().find((x) => x.vinculado && x.estado !== "conseguido");
   if (o && o.meta > 0) {
