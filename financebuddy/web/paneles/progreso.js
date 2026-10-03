@@ -32,6 +32,17 @@ function vistaProgreso() {
   if (R) panelAños(panel(root, "Rentabilidad por año", null, "Lo que ha rendido tu inversión cada año natural, sin el efecto de cuándo metiste el dinero (rentabilidad encadenada mes a mes con tus valores anotados)."), R);
 }
 
+// Los hitos tal cual, para otras pantallas (Inversión): mismos cálculos que en «Tu progreso».
+function hitosEnPantalla(padre) {
+  const E = estimacion();
+  if (!E) return;
+  const I = resumenInversion(), P = patrimonio();
+  const m = aportacionesMes(12), i = m.findIndex((x) => x.compras || x.ventas);
+  const apo = i < 0 ? 0 : sum(m.map((x) => x.compras - x.ventas)) / (m.length - i);
+  const rent = isFinite(I.tir) && !I.tirCorta ? Math.min(0.1, Math.max(0, I.tir)) : 0.05;
+  panelHitos(panel(padre, "Hitos", { text: "Tu progreso", ruta: "#progreso" }, "Las cifras redondas que tu patrimonio ha ido cruzando. La fecha es la del primer registro de saldos que lo supera."), P, E.neto, apo, rent);
+}
+
 // Chips de hitos y la barra hacia el siguiente, con cuánto tardarías al ritmo actual.
 function panelHitos(p, P, neto, apo, rent) {
   const H = hitosPatrimonio(P.map((x) => ({ fecha: x.fecha, neto: x.neto })), neto, hoy);

@@ -185,7 +185,7 @@ Piezas relacionadas:
 | Ruta | Pantalla | Notas |
 |---|---|---|
 | `#inicio` | Inicio minimalista | Selector de mes; «Puedes gastar» + barra + frase de estado; Ritmo del mes; A dónde va tu dinero; Patrimonio; Próximos cargos (14 días). Paneles configurables (`PANELES_INICIO`). |
-| `#movimientos` (+`/categorias`) | Movimientos | Lista por día con búsqueda y filtros; «Por categoría» frente a tu media. En los gastos con Bizums enlazados: «te devolvieron X». |
+| `#movimientos` (+`/lista`) | Movimientos | De primeras **por categoría**; la **lista** por día, paginada (40 por página), con búsqueda y filtros; «Por categoría» frente a tu media. En los gastos con Bizums enlazados: «te devolvieron X». |
 | `#inversion`, `#activo/ID` | Inversión y ficha de activo | Cifras, evolución, aportaciones, reparto; «Revisa tu inversión»; ficha con operaciones editables, **Cuadrar con el bróker**, **Unir**, borrar. |
 | `#importar` | Importar | Arrastrar archivos o carpeta `Importar\`; **vista previa** antes de guardar (`tarjetaPrevia`); plantilla de Excel; formato nuevo → mapeo de columnas. |
 | `#progreso` | Tu progreso | Hitos, «Si sigo así…» (deslizadores), esfuerzo vs mercado por mes, rentabilidad por año y peor caída, y el **comparador con indexados** (necesita precios). |

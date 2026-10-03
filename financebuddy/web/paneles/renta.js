@@ -30,16 +30,18 @@ function vistaRenta() {
   const pV = panel(root, `Ventas de ${año}`, null, "Cada venta resta el coste de las compras más antiguas de ese activo (FIFO). Los traspasos entre fondos no cuentan: no tributan y el coste pasa al fondo nuevo.");
   if (!V.length) vacio(pV, "Sin ventas este año");
   else {
+    const pgV = paginacion(V, "renta_v", () => FB.montar());
     tabla(pV, [{ t: "Fecha" }, { t: "Activo" }, { t: "Particip.", num: true, opt: true }, { t: "Vendido por", num: true }, { t: "Coste", num: true }, { t: "Resultado", num: true }],
-      [...V.map((v) => [fechaCorta(v.fecha.toISODate()), { text: v.activo + (v.faltan > 1e-6 ? " ⚠" : ""), ruta: `#activo/${(DB.registros.activo || []).find((a) => a.nombre === v.activo)?.id ?? ""}` },
+      [...pgV.parte.map((v) => [fechaCorta(v.fecha.toISODate()), { text: v.activo + (v.faltan > 1e-6 ? " ⚠" : ""), ruta: `#activo/${(DB.registros.activo || []).find((a) => a.nombre === v.activo)?.id ?? ""}` },
         nf(v.unidades, 0, 4), eur(v.valor, 2), eur(v.coste, 2), { text: eurS(v.resultado, 2), cls: tone(v.resultado) }]),
         conFila(["Total", "", "", eur(sum(V.map((v) => v.valor)), 2), eur(sum(V.map((v) => v.coste)), 2), { text: eurS(resultado, 2), cls: tone(resultado) }], "total")]);
+    pgV.pie(pV);
     if (V.some((v) => v.faltan > 1e-6)) pV.createDiv({ cls: "fin-note", text: "⚠ Se vendieron más participaciones de las que constan comprados: falta alguna compra y el coste está incompleto. Revisa la ficha del activo." });
   }
   const pD = panel(root, `Dividendos y comisiones de ${año}`, { text: "Editar", ruta: "#gestionar/cobro" }, "Lo que cobras de un activo (dividendo, cupón) o te cobran (custodia) sin vender participaciones.");
   if (!D.length) vacio(pD, "Nada este año", " Se apuntan a mano o salen solos al importar el extracto de tu bróker.");
-  else tabla(pD, [{ t: "Fecha" }, { t: "Activo" }, { t: "Qué" }, { t: "Importe", num: true }],
-    D.map((c) => [{ text: fechaCorta(c.fecha.toISODate()), ruta: `#editar/cobro/${c.p.id}` }, c.activo, c.tipo === "comision" ? "Comisión" : "Dividendo", { text: (c.tipo === "comision" ? "−" : "+") + eur(c.importe, 2), cls: c.tipo === "comision" ? "neg" : "pos" }]));
+  else { const pgD = paginacion(D, "renta_d", () => FB.montar()); tabla(pD, [{ t: "Fecha" }, { t: "Activo" }, { t: "Qué" }, { t: "Importe", num: true }],
+    pgD.parte.map((c) => [{ text: fechaCorta(c.fecha.toISODate()), ruta: `#editar/cobro/${c.p.id}` }, c.activo, c.tipo === "comision" ? "Comisión" : "Dividendo", { text: (c.tipo === "comision" ? "−" : "+") + eur(c.importe, 2), cls: c.tipo === "comision" ? "neg" : "pos" }])); pgD.pie(pD); }
 
   if (R.sinDatos.length) root.createDiv({ cls: "fin-note", text: `No se pueden calcular las ventas de: ${R.sinDatos.join(", ")} (faltan participaciones en alguna operación). Ábrelos y cuádralos con tu bróker.` });
   root.createDiv({ cls: "fin-note", text: "Orientativo: cálculo por FIFO con lo que hay anotado en la app. No aplica la regla de los dos meses para pérdidas ni retenciones, ni mira la fiscalidad de cada producto. Compáralo con el informe fiscal de tu bróker y consulta a un profesional si tienes dudas." });

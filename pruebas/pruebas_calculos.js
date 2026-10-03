@@ -134,7 +134,7 @@ caso("Dividendos: sin cobros en los datos de ejemplo, la ganancia no cambia", F.
 const Pn = { conPart: true, part: 10, vendido: false }, Mx = { precio: 5, fecha: d("2026-09-29") };
 caso("Mercado: sin valor anotado, manda el precio de internet", F.usaMercado(Pn, Mx, { conValor: false, fechaValor: null }), null);
 caso("Mercado: un valor anotado más nuevo (30/09) gana al precio del 29/09", !F.usaMercado(Pn, Mx, { conValor: true, fechaValor: d("2026-09-30") }), null);
-caso("Mercado: el mismo día o uno anterior al precio, gana el precio", F.usaMercado(Pn, Mx, { conValor: true, fechaValor: d("2026-09-29") }) && F.usaMercado(Pn, Mx, { conValor: true, fechaValor: d("2026-08-31") }), null);
+caso("Mercado: el mismo día que lo anotado gana lo anotado; uno anterior, el precio", !F.usaMercado(Pn, Mx, { conValor: true, fechaValor: d("2026-09-29") }) && F.usaMercado(Pn, Mx, { conValor: true, fechaValor: d("2026-08-31") }), null);
 caso("Mercado: sin participaciones, vendido o sin precio, no se usa", !F.usaMercado({ ...Pn, conPart: false }, Mx, { conValor: false }) && !F.usaMercado({ ...Pn, vendido: true }, Mx, { conValor: false }) && !F.usaMercado(Pn, null, { conValor: false }), null);
 
 // 15. Resumen en HTML: «sin importes» no lleva ninguna cantidad en euros (ni oculta: ausente)

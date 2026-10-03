@@ -58,7 +58,7 @@ function vistaInicio() {
   per.className += " fb-personalizar";
   per.title = "Elige qué ves en el inicio y en qué orden";
 
-  if (actual) alertas(root);
+  if (actual) { accionesRapidas(root); alertas(root); }
   const DIBUJAR = {
     gasto: (padre) => heroGasto(padre, S, M),
     ritmo: (padre) => tarjetaRitmo(panel(padre, "Ritmo del mes", null, "Tu gasto variable acumulado día a día, comparado con lo que sueles llevar a estas alturas del mes."), mes),
@@ -180,7 +180,7 @@ function tarjetaCategorias(p, key) {
   const box = p.createDiv({ cls: "fb-pildoras" });
   for (const c of top) {
     const r = box.createEl("a", { cls: "fb-pildora", href: "#movimientos" });
-    r.onclick = (e) => { e.preventDefault(); guardarEstado({ filtroCat: c.nombre }); FB.ir("#movimientos"); };
+    r.onclick = (e) => { e.preventDefault(); guardarEstado({ filtroCat: c.nombre }); FB.ir("#movimientos/lista"); };
     const n = r.createDiv({ cls: "n" });
     n.createSpan({ cls: "ic", text: catIcono(c.nombre) });
     n.createSpan({ text: c.nombre });
@@ -234,6 +234,25 @@ function tarjetaRitmo(p, key = hoyKey) {
   leyenda(p, series.map((s) => [s.nombre, s.color, s.discontinua ? "rayas" : "continua"]).reverse());
 }
 
+// Las cuatro cosas que se hacen cada semana o cada mes, a un clic y a la vista (lo que toca ahora, resaltado).
+function accionesRapidas(padre) {
+  const P = patrimonio(), u = P[P.length - 1], fd = fechaDatos();
+  const diasSaldos = u ? diasDesde(u.fecha) : null, diasMov = fd ? diasDesde(fd) : null;
+  const A = [
+    { ic: "📥", t: "Importar movimientos", s: fd ? `último movimiento: ${fd.toFormat("dd/MM")}` : "sube el extracto de tu banco", ruta: "#importar", toca: !fd || diasMov > 6 },
+    { ic: "🧾", t: "Actualizar saldos", s: u ? `anotados el ${u.fecha.toFormat("dd/MM")}` : "lo que tienes en cada cuenta", ruta: "#cerrar", toca: !u || diasSaldos > 35 || (keyDe(u.fecha) < hoyKey && (hoy.day <= 5 || hoy.day >= 25)) },
+    { ic: "📈", t: "Actualizar inversión", s: preciosActivos() ? `precios de ${(cfg.precios.ultima || "nunca").slice(0, 10).split("-").reverse().join("/")}` : "lo que vale cada activo", ruta: preciosActivos() ? "#inversion/actualizar" : "#valores" },
+    { ic: "✏️", t: "Apuntar un gasto", s: "uno a mano, al momento", ruta: "#apuntar" },
+  ];
+  const box = padre.createDiv({ cls: "fb-accesos fb-acciones" });
+  for (const x of A) {
+    const a = box.createEl("a", { cls: "fb-acceso internal-link" + (x.toca ? " toca" : ""), href: x.ruta });
+    setVar(a.createDiv({ cls: "fb-av", text: x.ic }), "--cc", "var(--brand)");
+    const d = a.createDiv(); d.createDiv({ cls: "t", text: x.t }); d.createDiv({ cls: "s", text: x.s });
+    if (x.toca) a.createSpan({ cls: "fb-toca", text: "toca" });
+  }
+}
+
 // Tu patrimonio: un total (cuentas + inversión − deudas), su evolución y una línea por grupo. El detalle, en su pantalla.
 function tarjetaPatrimonio(p) {
   const E = estimacion();
@@ -255,6 +274,12 @@ function tarjetaPatrimonio(p) {
     E.deudas ? { l: "Deudas", v: eur(-E.deudas, 0) } : null,
   ];
   filasDato(p, filas);
+  const ult = P[P.length - 1], dAn = E.neto - ult.neto;
+  if (Math.abs(dAn) >= 1) {  // por qué no coincide con lo que anotaste
+    const n = p.createDiv({ cls: "fin-note" });
+    n.appendText(`Anotaste ${eur(ult.neto, 0)} el ${ult.fecha.toFormat("dd/MM")}; desde entonces ${eurS(dAn, 0)} por los movimientos y el cambio de valor de tu inversión. `);
+    enlace(n, "Anotar saldos de hoy →", "#cerrar");
+  }
   enlace(p.createDiv({ cls: "fin-note" }), "Hitos, proyección y mes a mes →", "#progreso");
   const o = objetivos().find((x) => x.vinculado && x.estado !== "conseguido");
   if (o && o.meta > 0) {
@@ -309,9 +334,9 @@ function vistaMovimientos() {
   st("entra", "↑", "Entró", eur(M.ingresos, 0));
   st("sale", "↓", "Salió", eur(M.gastos, 0));
   st("ahorro", "⚖️", "Diferencia", eurS(M.ahorro, 0));
-  const modo = params[0] === "categorias" ? "categorias" : "lista";
+  const modo = params[0] === "lista" || filtroCat ? "lista" : "categorias";  // de primeras, por categoría; con una categoría elegida, su lista
   const seg = root.createDiv({ cls: "fb-seg" });
-  for (const [k, t, r] of [["lista", "Lista", "#movimientos"], ["categorias", "Por categoría", "#movimientos/categorias"]]) enlace(seg, t, r).className += k === modo ? " act" : "";
+  for (const [k, t, r] of [["categorias", "Por categoría", "#movimientos"], ["lista", "Lista", "#movimientos/lista"]]) { const l = enlace(seg, t, r); l.className += k === modo ? " act" : ""; if (k === "categorias") l.addEventListener("click", () => { filtroCat = null; guardarEstado({ filtroCat: null }); }); }
   const nJev = ((((DB.config || {}).jev || {}).revision || {}).hallazgos || []).length;  // lo que el asistente Jev ve en otra categoría
   if (nJev) enlace(root.createDiv({ cls: "fin-note fb-pista" }), `✨ El asistente Jev cree que ${nJev === 1 ? "un comercio está" : `${nJev} comercios están`} en otra categoría · revísalo →`, "#revision");
   if (modo === "categorias") { vistaPorCategoria(M); return; }
@@ -323,24 +348,27 @@ function vistaMovimientos() {
   inp.value = busqueda;
   const chips = root.createDiv({ cls: "fb-chips" });
   const lista = root.createDiv({ cls: "fin-panel" });
+  const pie = root.createDiv({ cls: "fb-pagina" });
+  const POR_PAGINA = 40;
   const pintarChips = () => {
     chips.innerHTML = "";
     for (const c of [null, ...cats]) {
       const b = chips.createEl("button", { text: c ? `${c === "Entre tus cuentas" ? "🔁" : catIcono(c)} ${c}` : "Todo" });
       if ((filtroCat || null) === c) b.className = "act";
-      b.onclick = () => { filtroCat = c; pintarChips(); pintar(); };
+      b.onclick = () => { filtroCat = c; FB.estado.pagMov = 0; pintarChips(); pintar(); };
     }
   };
   const devuelto = new Map();  // gasto → lo que te han devuelto de él (Bizums enlazados)
   for (const r of registros("movimiento")) if (r.reembolsa) devuelto.set(r.reembolsa, (devuelto.get(r.reembolsa) || 0) + num(r.importe));
   const pintar = () => {
-    lista.innerHTML = "";
+    lista.innerHTML = ""; pie.innerHTML = "";
     const q = norm(inp.value.trim());
     const f = todos.filter((m) => (!filtroCat || (m.clase === "transferencia" ? "Entre tus cuentas" : m.categoria) === filtroCat)
       && (!q || norm(`${m.concepto} ${m.categoria} ${m.cuenta} ${m.p.ext_texto || ""} ${nf(m.importe, 2, 2)}`).includes(q)));
     if (!f.length) { vacio(lista, todos.length ? "Nada coincide" : "Sin movimientos este mes", todos.length ? "" : " Importa el extracto de tu banco o apunta uno a mano."); return; }
     let dia = null, cont = null;
-    for (const m of f) {
+    const paginas = Math.ceil(f.length / POR_PAGINA), pag = Math.min(FB.estado.pagMov || 0, paginas - 1);
+    for (const m of f.slice(pag * POR_PAGINA, (pag + 1) * POR_PAGINA)) {
       const k = m.fecha.toISODate();
       if (k !== dia) {
         dia = k;
@@ -361,8 +389,14 @@ function vistaMovimientos() {
         ruta: m.auto ? (m.p.id ? `#editar/recurrente/${m.p.id}` : null) : `#editar/movimiento/${m.p.id}`,
       });
     }
+    if (paginas > 1) {  // paginación: la lista larga se corta en páginas de 40
+      const ir = (n) => { FB.estado.pagMov = n; pintar(); window.scrollTo(0, 0); };
+      const a = pie.createEl("button", { cls: "fb-btn sec", text: "← Anterior" }); a.disabled = pag === 0; a.onclick = () => ir(pag - 1);
+      pie.createSpan({ cls: "fin-note", text: `${pag * POR_PAGINA + 1}–${Math.min(f.length, (pag + 1) * POR_PAGINA)} de ${f.length} · página ${pag + 1} de ${paginas}` });
+      const s = pie.createEl("button", { cls: "fb-btn sec", text: "Siguiente →" }); s.disabled = pag >= paginas - 1; s.onclick = () => ir(pag + 1);
+    }
   };
-  inp.oninput = () => { busqueda = inp.value; pintar(); };
+  inp.oninput = () => { busqueda = inp.value; FB.estado.pagMov = 0; pintar(); };
   pintarChips(); pintar();
 }
 
@@ -370,7 +404,7 @@ function vistaMovimientos() {
 function vistaPorCategoria(M) {
   const C = resumenCategorias(mes);
   const total = sum(C.map((c) => c.valor));
-  const abrirCat = (n) => () => { filtroCat = n; guardarEstado({ filtroCat: n }); FB.ir("#movimientos"); };
+  const abrirCat = (n) => () => { filtroCat = n; guardarEstado({ filtroCat: n }); FB.ir("#movimientos/lista"); };
   if (!C.length) { vacio(root, "Sin gastos este mes", " Importa el extracto de tu banco o cambia de mes."); return; }
   const refs = mesesReferencia(mes);
   const g = root.createDiv({ cls: "fin-grid dos" });

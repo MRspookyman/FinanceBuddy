@@ -72,7 +72,7 @@ const vendidoDelTodo = (a) => posicion(a).vendido;
 // anotado), «anotado» (Actualizar valores), «precio» (participaciones × precio de la última operación: estimado), «metido»
 // (sin datos: lo aportado) o «vendido» (0).
 // El precio de internet manda si se conocen las participaciones y es más nuevo que el valor que anotaste a mano.
-const usaMercado = (P, M, a) => !!(M && P.conPart && P.part > 0 && !P.vendido && (!a.conValor || !a.fechaValor || M.fecha >= a.fechaValor));
+const usaMercado = (P, M, a) => !!(M && P.conPart && P.part > 0 && !P.vendido && (!a.conValor || !a.fechaValor || M.fecha > a.fechaValor));
 function valorInfo(a) {
   const M = precioMercado(a);
   if (M) {

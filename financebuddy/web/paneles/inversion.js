@@ -7,6 +7,7 @@ const ICONO_ACTIVO = { fondo: "📊", etf: "🧺", accion: "🏢", cripto: "🪙
 
 function vistaInversion() {
   cabecera("Inversión", false, "Lo que has metido en tus fondos, ETF y cripto, y lo que vale hoy");
+  if (params[0] === "actualizar" && preciosActivos() && !FB.estado.yaActualizo) { FB.estado.yaActualizo = true; setTimeout(() => FB.actualizarPrecios({}), 50); }  // viene del Inicio: «Actualizar inversión»
   const hayCorto = activos().some((a) => !a.largo);
   const solo = hayCorto && !!FB.estado.soloLargo;  // FB.estado: sobrevive a refrescar la pantalla, no a cambiar de pantalla
   const I = resumenInversion(solo);
@@ -24,10 +25,11 @@ function vistaInversion() {
   const efectivo = E ? E.c["Efectivo bróker"] : null;
   const INT = interesesBroker();
   const botones = root.createDiv({ cls: "fb-filtros" });
-  enlace(botones, "Actualizar valores", "#valores").className = "fb-btn";
+  if (preciosActivos()) { const b = botones.createEl("button", { cls: "fb-btn", text: cfg.precios.en_marcha ? "Actualizando…" : "Actualizar precios" }); b.title = "Pone al día el precio de mercado de los activos con fuente en internet"; b.onclick = () => FB.actualizarPrecios({ boton: b }); }
+  else enlace(botones, "Activar precios automáticos", "#ajustes/precios").className = "fb-btn";
+  enlace(botones, "Anotar valores a mano", "#valores").className = "fb-btn sec";
   enlace(botones, "+ Activo", "#editar/activo/nuevo").className = "fb-btn sec";
   enlace(botones, "Compras y ventas", "#gestionar/aportacion").className = "fb-btn sec";
-  enlace(botones, "Tu progreso", "#progreso").className = "fb-btn sec";
   enlace(botones, "Para la renta", "#renta").className = "fb-btn sec";
   if (hayCorto) {  // «Solo largo plazo»: deja fuera lo que no es inversión a largo (un colchón en un fondo monetario, una apuesta…)
     const seg = root.createDiv({ cls: "fb-chips" });
@@ -55,6 +57,7 @@ function vistaInversion() {
 
   tablaActivos(panel(root, "Tus activos", { text: "Editar", ruta: "#gestionar/activo" }), I);
 
+  hitosEnPantalla(root);
   panelComisiones(root, I);
   const g2 = root.createDiv({ cls: "fin-grid dos" });
   tarjetaAportaciones(panel(g2, "Lo que metes cada mes"), solo);
@@ -272,8 +275,9 @@ function vistaActivo() {
       return x.importe > 0 ? `Traspaso desde ${y ? y.activo : "otro fondo"}` : `Traspaso a ${y ? y.activo : "otro fondo"}`;
     };
     const TC = tamañoCompras(normales.filter((x) => x.importe > 0 && !x.p.traspaso).map((x) => x.importe));  // frente a tus compras de este activo
+    const pgOps = paginacion([...ops].reverse(), "ops_" + reg.id, () => FB.montar());
     tabla(po, [{ t: "Fecha" }, { t: "Operación" }, { t: "Importe", num: true }, TC && { t: "Tamaño", opt: true }, { t: "Particip.", num: true }, { t: "Precio", num: true, opt: true }, { t: "De", opt: true }].filter(Boolean),
-      [...ops].reverse().map((x) => {
+      pgOps.parte.map((x) => {
         const pa = hasNum(x.p.participaciones) ? num(x.p.participaciones) : null;
         const marcas = [x.p.supuesta ? "¿compra?" : "", pa == null && !x.p.ajuste ? "sin particip." : "", dudosas.has(x.p.id) ? "¿duplicada?" : ""].filter(Boolean);
         return [
@@ -286,6 +290,7 @@ function vistaActivo() {
           ORIGEN_OP(x),
         ];
       }));
+    pgOps.pie(po);
     po.createDiv({ cls: "fin-note", text: "Pulsa la fecha para cambiar o borrar una operación. «¿compra?»: la orden no decía si era compra o venta." });
     if (TC) po.createDiv({ cls: "fin-note", text: `Tamaño: lo que has comprado de este activo, en tres partes iguales: pequeña (menos de ${eur(TC.p33, 0)}), habitual y grande (más de ${eur(TC.p67, 0)}).` });
   }
@@ -294,7 +299,7 @@ function vistaActivo() {
   const cb = cobros().filter((c) => c.activo === a.nombre);
   const pc2 = panel(root, `Dividendos y comisiones (${cb.length})`, { text: "+ Añadir", ruta: `#editar/cobro/nuevo/${reg.id}` }, "Lo que este activo te da (dividendo, cupón) o te cobra (custodia) sin vender participaciones. Cuenta para su rentabilidad.");
   if (!cb.length) pc2.createDiv({ cls: "fin-note", text: "Ninguno. Los dividendos del extracto de tu bróker se reconocen solos, o los apuntas aquí." });
-  else tabla(pc2, [{ t: "Fecha" }, { t: "Qué" }, { t: "Importe", num: true }], [...cb].reverse().map((c) => [{ text: c.fecha.toFormat("dd/MM/yy"), ruta: `#editar/cobro/${c.p.id}` }, c.tipo === "comision" ? "Comisión" : "Dividendo", { text: (c.tipo === "comision" ? "−" : "+") + eur(c.importe, 2), cls: c.tipo === "comision" ? "neg" : "pos" }]));
+  else { const pgC = paginacion([...cb].reverse(), "cobros_" + reg.id, () => FB.montar(), 20); tabla(pc2, [{ t: "Fecha" }, { t: "Qué" }, { t: "Importe", num: true }], pgC.parte.map((c) => [{ text: c.fecha.toFormat("dd/MM/yy"), ruta: `#editar/cobro/${c.p.id}` }, c.tipo === "comision" ? "Comisión" : "Dividendo", { text: (c.tipo === "comision" ? "−" : "+") + eur(c.importe, 2), cls: c.tipo === "comision" ? "neg" : "pos" }])); pgC.pie(pc2); }
 
   // Unir con otro activo
   const otros = (DB.registros.activo || []).filter((r) => r.id !== reg.id);
