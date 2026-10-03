@@ -71,8 +71,10 @@ const vendidoDelTodo = (a) => posicion(a).vendido;
 // Lo que vale hoy y de dónde sale: «mercado» (participaciones × el precio de internet, si lo activaste y es más nuevo que lo
 // anotado), «anotado» (Actualizar valores), «precio» (participaciones × precio de la última operación: estimado), «metido»
 // (sin datos: lo aportado) o «vendido» (0).
-// El precio de internet manda si se conocen las participaciones y es más nuevo que el valor que anotaste a mano.
-const usaMercado = (P, M, a) => !!(M && P.conPart && P.part > 0 && !P.vendido && (!a.conValor || !a.fechaValor || M.fecha > a.fechaValor));
+// El precio de internet manda si se conocen las participaciones y es reciente (≤ 7 días): si configuraste una fuente, quieres que
+// se actualice solo. Si el servicio lleva más tiempo sin dar precio, vale lo anotado (salvo que el precio sea más nuevo).
+const usaMercado = (P, M, a) => !!(M && P.conPart && P.part > 0 && !P.vendido
+  && (!a.conValor || !a.fechaValor || M.fecha > a.fechaValor || hoy.diff(M.fecha, "days").days <= 7));
 function valorInfo(a) {
   const M = precioMercado(a);
   if (M) {

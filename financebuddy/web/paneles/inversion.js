@@ -39,6 +39,7 @@ function vistaInversion() {
     }
   }
 
+  if (preciosActivos()) estadoPrecios(root, I);
   panelSalud(root, saludInversion());
   const pct0 = I.aportado > 0 ? I.gan / I.aportado : NaN;
   const notaValor = [I.mercado ? `${I.mercado === I.filas.length ? "todo" : I.mercado === 1 ? "uno" : I.mercado} al precio de mercado del ${I.fechaMercado.toFormat("dd/MM")}` : "", I.estimados ? `≈ ${I.estimados === 1 ? "uno" : I.estimados} con el precio de su última compra` : "", I.sinValor ? `${I.sinValor === 1 ? "uno" : I.sinValor} por lo metido` : ""].filter(Boolean).join(" · ");
@@ -339,4 +340,24 @@ function vistaActivo() {
     };
     c.createDiv({ cls: "fin-note", text: "Se guarda una copia de seguridad cada día: si te equivocas, puedes restaurarla en Ajustes." });
   }, { abierto: saludInversion(a.nombre).some((x) => x.clave.startsWith("traspaso|")) });
+}
+
+// Qué ha pasado con los precios de internet, siempre a la vista: cuántos activos los usan y por qué no lo hace el resto.
+function estadoPrecios(padre, I) {
+  const C = cfg.precios || {}, A = registros("activo").filter((a) => a.estado !== "vendido");
+  const conFuente = A.filter((a) => a.fuente_precio), usados = new Set(I.filas.filter((f) => f.fuente === "mercado").map((f) => f.nombre));
+  const caja = padre.createDiv({ cls: "fb-estado-precios" });
+  const l1 = caja.createDiv({ cls: "t" });
+  l1.appendText(`Precios por internet · ${C.ultima ? `actualizados ${fechaHora(C.ultima)}` : "aún sin actualizar"} · `);
+  l1.appendText(conFuente.length ? `${usados.size} de ${A.length} activos valen según su precio de mercado` : "ningún activo tiene fuente de precio");
+  const motivos = [];
+  for (const a of conFuente.filter((x) => !usados.has(x.nombre))) {
+    const m = (C.activos || {})[a.nombre], act = activos().find((x) => x.nombre === a.nombre);
+    const fallo = ((C.resultado || {}).fallos || []).find((f) => String(f.que).split(", ").includes(a.nombre));
+    if (!m) motivos.push([a, fallo ? `no se pudo obtener su precio (${fallo.motivo})` : "aún no tiene precio: pulsa «Actualizar precios»", `#editar/activo/${a.id}`, "Revisar"]);
+    else if (act && !posicion(act).conPart) motivos.push([a, "tiene precio, pero no se sabe cuántas participaciones tienes", `#activo/${a.id}/cuadrar`, "Cuadrar con el bróker"]);
+    else motivos.push([a, "su precio es antiguo y hay un valor anotado más nuevo", "#valores", "Ver"]);
+  }
+  for (const a of A.filter((x) => !x.fuente_precio).slice(0, 6)) motivos.push([a, "no tiene fuente de precio", `#editar/activo/${a.id}`, "Buscar el precio"]);
+  for (const [a, texto, ruta, boton] of motivos) { const f = caja.createDiv({ cls: "s" }); f.appendText(`${a.nombre}: ${texto}. `); enlace(f, boton + " →", ruta); }
 }

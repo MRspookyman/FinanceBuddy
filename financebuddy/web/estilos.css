@@ -528,3 +528,6 @@ button:focus-visible,a:focus-visible,summary:focus-visible,[tabindex]:focus-visi
 .fb-acciones{margin:0 0 16px;grid-template-columns:repeat(auto-fit,minmax(min(100%,205px),1fr))}.fb-acciones .fb-acceso{position:relative;padding:14px 16px}
 .fb-acciones .fb-acceso.toca{border-color:var(--brand);background:color-mix(in srgb,var(--brand) 9%,var(--surface))}
 .fb-toca{position:absolute;top:8px;right:10px;font-size:.66em;font-weight:750;text-transform:uppercase;letter-spacing:.06em;color:#fff;background:var(--brand);border-radius:99px;padding:2px 8px}
+
+.fb-estado-precios{margin:0 0 14px;padding:10px 14px;border-radius:14px;background:var(--surface-2);border:1px solid var(--line);font-size:.86em}
+.fb-estado-precios .t{font-weight:650}.fb-estado-precios .s{color:var(--ink-2);margin-top:3px}
