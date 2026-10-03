@@ -17,13 +17,17 @@ CAMPOS = {
                    "importe": "num+*", "cuenta": "texto", "concepto": "texto*", "recurrente": "texto", "destino": "texto",
                    "origen": "texto", "nota": "texto", "ext_texto": "texto", "ext_importe": "num", "ext_fecha": "fecha",
                    "reembolsa": "int"},  # reembolsa: id del gasto que devuelve este reembolso (Bizums, bizums.py)
+    # Dinero que te da (dividendo, cupón) o te cobra (comisión, custodia) un activo, sin cambiar sus participaciones: importe siempre
+    # positivo, el tipo dice el sentido. Cuenta para la rentabilidad del activo y entra/sale del efectivo de su bróker.
+    "cobro": {"fecha": "fecha*", "activo": "texto*", "tipo": ("dividendo", "comision"), "importe": "num+*", "cuenta": "texto", "nota": "texto",
+              "ext_texto": "texto", "ext_importe": "num", "ext_fecha": "fecha"},
     # meses: solo esos meses del año (p. ej. [7] = anual en julio).
     "recurrente": {"nombre": "texto*", "clase": ("gasto", "ingreso", "aportacion"), "categoria": "texto", "importe": "num+*",
                    "dia": "int", "desde": "fecha*", "hasta": "fecha", "meses": "meses", "activo": "bool",
                    "activo_inversion": "texto", "cuenta": "texto"},
     # patrones: textos del extracto del bróker que identifican el activo (p. ej. «s&p 500 index»).
     # ter: gastos corrientes anuales (%) · materia: materias primas (oro, cobre…).
-    "activo": {"nombre": "texto*", "clase": ("fondo", "etf", "accion", "cripto", "materia", "otro"), "cuenta": "texto", "valor": "num",
+    "activo": {"nombre": "texto*", "clase": ("fondo", "etf", "accion", "cripto", "materia", "pension", "bono", "inmueble", "otro"), "cuenta": "texto", "valor": "num",
                "fecha_valor": "fecha", "aportado_inicial": "num", "fecha_inicio": "fecha", "estado": ("activo", "vendido"),
                "patrones": "lista", "isin": "texto", "ter": "num+",
                "largo_plazo": "bool"},  # largo_plazo: es inversión a largo plazo (vale sí si falta); el interruptor «solo largo plazo» deja fuera lo demás
@@ -62,10 +66,10 @@ EDITABLES = set(CAMPOS) - {"pendiente", "ignorado", "operacion"}
 # Referencias por nombre: al renombrar, se actualizan en los demás registros.
 REFERENCIAS = {
     "cuenta": [("movimiento", "cuenta"), ("movimiento", "destino"), ("movimiento", "origen"), ("recurrente", "cuenta"),
-               ("activo", "cuenta"), ("aportacion", "cuenta"), ("objetivo", "cuenta"), ("perfil", "cuenta"),
+               ("activo", "cuenta"), ("aportacion", "cuenta"), ("cobro", "cuenta"), ("objetivo", "cuenta"), ("perfil", "cuenta"),
                ("regla", "cuenta_otra"), ("pendiente", "cuenta"), ("patrimonio", "saldos*")],
     "categoria": [("movimiento", "categoria"), ("recurrente", "categoria"), ("regla", "categoria")],
-    "activo": [("aportacion", "activo"), ("recurrente", "activo_inversion"), ("patrimonio", "valores*"), ("operacion", "activo")],
+    "activo": [("aportacion", "activo"), ("recurrente", "activo_inversion"), ("patrimonio", "valores*"), ("operacion", "activo"), ("cobro", "activo")],
     "recurrente": [("movimiento", "recurrente"), ("aportacion", "recurrente"), ("regla", "recurrente")],
 }
 UNICOS = {"cuenta": "nombre", "categoria": "nombre", "activo": "nombre", "recurrente": "nombre", "cierre": "mes", "perfil": "nombre"}

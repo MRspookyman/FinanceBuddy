@@ -144,7 +144,7 @@
     ajustes: '<path d="M4 7h9m4 0h3M4 17h3m4 0h9"/><circle cx="15" cy="7" r="2.2"/><circle cx="9" cy="17" r="2.2"/>',
   };
   const SECCION = { resumen: "inicio", gastos: "movimientos", prevision: "inicio", patrimonio: "inicio", objetivos: "ajustes",
-    gestionar: "ajustes", editar: "ajustes", fijos: "ajustes", revision: "ajustes", cerrar: "ajustes", valores: "inversion", activo: "inversion", progreso: "inicio" };
+    gestionar: "ajustes", editar: "ajustes", fijos: "ajustes", revision: "ajustes", cerrar: "ajustes", valores: "inversion", activo: "inversion", progreso: "inicio", renta: "inversion" };
   function barra() {
     const DB = FB.DB; if (!DB) return;
     const fechas = (DB.registros.movimiento || []).map((m) => m.fecha).sort();

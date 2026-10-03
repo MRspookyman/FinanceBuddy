@@ -72,7 +72,7 @@ const FORMS = {
   activo: { uno: "activo", plural: "Activos", ayuda: "Fondos, acciones, ETF o cripto. Actualiza su valor de vez en cuando (Inversión → Actualizar valores).",
     campos: [
       { k: "nombre", l: "Nombre", req: true, ph: "p. ej. Fondo indexado MSCI World" },
-      { k: "clase", l: "Tipo", t: "opc", opc: [["fondo", "Fondo"], ["etf", "ETF / ETC"], ["accion", "Acción"], ["cripto", "Cripto"], ["materia", "Materias primas (oro, cobre…)"], ["otro", "Otro"]] },
+      { k: "clase", l: "Tipo", t: "opc", opc: [["fondo", "Fondo"], ["etf", "ETF / ETC"], ["accion", "Acción"], ["cripto", "Cripto"], ["materia", "Materias primas (oro, cobre…)"], ["pension", "Plan de pensiones"], ["bono", "Bono / renta fija"], ["inmueble", "Inmueble (piso, local…)"], ["otro", "Otro"]] },
       { k: "cuenta", l: "Cuenta del bróker", t: "opc", opc: opcCuentas((c) => c.tipo === "broker"), vacio: "— ninguna —" },
       { k: "valor", l: "Valor actual (€)", t: "num" },
       { k: "fecha_valor", l: "Fecha de ese valor", t: "fecha", defecto: () => hoy.toISODate() },
@@ -95,6 +95,16 @@ const FORMS = {
       { k: "nota", l: "Nota" }],
     antes: (d) => { d.supuesta = ""; },  // al guardarla a mano, la compra/venta ya no es supuesta
     fila: (r) => [fechaCorta(r.fecha), r.activo, { text: eurS(r.importe), cls: r.importe < 0 ? "neg" : "" }], cols: ["Fecha", "Activo", "Importe"],
+    orden: (a, b) => String(b.fecha).localeCompare(String(a.fecha)) },
+  cobro: { uno: "dividendo o comisión", plural: "Dividendos y comisiones", ayuda: "Lo que un activo te da (dividendo, cupón) o te cobra (custodia) sin vender participaciones. Cuenta para su rentabilidad y para tu declaración.",
+    campos: [
+      { k: "fecha", l: "Fecha", t: "fecha", req: true, defecto: () => hoy.toISODate() },
+      { k: "activo", l: "Activo", t: "opc", opc: opcActivos, req: true },
+      { k: "tipo", l: "Qué es", t: "opc", opc: [["dividendo", "Dividendo o cupón (te lo ingresan)"], ["comision", "Comisión o custodia (te la cobran)"]] },
+      { k: "importe", l: "Importe (€, sin signo)", t: "num", req: true },
+      { k: "cuenta", l: "Cuenta del bróker", t: "opc", opc: opcCuentas((c) => c.tipo === "broker"), vacio: "— la del activo —", ayuda: "El dinero entra (o sale) del efectivo de esta cuenta." },
+      { k: "nota", l: "Nota" }],
+    fila: (r) => [fechaCorta(r.fecha), r.activo, r.tipo === "comision" ? "Comisión" : "Dividendo", { text: (r.tipo === "comision" ? "−" : "+") + eur(r.importe), cls: r.tipo === "comision" ? "neg" : "pos" }], cols: ["Fecha", "Activo", "Qué", "Importe"],
     orden: (a, b) => String(b.fecha).localeCompare(String(a.fecha)) },
   patrimonio: { uno: "registro de saldos", plural: "Registros de saldos", ayuda: "El saldo de cada cuenta y el valor de cada activo en una fecha (se crean al cerrar el mes).",
     campos: [

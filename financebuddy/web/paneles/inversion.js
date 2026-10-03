@@ -2,8 +2,8 @@
 // Lo que has metido y lo que vale cada activo, cómo evoluciona, cuánto aportas cada mes, cómo está repartido y lo
 // que rinde el dinero sin invertir. Los datos salen de las aportaciones (importadas del bróker), del valor de cada
 // activo (Actualizar valores) y de los registros de saldos (evolución).
-const TIPO_ACTIVO = { fondo: "Fondo", etf: "ETF / ETC", accion: "Acción", cripto: "Cripto", materia: "Materias primas", otro: "Otro" };
-const ICONO_ACTIVO = { fondo: "📊", etf: "🧺", accion: "🏢", cripto: "🪙", materia: "🥇", otro: "💼" };
+const TIPO_ACTIVO = { fondo: "Fondo", etf: "ETF / ETC", accion: "Acción", cripto: "Cripto", materia: "Materias primas", pension: "Plan de pensiones", bono: "Bono / renta fija", inmueble: "Inmueble", otro: "Otro" };
+const ICONO_ACTIVO = { fondo: "📊", etf: "🧺", accion: "🏢", cripto: "🪙", materia: "🥇", pension: "🏖️", bono: "📜", inmueble: "🏠", otro: "💼" };
 
 function vistaInversion() {
   cabecera("Inversión", false, "Lo que has metido en tus fondos, ETF y cripto, y lo que vale hoy");
@@ -28,6 +28,7 @@ function vistaInversion() {
   enlace(botones, "+ Activo", "#editar/activo/nuevo").className = "fb-btn sec";
   enlace(botones, "Compras y ventas", "#gestionar/aportacion").className = "fb-btn sec";
   enlace(botones, "Tu progreso", "#progreso").className = "fb-btn sec";
+  enlace(botones, "Para la renta", "#renta").className = "fb-btn sec";
   if (hayCorto) {  // «Solo largo plazo»: deja fuera lo que no es inversión a largo (un colchón en un fondo monetario, una apuesta…)
     const seg = root.createDiv({ cls: "fb-chips" });
     for (const [k, t] of [[false, "Todo"], [true, "Solo largo plazo"]]) {
@@ -42,7 +43,7 @@ function vistaInversion() {
   tiles(root, [
     { l: "Vale hoy", v: eur(I.total, 0), s: notaValor || "según tus últimos valores" },
     { l: "Has metido", v: eur(I.aportadoTodo, 0), s: `${I.filas.reduce((s, f) => s + f.operaciones, 0)} compras y ventas` },
-    isFinite(I.gan) && I.aportado > 0 ? { l: "Ganancia", v: (I.estimados ? "≈ " : "") + eurS(I.gan, 0), t: tone(I.gan), s: `${pct(pct0, true)} sobre lo metido${I.estimados ? " · estimada" : ""}` } : null,
+    isFinite(I.gan) && I.aportado > 0 ? { l: "Ganancia", v: (I.estimados ? "≈ " : "") + eurS(I.gan, 0), t: tone(I.gan), s: `${pct(pct0, true)} sobre lo metido${I.estimados ? " · estimada" : ""}${I.dividendos ? ` · con ${eur(I.dividendos, 0)} de dividendos` : ""}` } : null,
     isFinite(I.tir) ? { l: "Rentabilidad anual", v: pct(I.tir, true), t: tone(I.tir), s: I.tirCorta ? "menos de un año: orientativa" : I.tirParcial ? "de los activos con datos" : "TIR, cuenta cuándo metiste cada euro" } : null,
     efectivo != null ? { l: "Sin invertir", v: eur(efectivo, 0), s: nombresBroker() } : null,
     INT.n ? { l: `Intereses ${hoy.year}`, v: eur(INT.año, 2), s: INT.comisiones ? `comisiones ${eur(INT.comisiones, 2)}` : "del dinero sin invertir" } : null,
@@ -287,6 +288,12 @@ function vistaActivo() {
     po.createDiv({ cls: "fin-note", text: "Pulsa la fecha para cambiar o borrar una operación. «¿compra?»: la orden no decía si era compra o venta." });
     if (TC) po.createDiv({ cls: "fin-note", text: `Tamaño: lo que has comprado de este activo, en tres partes iguales: pequeña (menos de ${eur(TC.p33, 0)}), habitual y grande (más de ${eur(TC.p67, 0)}).` });
   }
+
+  // Dividendos y comisiones del activo
+  const cb = cobros().filter((c) => c.activo === a.nombre);
+  const pc2 = panel(root, `Dividendos y comisiones (${cb.length})`, { text: "+ Añadir", ruta: `#editar/cobro/nuevo/${reg.id}` }, "Lo que este activo te da (dividendo, cupón) o te cobra (custodia) sin vender participaciones. Cuenta para su rentabilidad.");
+  if (!cb.length) pc2.createDiv({ cls: "fin-note", text: "Ninguno. Los dividendos del extracto de tu bróker se reconocen solos, o los apuntas aquí." });
+  else tabla(pc2, [{ t: "Fecha" }, { t: "Qué" }, { t: "Importe", num: true }], [...cb].reverse().map((c) => [{ text: c.fecha.toFormat("dd/MM/yy"), ruta: `#editar/cobro/${c.p.id}` }, c.tipo === "comision" ? "Comisión" : "Dividendo", { text: (c.tipo === "comision" ? "−" : "+") + eur(c.importe, 2), cls: c.tipo === "comision" ? "neg" : "pos" }]));
 
   // Unir con otro activo
   const otros = (DB.registros.activo || []).filter((r) => r.id !== reg.id);

@@ -190,6 +190,8 @@ def importar_inversion(alm, ruta, cuenta=None, perfil_nombre=None):
     signo = -1 if perfil.get("compras_negativas", True) else 1
     huellas_ap = huellas_existentes(alm, cuenta, "aportacion")
     huellas_mov = huellas_existentes(alm, cuenta, "movimiento")
+    huellas_cobro = huellas_existentes(alm, cuenta, "cobro")
+    nuevos_cobro = []
     # Aportaciones registradas a mano (sin huella): misma fecha, importe y activo
     manuales = Counter((a["fecha"], round(float(a["importe"]), 2), a["activo"]) for a in alm.todos("aportacion") if not a.get("ext_fecha"))
     recs = [r for r in alm.todos("recurrente") if r.get("clase") == "aportacion"]
@@ -199,7 +201,11 @@ def importar_inversion(alm, ruta, cuenta=None, perfil_nombre=None):
         tn = L.norm(f["texto"])
         activo = next((a for a in activos if any(C.casa(p, tn) for p in a.get("patrones") or [])), None)
         accion = next((x["accion"] for x in acciones if C.casa(x.get("patron", ""), tn)), None)
-        if activo:
+        if activo and f["importe"] > 0 and RE_DIVIDENDO.search(tn):  # un dividendo de un activo conocido: no es una venta
+            if huellas_cobro[k] > 0: huellas_cobro[k] -= 1; existentes += 1; continue
+            nuevos_cobro.append(modelo.limpiar("cobro", {"fecha": f["op"], "activo": activo["nombre"], "tipo": "dividendo", "importe": abs(f["importe"]), "cuenta": cuenta,
+                                                         "ext_texto": f["texto"], "ext_importe": f["importe"], "ext_fecha": f["op"]}))
+        elif activo:
             imp = round(signo * f["importe"], 2)
             if huellas_ap[k] > 0: huellas_ap[k] -= 1; existentes += 1; continue
             km = (f["op"], imp, activo["nombre"])
@@ -230,17 +236,18 @@ def importar_inversion(alm, ruta, cuenta=None, perfil_nombre=None):
     with alm.transaccion():
         for d in nuevas_ap: alm.insertar_crudo("aportacion", d)
         for d in nuevos_mov: alm.insertar_crudo("movimiento", d)
+        for d in nuevos_cobro: alm.insertar_crudo("cobro", d)
         for f in dudas:
             alm.insertar_crudo("pendiente", {"tipo_import": "inversion", "cuenta": cuenta, "archivo": os.path.basename(ruta),
                                              "perfil": perfil["nombre"], "fila": f, "duda": f["duda"]})
         if not perfil.get("cuenta"): alm.guardar("perfil", {**perfil, "cuenta": cuenta}, perfil["id"])
         recordar_cabecera(alm, info, cuenta)
         con_titulos = OP.aplicar_en_espera(alm)
-    n = len(nuevas_ap) + len(nuevos_mov)
+    n = len(nuevas_ap) + len(nuevos_mov) + len(nuevos_cobro)
     ops = sorted(f["op"] for f in filas)
     return {"ok": True, "tipo": "inversion", "cuenta": cuenta, "perfil": perfil["nombre"], "filas": len(filas), "nuevas": n,
             "existentes": existentes, "dudas": len(dudas), "desde": ops[0], "hasta": ops[-1],
-            "mensaje": f"{cuenta}: {len(nuevas_ap)} compras/ventas y {len(nuevos_mov)} intereses nuevos" + (f", {len(dudas)} por revisar" if dudas else "")
+            "mensaje": f"{cuenta}: {len(nuevas_ap)} compras/ventas y {len(nuevos_mov)} intereses nuevos" + (f", {len(nuevos_cobro)} dividendos" if nuevos_cobro else "") + (f", {len(dudas)} por revisar" if dudas else "")
                        + (f" ({existentes} ya estaban)" if existentes else "") + (f" · {ignoradas} traspasos ignorados" if ignoradas else "")
                        + (f" · {con_titulos} completadas con sus títulos" if con_titulos else "")}
 
@@ -249,6 +256,7 @@ def cat_intereses(alm):
 
 # ───────────── traspasos entre tus cuentas (cruce de extractos) ─────────────
 RE_TRASPASO = re.compile(r"transferencia|traspaso|ahorro|a favor de|inversi|aportaci")
+RE_DIVIDENDO = re.compile(r"dividend|cupon|coupon")
 
 def emparejar_traspasos(alm, dias=3):
     """El mismo dinero visto desde las dos cuentas (sale de una y entra en otra, mismo importe, ±`dias`) es un traspaso.
@@ -298,13 +306,14 @@ def tipo_de(ruta, alm, carpeta):
     rec = L.reconocer(L.filas_crudas(ruta), perfiles)
     return rec[0]["tipo"] if rec else None
 
-def importar_archivo(alm, carpeta, ruta, tipo=None, cuenta=None, perfil_nombre=None):
-    """Importa un archivo y, si va bien, lo mueve a Importar\\Procesados. Lanza NecesitaPerfil / NecesitaCuenta."""
+def importar_archivo(alm, carpeta, ruta, tipo=None, cuenta=None, perfil_nombre=None, simulando=False):
+    """Importa un archivo y, si va bien, lo mueve a Importar\\Procesados. Lanza NecesitaPerfil / NecesitaCuenta.
+    simulando: dentro de alm.simular() (vista previa): ni copia de seguridad ni mover el archivo."""
     if tipo == "inversion" and L.reconocer(L.filas_crudas(ruta), alm.todos("perfil"), "operaciones"): tipo = "operaciones"
     tipo = tipo or tipo_de(ruta, alm, carpeta)
     if tipo is None:
         raise NecesitaPerfil({"archivo": os.path.basename(ruta), "tipo": None, **L.muestra_para_configurar(L.filas_crudas(ruta))})
-    alm.copia(carpeta.copias)
+    if not simulando: alm.copia(carpeta.copias)
     r = {"banco": importar_banco, "inversion": importar_inversion, "operaciones": OP.importar}[tipo](alm, ruta, cuenta, perfil_nombre)
     if r.get("ok") and r.get("tipo") != "operaciones":
         t = emparejar_traspasos(alm)
@@ -314,7 +323,7 @@ def importar_archivo(alm, carpeta, ruta, tipo=None, cuenta=None, perfil_nombre=N
             r["dudas"] = sum(1 for p in alm.todos("pendiente") if p.get("archivo") == os.path.basename(ruta) and p.get("cuenta") == r.get("cuenta"))
             if antes: r["mensaje"] = r["mensaje"].replace(f", {antes} por revisar", f", {r['dudas']} por revisar" if r["dudas"] else "")
             r["mensaje"] += f" · {t} traspaso{'s' if t > 1 else ''} entre tus cuentas reconocido{'s' if t > 1 else ''}"
-    if r.get("ok"):
+    if r.get("ok") and not simulando:
         destino = os.path.join(carpeta.procesados, f"{datetime.date.today().isoformat()} {os.path.basename(ruta)}")
         n = 2
         while os.path.exists(destino):
@@ -389,6 +398,9 @@ def sugerencia_inversion(p, activos):
     entra = f.get("importe", 0) > 0
     if entra and RE_TRASPASO.search(tn) and not re.search(r"venta|reembolso", tn): return {"accion": "ignorar"}
     if re.match(r"periodo|interes|remuneracion", tn): return {"accion": "interes"}
+    if entra and RE_DIVIDENDO.search(tn):  # dividendo o cupón: de qué activo, si se reconoce
+        a = next((a for a in activos if (a.get("isin") and a["isin"].lower() in tn) or L.norm(a["nombre"]) in tn or any(C.casa(x, tn) for x in (a.get("patrones") or []))), None)
+        return {"accion": "dividendo", **({"activo": a["nombre"]} if a else {})}
     for a in activos:
         if a.get("isin") and a["isin"].lower() in tn: return {"accion": "activo", "activo": a["nombre"]}
     # Dinero que entra con un concepto tuyo (no el nombre de un producto): es un traspaso desde tu banco, no una venta
@@ -481,6 +493,13 @@ def _resolver_uno(alm, p, d):
                            "participaciones": participaciones(f["texto"], signo * f["importe"]),
                            "cuenta": cuenta, "ext_texto": f["texto"], "ext_importe": f["importe"], "ext_fecha": f["op"]}))
         msg = f"Guardado: {'compra' if signo * f['importe'] > 0 else 'venta'} de {nombre}"
+    elif accion == "dividendo":
+        nombre = d.get("activo")
+        if not any(x["nombre"] == nombre for x in alm.todos("activo")): raise ValueError("Elige de qué activo es el dividendo.")
+        if f["importe"] <= 0: raise ValueError("Un dividendo es dinero que entra.")
+        alm.insertar_crudo("cobro", modelo.limpiar("cobro", {"fecha": f["op"], "activo": nombre, "tipo": "dividendo", "importe": f["importe"], "cuenta": cuenta,
+                                                             "ext_texto": f["texto"], "ext_importe": f["importe"], "ext_fecha": f["op"]}))
+        msg = f"Guardado: dividendo de {nombre}"
     elif accion == "interes":
         alm.insertar_crudo("movimiento", modelo.limpiar("movimiento", {"fecha": f["op"], "clase": "ingreso" if f["importe"] > 0 else "gasto",
             "categoria": cat_intereses(alm) if f["importe"] > 0 else "Comisiones", "importe": abs(f["importe"]), "cuenta": cuenta,

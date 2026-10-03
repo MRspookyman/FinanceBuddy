@@ -5,7 +5,7 @@ from . import VERSION, bizums, cartera, clasificar as C, detectar, importar as I
 from .almacen import Almacen
 
 mimetypes.add_type("font/woff2", ".woff2")
-MODULOS = ["datos", "calculos", "componentes", "graficos", "inicio", "inversion", "progreso", "formularios", "pantallas"]
+MODULOS = ["datos", "calculos", "componentes", "graficos", "inicio", "inversion", "progreso", "renta", "formularios", "pantallas"]
 MAX_SUBIDA = 25 * 1024 * 1024
 ACENTOS = ["salvia", "violeta", "azul", "verde", "coral", "rosa", "grafito"]  # colores de acento (estilos.css: body[data-acento])
 
@@ -60,16 +60,51 @@ class App:
                          "archivos": [{"nombre": os.path.basename(p), "tipo": t} for p, t in IM.archivos_pendientes(self.carpeta)]}}
 
     # ───── acciones ─────
-    def importar_carpeta(self):
+    def importar_carpeta(self, previa=False):
         resultados = []
         for ruta, tipo in IM.archivos_pendientes(self.carpeta):
-            resultados.append(self._importar(ruta, tipo))
+            resultados.append(self._importar(ruta, tipo, previa=previa))
         if not resultados: return {"ok": True, "resultados": [], "mensaje": "No hay archivos en la carpeta Importar."}
         return {"ok": all(r.get("ok") or r.get("necesita") for r in resultados), "resultados": resultados}
 
-    def _importar(self, ruta, tipo=None, cuenta=None, perfil=None):
+    # ───── vista previa de una importación: el mismo código que importa de verdad, dentro de una simulación que se deshace ─────
+    def _ids(self):
+        return {t: {x["id"] for x in self.alm.todos(t)} for t in ("movimiento", "aportacion", "pendiente", "activo")}
+
+    def _informe_previa(self, antes, r):
+        nuevos = lambda t: [x for x in self.alm.todos(t) if x["id"] not in antes[t]]
+        movs, aps, pend, acts = nuevos("movimiento"), nuevos("aportacion"), nuevos("pendiente"), nuevos("activo")
+        firmado = lambda m: -m["importe"] if m["clase"] == "gasto" else m["importe"] if m["clase"] in ("ingreso", "reembolso") else 0
+        fechas = [m["fecha"] for m in movs] + [a["fecha"] for a in aps] + [p["fila"]["op"] for p in pend]
+        gasto_cat = {}
+        for m in movs:
+            if m["clase"] == "gasto": gasto_cat[m.get("categoria") or "Sin categoría"] = gasto_cat.get(m.get("categoria") or "Sin categoría", 0) + m["importe"]
+        saldo = (self.alm.config(f"saldo_extracto:{r['cuenta']}") or None) if r.get("cuenta") else None
+        return {
+            "movimientos": {"n": len(movs), "ingresos": round(sum(m["importe"] for m in movs if m["clase"] in ("ingreso", "reembolso")), 2),
+                            "gastos": round(sum(m["importe"] for m in movs if m["clase"] == "gasto"), 2), "traspasos": sum(1 for m in movs if m["clase"] == "transferencia")},
+            "aportaciones": {"n": len(aps), "compras": round(sum(a["importe"] for a in aps if a["importe"] > 0), 2), "ventas": round(-sum(a["importe"] for a in aps if a["importe"] < 0), 2)},
+            "activos_nuevos": [a["nombre"] for a in acts], "existentes": r.get("existentes", 0),
+            "dudas": {"n": len(pend), "muestra": [{"fecha": p["fila"]["op"], "texto": p["fila"].get("texto", ""), "importe": p["fila"].get("importe", 0)}
+                                                   for p in sorted(pend, key=lambda p: p["fila"]["op"], reverse=True)[:6]]},
+            "desde": min(fechas) if fechas else None, "hasta": max(fechas) if fechas else None,
+            "saldo_final": saldo,
+            "muestra": [{"fecha": m["fecha"], "concepto": m.get("concepto", ""), "importe": firmado(m), "categoria": m.get("categoria", ""), "clase": m["clase"]}
+                        for m in sorted(movs, key=lambda m: (m["fecha"], m["id"]), reverse=True)[:12]],
+            "categorias": [{"categoria": c, "total": round(v, 2)} for c, v in sorted(gasto_cat.items(), key=lambda kv: -kv[1])[:6]],
+        }
+
+    def _importar(self, ruta, tipo=None, cuenta=None, perfil=None, previa=False, antes=None):
+        """previa: no guarda nada, enseña el informe de lo que pasaría (`antes`: algo que hacer dentro de la simulación, p. ej. crear el formato)."""
         nombre = os.path.basename(ruta)
         try:
+            if previa:
+                with self.alm.simular():
+                    if antes: antes()
+                    ids = self._ids()
+                    r = IM.importar_archivo(self.alm, self.carpeta, ruta, tipo, cuenta, perfil, simulando=True)
+                    if r.get("ok"): r["previa"] = self._informe_previa(ids, r)
+                return {**r, "archivo": nombre}
             r = IM.importar_archivo(self.alm, self.carpeta, ruta, tipo, cuenta, perfil)
             if r.get("ok") and r.get("tipo") == "banco": bizums.enlazar(self.alm)
             c, fallo = jev.config(self.alm), None
@@ -101,7 +136,7 @@ class App:
         tipo = d.get("tipo") if d.get("tipo") in ("banco", "inversion", "operaciones") else None
         ruta = os.path.join(self.carpeta.carpeta_import(tipo), nombre)
         with io.open(ruta, "wb") as fh: fh.write(datos)
-        return self._importar(ruta, tipo)
+        return {**self._importar(ruta, tipo, previa=bool(d.get("previa"))), "subido": True}
 
     def reintentar(self, d):
         """Tras configurar el formato o elegir la cuenta: vuelve a importar el archivo."""
@@ -109,10 +144,21 @@ class App:
         ruta = next((p for p, t in IM.archivos_pendientes(self.carpeta) if os.path.basename(p) == nombre), None)
         if not ruta: return {"ok": False, "mensaje": f"No encuentro «{nombre}» en la carpeta Importar."}
         tipo = d.get("tipo") if d.get("tipo") in ("banco", "inversion", "operaciones") else None
-        if d.get("columnas"):
-            IM.crear_perfil(self.alm, d.get("perfil") or os.path.splitext(nombre)[0], tipo or "banco", d["columnas"], d.get("cuenta"),
-                            d.get("compras_negativas", True))
+        crear = (lambda: IM.crear_perfil(self.alm, d.get("perfil") or os.path.splitext(nombre)[0], tipo or "banco", d["columnas"], d.get("cuenta"),
+                                         d.get("compras_negativas", True))) if d.get("columnas") else None
+        if d.get("previa"):  # el formato nuevo también se crea solo dentro de la simulación
+            r = self._importar(ruta, tipo, d.get("cuenta"), d.get("perfil"), previa=True, antes=crear)
+            return {**r, "subido": bool(d.get("subido")), "peticion": {k: d.get(k) for k in ("archivo", "tipo", "cuenta", "perfil", "columnas", "compras_negativas") if d.get(k) is not None}} if r.get("previa") else r
+        if crear: crear()
         return self._importar(ruta, tipo, d.get("cuenta"), d.get("perfil"))
+
+    def descartar_archivo(self, d):
+        """Quita de la carpeta Importar un archivo subido que al ver la vista previa no se quiere importar."""
+        nombre = os.path.basename(d.get("archivo") or "")
+        ruta = next((p for p, t in IM.archivos_pendientes(self.carpeta) if os.path.basename(p) == nombre), None)
+        if not ruta: return {"ok": False, "mensaje": f"No encuentro «{nombre}» en la carpeta Importar."}
+        os.remove(ruta)
+        return {"ok": True, "mensaje": f"«{nombre}» descartado: no se ha importado nada."}
 
     def bienvenida(self, d):
         """Primer arranque: cuentas con su saldo de hoy, límite de gasto y fondo de emergencia."""
@@ -220,7 +266,8 @@ class App:
             return {"ok": True}
         if ruta == "/api/recategorizar": return {"ok": True, "mensaje": IM.recategorizar(a, int(d["id"]), d)}
         if ruta == "/api/parecidos": return {"ok": True, **IM.parecidos(a, int(d["id"]))}
-        if ruta == "/api/importar/carpeta": return self.importar_carpeta()
+        if ruta == "/api/importar/carpeta": return self.importar_carpeta(bool(d.get("previa")))
+        if ruta == "/api/importar/descartar": return self.descartar_archivo(d)
         if ruta == "/api/importar/subir": return self.subir(d)
         if ruta == "/api/importar/reintentar": return self.reintentar(d)
         if ruta == "/api/resolver":

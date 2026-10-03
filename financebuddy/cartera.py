@@ -21,7 +21,7 @@ def unir(alm, origen_id, destino_id):
     o, d = _activo(alm, origen_id), _activo(alm, destino_id)
     if o["id"] == d["id"]: raise ValueError("Elige otro activo.")
     with alm.transaccion():
-        for tipo, campo in (("aportacion", "activo"), ("operacion", "activo"), ("recurrente", "activo_inversion")):
+        for tipo, campo in (("aportacion", "activo"), ("operacion", "activo"), ("recurrente", "activo_inversion"), ("cobro", "activo")):
             for r in alm.todos(tipo):
                 if r.get(campo) == o["nombre"]: alm.guardar(tipo, {**r, campo: d["nombre"]}, r["id"])
         for r in alm.todos("patrimonio"):
@@ -50,6 +50,8 @@ def borrar(alm, id, era_traspaso=False):
             alm.borrar("aportacion", x["id"])
         for x in alm.todos("operacion"):
             if x.get("activo") == a["nombre"]: alm.borrar("operacion", x["id"])
+        for x in alm.todos("cobro"):  # dividendos y comisiones del activo (lo del extracto no reaparece al reimportar)
+            if x.get("activo") == a["nombre"]: _ignorar_extracto(alm, x); alm.borrar("cobro", x["id"])
         if era_traspaso:
             for x in ops:
                 if not x.get("ext_texto"): continue

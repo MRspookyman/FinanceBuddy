@@ -13,6 +13,47 @@ class TestFlujo(unittest.TestCase):
     def api(self, ruta, d=None):
         return self.app.manejar(ruta, d or {})
 
+    def test_vista_previa_no_guarda_nada_y_coincide_con_la_importacion(self):
+        self.api("/api/bienvenida", {"cuentas": [{"nombre": "Nómina", "tipo": "corriente", "saldo": 1000}]})
+        ruta = os.path.join(self.dir, "x.xlsx"); excel_santander(ruta, FILAS)
+        with open(ruta, "rb") as fh: b64 = base64.b64encode(fh.read()).decode()
+        r = self.api("/api/importar/subir", {"nombre": "movimientos.xlsx", "tipo": "banco", "contenido": b64, "previa": True})
+        self.assertEqual(r["necesita"], "cuenta"); self.assertTrue(r["subido"])
+        antes = (len(self.app.alm.todos("movimiento")), len(self.app.alm.todos("pendiente")), self.app.alm.config("saldo_extracto:Nómina"))
+        v = self.api("/api/importar/reintentar", {"archivo": r["archivo"], "tipo": "banco", "cuenta": "Nómina", "perfil": r["perfil"], "previa": True, "subido": True})
+        self.assertTrue(v["ok"] and v["subido"], v)
+        P = v["previa"]
+        # Nada se ha guardado y el archivo sigue ahí para confirmarlo
+        self.assertEqual((len(self.app.alm.todos("movimiento")), len(self.app.alm.todos("pendiente")), self.app.alm.config("saldo_extracto:Nómina")), antes)
+        self.assertTrue(any(os.path.basename(p) == r["archivo"] for p, _ in __import__("financebuddy.importar", fromlist=["x"]).archivos_pendientes(self.app.carpeta)))
+        self.assertGreater(P["movimientos"]["n"], 0); self.assertIsNotNone(P["saldo_final"]); self.assertLessEqual(len(P["muestra"]), 12)
+        # Y la importación de verdad da exactamente lo que enseñó la vista previa
+        real = self.api("/api/importar/reintentar", {"archivo": r["archivo"], "tipo": "banco", "cuenta": "Nómina", "perfil": r["perfil"]})
+        self.assertTrue(real["ok"] and "previa" not in real, real)
+        movs, pend = self.app.alm.todos("movimiento"), self.app.alm.todos("pendiente")
+        self.assertEqual((P["movimientos"]["n"], P["dudas"]["n"]), (len(movs), len(pend)))
+        self.assertEqual(round(sum(m["importe"] for m in movs if m["clase"] == "gasto"), 2), P["movimientos"]["gastos"])
+        # Repetir la vista previa con lo ya importado: todo «ya estaba»
+        self.assertEqual(self.api("/api/importar/descartar", {"archivo": r["archivo"]})["ok"], False)  # ya está en Procesados
+
+    def test_descartar_un_archivo_subido(self):
+        self.api("/api/bienvenida", {"cuentas": [{"nombre": "Nómina", "tipo": "corriente", "saldo": 1000}]})
+        ruta = os.path.join(self.dir, "x.xlsx"); excel_santander(ruta, FILAS)
+        with open(ruta, "rb") as fh: b64 = base64.b64encode(fh.read()).decode()
+        r = self.api("/api/importar/subir", {"nombre": "otro.xlsx", "tipo": "banco", "contenido": b64, "previa": True})
+        self.assertTrue(self.api("/api/importar/descartar", {"archivo": r["archivo"]})["ok"])
+        self.assertEqual(self.app.datos()["info"]["archivos"], [])
+
+    def test_simular_deshace_aunque_falle(self):
+        alm = self.app.alm
+        with alm.simular(): alm.guardar("cuenta", {"nombre": "Fantasma", "tipo": "corriente"})
+        self.assertEqual(alm.todos("cuenta"), [])
+        with self.assertRaises(ValueError):
+            with alm.simular(): alm.guardar("cuenta", {"nombre": "Otra", "tipo": "corriente"}); raise ValueError("fallo")
+        self.assertEqual(alm.todos("cuenta"), [])
+        alm.guardar("cuenta", {"nombre": "Real", "tipo": "corriente"})   # y la base sigue funcionando
+        self.assertEqual([c["nombre"] for c in alm.todos("cuenta")], ["Real"])
+
     def test_activo_largo_plazo(self):
         r = self.api("/api/guardar", {"tipo": "activo", "datos": {"nombre": "Fondo A", "clase": "fondo"}})
         self.assertTrue(r["ok"], r)

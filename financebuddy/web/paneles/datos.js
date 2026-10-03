@@ -85,7 +85,7 @@ const cfg = DB.config || {};
 // Cada registro lleva `file` (nombre y enlace para editarlo), como las notas de la versión anterior.
 const registros = (tipo) => (DB.registros[tipo] || []).map((r) => ({ ...r, file: { name: r.nombre || r.concepto || r.patron || r.mes || r.fecha || tipo, path: `#editar/${tipo}/${r.id}` } }));
 
-let _movs, _cats, _pat, _objs, _recs, _activos, _aports, _cuentas;
+let _movs, _cats, _pat, _objs, _recs, _activos, _aports, _cuentas, _cobros;
 // Cuentas del usuario. tipo: corriente · ahorro · broker · otro. La «principal» es la primera corriente.
 const cuentas = () => (_cuentas ??= registros("cuenta").map((p) => ({ p, nombre: p.nombre, tipo: txt(p.tipo) || "corriente", extracto: !!p.extracto })));
 const cuentaPor = (n) => cuentas().find((c) => c.nombre === n);
@@ -228,6 +228,9 @@ const aportaciones = () => {
 };
 const aportacionesReales = () => aportaciones().filter((a) => !a.previsto);
 // Cuenta del bróker de la que se paga una aportación: la del activo, la de la aportación o la primera del bróker.
+// Dividendos y comisiones de los activos (no cambian sus participaciones): importe siempre positivo, `tipo` dice el sentido.
+const cobros = () => (_cobros ??= registros("cobro").map((p) => ({ p, fecha: toDate(p.fecha), activo: txt(p.activo), tipo: txt(p.tipo) || "dividendo", importe: num(p.importe), cuenta: txt(p.cuenta) }))
+  .filter((c) => c.fecha && c.fecha <= finHoy).sort((a, b) => a.fecha.toMillis() - b.fecha.toMillis()));
 const cuentaAportacion = (a) => {
   const act = registros("activo").find((x) => x.nombre === a.activo);
   return (act && act.cuenta) || a.cuenta || cuentasTipo("broker")[0] || "";

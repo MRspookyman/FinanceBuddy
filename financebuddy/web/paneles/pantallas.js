@@ -89,6 +89,9 @@ function vistaImportar() {
   const radios = [["", "Detectar solo"], ["banco", "Extracto del banco"], ["inversion", "Movimientos del bróker"]].map(([v, t]) => {
     const l = tipoSel.createEl("label"); const r = l.createEl("input", { attr: { type: "radio", name: "tipoimp" } }); r.checked = v === tipo; r.onchange = () => (tipo = v); l.appendText(t); return r;
   });
+  const fp = pS.createDiv({ cls: "fb-fila" });
+  const lp = fp.createEl("label"); const cp = lp.createEl("input", { attr: { type: "checkbox" } }); cp.checked = quierePrevia(); cp.onchange = () => guardarPrevia(cp.checked);
+  lp.appendText("Ver antes de importar (no se guarda nada hasta que lo confirmes)");
   const zona = pS.createDiv({ cls: "fb-zona", text: "Arrastra aquí el Excel o CSV, o pulsa para elegirlo" });
   const inp = pS.createEl("input", { attr: { type: "file", accept: ".xlsx,.xls,.csv,.txt", multiple: "" } }); inp.style.display = "none";
   zona.onclick = () => inp.click();
@@ -96,7 +99,7 @@ function vistaImportar() {
     for (const f of files) {
       zona.textContent = `Importando ${f.name}…`;
       const b64 = await new Promise((ok) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(",")[1] || ""); r.readAsDataURL(f); });
-      const r = await FB.api("/api/importar/subir", { nombre: f.name, tipo: tipo || null, contenido: b64 });
+      const r = await FB.api("/api/importar/subir", { nombre: f.name, tipo: tipo || null, contenido: b64, previa: quierePrevia() });
       guardarImport([r, ...resultadosImport]);
     }
     await FB.refrescar();
@@ -112,7 +115,7 @@ function vistaImportar() {
   if (arch.length) filasDato(pC, arch.map((a) => ({ l: a.nombre, s: a.tipo === "banco" ? "banco" : a.tipo === "inversion" ? "bróker" : "se detectará el tipo", v: "" })));
   const fb = pC.createDiv({ cls: "fb-fila" });
   const bI = fb.createEl("button", { cls: "fb-btn", text: arch.length ? `Importar ${arch.length} archivo${arch.length > 1 ? "s" : ""}` : "Importar la carpeta" });
-  bI.onclick = async () => { bI.disabled = true; bI.textContent = "Importando…"; const r = await FB.api("/api/importar/carpeta", {}); guardarImport([...(r.resultados || [r]), ...resultadosImport]); await FB.refrescar(); };
+  bI.onclick = async () => { bI.disabled = true; bI.textContent = "Importando…"; const r = await FB.api("/api/importar/carpeta", { previa: quierePrevia() }); guardarImport([...(r.resultados || [r]), ...resultadosImport]); await FB.refrescar(); };
   const bA = fb.createEl("button", { cls: "fb-btn sec", text: "Abrir la carpeta" });
   bA.onclick = () => FB.api("/api/abrir_carpeta", {});
 
@@ -131,8 +134,42 @@ function vistaImportar() {
     ]);
   }, { extra: "ayuda" });
 }
+// ¿Se enseña antes lo que se va a importar? (se recuerda en este navegador; sí de serie)
+const quierePrevia = () => { try { return localStorage.getItem("fb-previa") !== "0"; } catch (_) { return true; } };
+const guardarPrevia = (v) => { try { localStorage.setItem("fb-previa", v ? "1" : "0"); } catch (_) {} };
+// Vista previa: lo que pasaría al importar (el mismo código, en una simulación que se deshace) con totales para comparar con tu banco.
+function tarjetaPrevia(card, r) {
+  const V = r.previa, M = V.movimientos, A = V.aportaciones;
+  card.classList.add("fb-previa");
+  card.createDiv({ cls: "top", text: `${r.archivo}: así quedaría (aún no se ha guardado nada)` });
+  const t = [];
+  if (M.n) t.push({ l: "Movimientos nuevos", v: String(M.n), s: V.desde ? `del ${fechaCorta(V.desde)} al ${fechaCorta(V.hasta)}` : "" }, { l: "Entra", v: eur(M.ingresos, 2), t: "pos" }, { l: "Sale", v: eur(M.gastos, 2), s: M.traspasos ? `+ ${M.traspasos} traspaso${M.traspasos > 1 ? "s" : ""}` : "" });
+  if (A.n) t.push({ l: "Compras y ventas", v: String(A.n), s: `compras ${eur(A.compras, 0)}${A.ventas ? ` · ventas ${eur(A.ventas, 0)}` : ""}` });
+  if (V.saldo_final) t.push({ l: "Saldo del extracto", v: eur(V.saldo_final.saldo, 2), s: `a ${fechaCorta(V.saldo_final.fecha)}: compáralo con tu banco` });
+  t.push({ l: "Ya estaban", v: String(V.existentes), s: "se omiten, no se duplican" }, { l: "Por revisar", v: String(V.dudas.n), t: V.dudas.n ? "neg" : "" });
+  tiles(card, t);
+  if (V.activos_nuevos.length) card.createDiv({ cls: "fin-note", text: `Se crearían los activos: ${V.activos_nuevos.join(", ")}.` });
+  if (V.categorias.length) card.createDiv({ cls: "fin-note", text: "Más gasto: " + V.categorias.map((c) => `${c.categoria} ${eur(c.total, 0)}`).join(" · ") });
+  if (V.muestra.length) plegable(card, `Ver los últimos ${V.muestra.length} movimientos`, (c) => tabla(c, [{ t: "Fecha" }, { t: "Concepto" }, { t: "Categoría", opt: true }, { t: "Importe", num: true }],
+    V.muestra.map((m) => [fechaCorta(m.fecha), m.concepto, m.clase === "transferencia" ? "Entre tus cuentas" : m.categoria, { text: eurS(m.importe), cls: m.importe < 0 ? "neg" : "" }])));
+  if (V.dudas.n) plegable(card, `Lo que quedaría por revisar (${V.dudas.n})`, (c) => tabla(c, [{ t: "Fecha" }, { t: "Texto del extracto" }, { t: "Importe", num: true }],
+    V.dudas.muestra.map((m) => [fechaCorta(m.fecha), m.texto, eurS(m.importe)])));
+  const f = card.createDiv({ cls: "fb-fila" });
+  const bOk = f.createEl("button", { cls: "fb-btn", text: "Importar ahora" });
+  bOk.onclick = async () => {
+    bOk.disabled = true;
+    const x = await FB.api("/api/importar/reintentar", { ...(r.peticion || { archivo: r.archivo, tipo: r.tipo, cuenta: r.cuenta, perfil: r.perfil }), previa: false });
+    reemplazar(r, x);
+  };
+  const bNo = f.createEl("button", { cls: "fb-btn sec", text: r.subido ? "No importar (descartar el archivo)" : "Cerrar" });
+  bNo.onclick = async () => {
+    if (r.subido) { const x = await FB.api("/api/importar/descartar", { archivo: r.archivo }); FB.aviso(x.mensaje || "Hecho", !x.ok); }
+    guardarImport(resultadosImport.filter((y) => y !== r)); await FB.refrescar();
+  };
+}
 function resultadoImport(padre, r) {
   const card = padre.createDiv({ cls: "fb-card" });
+  if (r.ok && r.previa) { tarjetaPrevia(card, r); return; }
   if (r.ok) {
     mensaje(card, r.mensaje || "Importado", "ok");
     if (r.dudas) enlace(card, `Revisar ${r.dudas} movimiento${r.dudas > 1 ? "s" : ""} →`, "#revisar");
@@ -144,7 +181,7 @@ function resultadoImport(padre, r) {
     card.createDiv({ cls: "top", text: `${r.archivo}: ¿de qué cuenta es este extracto?` });
     card.createDiv({ cls: "txt", text: `Formato reconocido: ${r.perfil}. Elige la cuenta; se recordará para la próxima vez.` });
     const f = card.createDiv({ cls: "fb-fila" });
-    const importarEn = async (cuenta, b) => { b.disabled = true; const x = await FB.api("/api/importar/reintentar", { archivo: r.archivo, tipo: r.tipo, cuenta, perfil: r.perfil }); reemplazar(r, x); };
+    const importarEn = async (cuenta, b) => { b.disabled = true; const x = await FB.api("/api/importar/reintentar", { archivo: r.archivo, tipo: r.tipo, cuenta, perfil: r.perfil, previa: quierePrevia(), subido: !!r.subido }); reemplazar(r, x); };
     if (!(r.cuentas || []).length) {
       const esBroker = r.tipo === "inversion";
       f.appendText(esBroker ? "Aún no tienes una cuenta de bróker. Créala:" : "Aún no tienes esa cuenta. Créala:");
@@ -217,7 +254,7 @@ function configurarFormato(card, r) {
   b.onclick = async () => {
     const columnas = {}; for (const [k] of campos()) if (sel[k]) columnas[k] = sel[k];
     b.disabled = true;
-    const x = await FB.api("/api/importar/reintentar", { archivo: r.archivo, tipo, columnas, perfil: iN.value, cuenta: sC.value, compras_negativas: cNeg ? cNeg.checked : true });
+    const x = await FB.api("/api/importar/reintentar", { archivo: r.archivo, tipo, columnas, perfil: iN.value, cuenta: sC.value, compras_negativas: cNeg ? cNeg.checked : true, previa: quierePrevia(), subido: !!r.subido });
     b.disabled = false;
     if (!x.ok && !x.necesita) { m.innerHTML = ""; mensaje(m, x.mensaje || "Error", "err"); return; }
     reemplazar(r, x);
@@ -424,8 +461,15 @@ function tarjetaGrupoInversion(padre, g) {
   if (sug.accion === "activo" && sug.activo) chip(`✨ ${entra ? "Venta de" : "Compra de"} ${sug.activo}`, () => ({ accion: "activo", activo: sug.activo }), "sug");
   if (sug.accion === "ignorar") chip(`✨ 🔁 Traspaso ${entra ? "desde" : "a"} mi banco${jv}`, () => ({ accion: "ignorar" }), "sug", "El dinero que pasas entre el banco y el bróker ya cuenta en el extracto del banco");
   if (sug.accion === "interes") chip(`✨ ${entra ? "💰 Intereses" : "🏦 Comisión"}${jv}`, () => ({ accion: "interes" }), "sug");
+  if (sug.accion === "dividendo" && sug.activo) chip(`✨ 💵 Dividendo de ${sug.activo}`, () => ({ accion: "dividendo", activo: sug.activo }), "sug");
   for (const a of acts.filter((a) => a !== sug.activo)) chip(`📈 ${a}`, () => ({ accion: "activo", activo: a }));
-  if (sug.accion !== "interes") chip(entra ? "💰 Intereses o dividendos" : "🏦 Comisión", () => ({ accion: "interes" }));
+  if (sug.accion !== "interes") chip(entra ? "💰 Intereses" : "🏦 Comisión", () => ({ accion: "interes" }));
+  if (entra && acts.length) {  // un dividendo o cupón: de qué activo
+    const sD = chips.createEl("select", { cls: "otra" });
+    const d0 = sD.createEl("option", { text: sug.accion === "dividendo" && !sug.activo ? "✨ Dividendo de…" : "Dividendo de…" }); d0.value = "";
+    for (const a of acts) { const o = sD.createEl("option", { text: `💵 ${a}` }); o.value = a; }
+    sD.onchange = () => { if (sD.value) hecho({ accion: "dividendo", activo: sD.value }, sD); };
+  }
   if (sug.accion !== "ignorar") chip(entra ? "🔁 Traspaso desde mi banco" : "🔁 Traspaso a mi banco", () => ({ accion: "ignorar" }));
   if (entra && sug.nuevo) chip(`Venta: nuevo activo «${nombreNuevo}»`, () => ({ accion: "activo", nuevo_activo: nombreNuevo, clase: sug.clase }));
   plegable(card, "Opciones", (c) => {
@@ -862,6 +906,7 @@ function vistaAjustes() {
     ["📄", "Formatos de archivo", "cómo se lee el Excel de cada banco", "#gestionar/perfil"],
     ["📒", "Todos los movimientos", `${cnt("movimiento")} registrados`, "#gestionar/movimiento"],
     ["📥", "Compras de inversión", `${cnt("aportacion")} aportaciones`, "#gestionar/aportacion"],
+    ["💵", "Dividendos y comisiones", `${cnt("cobro")} registrados · para la renta`, "#gestionar/cobro"],
   ]);
 
   const pC = panel(root, "Carpeta de datos y copias de seguridad");
@@ -1037,6 +1082,7 @@ function vistaEditar() {
   const F = FORMS[tipo];
   if (!F) { FB.ir("#ajustes"); return; }
   let reg = id === "nuevo" ? null : (DB.registros[tipo] || []).find((r) => String(r.id) === String(id));
+  if (id === "nuevo" && tipo === "cobro" && params[2]) { const act = (DB.registros.activo || []).find((r) => String(r.id) === params[2]); if (act) reg = { activo: act.nombre }; }
   if (id === "nuevo" && tipo === "aportacion" && params[2]) { const act = (DB.registros.activo || []).find((r) => String(r.id) === params[2]); if (act) reg = { activo: act.nombre }; }
   titulo(reg && reg.id ? `Editar ${F.uno}` : `Nuevo: ${F.uno}`, F.ayuda || "");
   if (id !== "nuevo" && !reg) { vacio(root, "Ese registro ya no existe"); return; }
@@ -1106,11 +1152,11 @@ function cambioCategoria(padre, reg, volver) {
 
 // ───────────── render ─────────────
 const TODAS = { ...VISTAS, bienvenida: vistaBienvenida, importar: vistaImportar, revisar: vistaRevisar, apuntar: vistaApuntar, cerrar: vistaCerrar,
-  valores: vistaValores, ajustes: vistaAjustes, gestionar: vistaGestionar, editar: vistaEditar, fijos: vistaFijos, activo: vistaActivo, revision: vistaRevision, progreso: vistaProgreso };
+  valores: vistaValores, ajustes: vistaAjustes, gestionar: vistaGestionar, editar: vistaEditar, fijos: vistaFijos, activo: vistaActivo, revision: vistaRevision, progreso: vistaProgreso, renta: vistaRenta };
 const TITULOS = { inicio: "Inicio", movimientos: "Movimientos", inversion: "Inversión",
-  bienvenida: "Bienvenida", importar: "Importar", revisar: "Por revisar", apuntar: "Apuntar", cerrar: "Cerrar el mes", valores: "Valores", ajustes: "Ajustes", gestionar: "Ajustes", editar: "Editar", fijos: "Fijos", activo: "Inversión", revision: "Revisar categorías", progreso: "Tu progreso" };
+  bienvenida: "Bienvenida", importar: "Importar", revisar: "Por revisar", apuntar: "Apuntar", cerrar: "Cerrar el mes", valores: "Valores", ajustes: "Ajustes", gestionar: "Ajustes", editar: "Editar", fijos: "Fijos", activo: "Inversión", revision: "Revisar categorías", progreso: "Tu progreso", renta: "Para la renta" };
 function render() {
-  _movs = _movsMes = _aports = _objs = _pat = _cuentas = _recs = _activos = _cats = undefined; _finMes = new Map(); _pos = new Map();
+  _movs = _movsMes = _aports = _objs = _pat = _cuentas = _recs = _activos = _cats = _cobros = undefined; _finMes = new Map(); _pos = new Map();
   root.empty();
   const sinConfigurar = !cuentas().length && !["bienvenida", "ajustes", "gestionar", "editar"].includes(vista);
   (sinConfigurar ? vistaBienvenida : TODAS[vista] || vistaInicio)();
@@ -1123,5 +1169,5 @@ if (input && input.exponer) {
   window.__fin = { finMes, repartoAhorro, estimacion, conciliacion, prevision, resumenInversion, fondoEmergencia, gastoVariable, tasa12,
     movimientos, aportaciones, objetivos, patrimonio, avisos, categorias, grupoDe, limiteVar, mesesHasta, mesAnterior, hoyKey,
     fechaDatos, presupuestoSemana, planReparto, cuentas, proyectar, resumenCategorias, ritmoMes, evolucionInversion, aportacionesMes, constancia, interesesBroker, saludInversion, posicion, valorInfo,
-    hitosPatrimonio, proyeccion, mesesHasta50, puntosInversion, rendimientoPuntos, comisionesInversion, tamañoCompras };
+    hitosPatrimonio, proyeccion, mesesHasta50, puntosInversion, rendimientoPuntos, comisionesInversion, tamañoCompras, fifoVentas, cobros };
 }

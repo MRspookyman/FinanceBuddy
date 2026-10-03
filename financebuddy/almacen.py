@@ -37,6 +37,18 @@ class Almacen:
             self._tx -= 1
             if self._tx == 0: self.con.execute("COMMIT")
 
+    @contextmanager
+    def simular(self):
+        """Todo lo que se escriba dentro se deshace al salir: sirve para enseñar qué pasaría (vista previa de una importación)
+        con exactamente el mismo código que lo haría de verdad. No se puede anidar dentro de otra transacción."""
+        with self.lock:
+            if self._tx != 0: raise RuntimeError("No se puede simular dentro de otra operación.")
+            self.con.execute("BEGIN"); self._tx = 1
+            try: yield self
+            finally:
+                self._tx = 0
+                self.con.execute("ROLLBACK")
+
     # ───── registros ─────
     def todos(self, tipo):
         with self.lock:

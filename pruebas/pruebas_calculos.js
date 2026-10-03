@@ -115,4 +115,19 @@ caso("Tamaño de compras: 100 pequeña, 200 habitual, 400 grande; con menos de 6
 const RIs = F.resumenInversion(true);
 caso("«Solo largo plazo»: sin activos marcados como corto, es lo mismo que todo", cerca(RIs.total, RI.total) && RIs.filas.length === RI.filas.length, [RIs.total, RI.total]);
 
+// 13. Plusvalías por FIFO y traspasos entre fondos
+const op = (id, f, activo, importe, part, extra = {}) => ({ id, fecha: d(f), activo, importe, part, traspaso: false, ajuste: false, ...extra });
+const FX = F.fifoVentas([
+  op(1, "2026-01-10", "A", 100, 10), op(2, "2026-02-10", "A", 150, 10), op(3, "2026-06-01", "A", -300, -15),
+  op(4, "2026-07-01", "A", -100, -5, { traspaso: true }), op(5, "2026-07-02", "B", 100, 4, { traspaso: true }), op(6, "2026-09-01", "B", -120, -4),
+  op(7, "2026-03-01", "C", 50, null), op(8, "2026-08-01", "C", -60, -1),
+  op(9, "2026-04-01", "A", 0, 1, { ajuste: true }),
+]);
+caso("FIFO: vender 15 de A (10 a 100 € + 5 de los 10 a 150 €) cuesta 175 € y da +125 €", FX.ventas.length === 2 && cerca(FX.ventas[0].coste, 175) && cerca(FX.ventas[0].resultado, 125) && FX.ventas[0].activo === "A", FX.ventas[0]);
+caso("Traspaso A→B: no es venta; B hereda el coste (75 €) y vender 4 por 120 € da +45 €", cerca(FX.ventas[1].coste, 75) && cerca(FX.ventas[1].resultado, 45) && FX.ventas[1].activo === "B" && FX.traspasos === 1, FX.ventas[1]);
+caso("Sin participaciones no se calcula: C queda aparte y los ajustes no cuentan", FX.sinDatos.length === 1 && FX.sinDatos[0] === "C" && !FX.ventas.some((v) => v.activo === "C"), FX.sinDatos);
+const FY = F.fifoVentas([op(1, "2026-01-10", "A", 100, 10), op(2, "2026-02-10", "A", -300, -15)]);
+caso("Vender más de lo comprado: se avisa de lo que falta (5 participaciones)", cerca(FY.ventas[0].faltan, 5) && cerca(FY.ventas[0].unidades, 10) && cerca(FY.ventas[0].valor, 200), FY.ventas[0]);
+caso("Dividendos: sin cobros en los datos de ejemplo, la ganancia no cambia", F.cobros().length === 0 && RI.filas.every((f) => f.cobrado === 0), F.cobros().length);
+
 return casos;
