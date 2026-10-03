@@ -909,7 +909,7 @@ function vistaAjustes() {
     ["💳", "Cuentas", `${cnt("cuenta")} cuentas`, "#gestionar/cuenta"],
     ["🏷️", "Categorías", `${cnt("categoria")} categorías`, "#gestionar/categoria"],
     ["🧠", "Reglas", "cómo se clasifica cada comercio", "#gestionar/regla"],
-    ["🌱", "Inversión", `${cnt("activo")} activos · actualizar su valor`, "#valores"],
+    ["🌱", "Inversión", `${cnt("activo")} activos · editar o borrar`, "#gestionar/activo"],
     ["🎯", "Objetivos", `${cnt("objetivo")} metas de ahorro`, "#gestionar/objetivo"],
     ["⏰", "Recordatorios", "renta, ITV, seguros anuales…", "#gestionar/recordatorio"],
     ["📄", "Formatos de archivo", "cómo se lee el Excel de cada banco", "#gestionar/perfil"],
