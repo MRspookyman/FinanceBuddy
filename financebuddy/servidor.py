@@ -5,7 +5,7 @@ from . import VERSION, bizums, cartera, clasificar as C, detectar, importar as I
 from .almacen import Almacen
 
 mimetypes.add_type("font/woff2", ".woff2")
-MODULOS = ["datos", "calculos", "componentes", "graficos", "inicio", "inversion", "formularios", "pantallas"]
+MODULOS = ["datos", "calculos", "componentes", "graficos", "inicio", "inversion", "progreso", "formularios", "pantallas"]
 MAX_SUBIDA = 25 * 1024 * 1024
 ACENTOS = ["salvia", "violeta", "azul", "verde", "coral", "rosa", "grafito"]  # colores de acento (estilos.css: body[data-acento])
 

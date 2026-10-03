@@ -32,7 +32,7 @@ function chart(padre, render) {
       const g = e.target && e.target.closest ? e.target.closest("[data-tip]") : null;
       if (!tip) return;
       if (!g) { tip.classList.remove("on"); return; }
-      tip.textContent = g.getAttribute("data-tip");
+      tip.textContent = FB.enmascarar(g.getAttribute("data-tip"));
       tip.classList.add("on");
       const r = wrap.getBoundingClientRect();
       let x = e.clientX - r.left + 14;

@@ -1106,9 +1106,9 @@ function cambioCategoria(padre, reg, volver) {
 
 // ───────────── render ─────────────
 const TODAS = { ...VISTAS, bienvenida: vistaBienvenida, importar: vistaImportar, revisar: vistaRevisar, apuntar: vistaApuntar, cerrar: vistaCerrar,
-  valores: vistaValores, ajustes: vistaAjustes, gestionar: vistaGestionar, editar: vistaEditar, fijos: vistaFijos, activo: vistaActivo, revision: vistaRevision };
+  valores: vistaValores, ajustes: vistaAjustes, gestionar: vistaGestionar, editar: vistaEditar, fijos: vistaFijos, activo: vistaActivo, revision: vistaRevision, progreso: vistaProgreso };
 const TITULOS = { inicio: "Inicio", movimientos: "Movimientos", inversion: "Inversión",
-  bienvenida: "Bienvenida", importar: "Importar", revisar: "Por revisar", apuntar: "Apuntar", cerrar: "Cerrar el mes", valores: "Valores", ajustes: "Ajustes", gestionar: "Ajustes", editar: "Editar", fijos: "Fijos", activo: "Inversión", revision: "Revisar categorías" };
+  bienvenida: "Bienvenida", importar: "Importar", revisar: "Por revisar", apuntar: "Apuntar", cerrar: "Cerrar el mes", valores: "Valores", ajustes: "Ajustes", gestionar: "Ajustes", editar: "Editar", fijos: "Fijos", activo: "Inversión", revision: "Revisar categorías", progreso: "Tu progreso" };
 function render() {
   _movs = _movsMes = _aports = _objs = _pat = _cuentas = _recs = _activos = _cats = undefined; _finMes = new Map(); _pos = new Map();
   root.empty();
@@ -1122,5 +1122,6 @@ render();
 if (input && input.exponer) {
   window.__fin = { finMes, repartoAhorro, estimacion, conciliacion, prevision, resumenInversion, fondoEmergencia, gastoVariable, tasa12,
     movimientos, aportaciones, objetivos, patrimonio, avisos, categorias, grupoDe, limiteVar, mesesHasta, mesAnterior, hoyKey,
-    fechaDatos, presupuestoSemana, planReparto, cuentas, proyectar, resumenCategorias, ritmoMes, evolucionInversion, aportacionesMes, constancia, interesesBroker, saludInversion, posicion, valorInfo };
+    fechaDatos, presupuestoSemana, planReparto, cuentas, proyectar, resumenCategorias, ritmoMes, evolucionInversion, aportacionesMes, constancia, interesesBroker, saludInversion, posicion, valorInfo,
+    hitosPatrimonio, proyeccion, mesesHasta50, puntosInversion, rendimientoPuntos, comisionesInversion, tamañoCompras };
 }

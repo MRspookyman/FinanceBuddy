@@ -25,7 +25,8 @@ CAMPOS = {
     # ter: gastos corrientes anuales (%) · materia: materias primas (oro, cobre…).
     "activo": {"nombre": "texto*", "clase": ("fondo", "etf", "accion", "cripto", "materia", "otro"), "cuenta": "texto", "valor": "num",
                "fecha_valor": "fecha", "aportado_inicial": "num", "fecha_inicio": "fecha", "estado": ("activo", "vendido"),
-               "patrones": "lista", "isin": "texto", "ter": "num+"},
+               "patrones": "lista", "isin": "texto", "ter": "num+",
+               "largo_plazo": "bool"},  # largo_plazo: es inversión a largo plazo (vale sí si falta); el interruptor «solo largo plazo» deja fuera lo demás
     # importe: + compra, − venta · participaciones: las compradas (+) o vendidas (−), si el extracto las dice («… @ 2»).
     # orden: huella de la orden del bróker de la que sale (operaciones.py) · supuesta: «si», si la orden no decía si era
     # compra o venta y se ha supuesto (el extracto de la cuenta, si llega, lo corrige) · traspaso: «si», si es la mitad de
@@ -56,7 +57,7 @@ CAMPOS = {
     # Operación con participaciones pero sin importe (Excel de operaciones) que espera a su movimiento de la cuenta del bróker.
     "operacion": {"fecha": "fecha*", "activo": "texto*", "participaciones": "cant*", "orden": "texto"},
 }
-POR_DEFECTO_SI = {("activo", "recurrente"), ("compras_negativas", "perfil")}  # booleanos que, si faltan, valen sí
+POR_DEFECTO_SI = {("activo", "recurrente"), ("compras_negativas", "perfil"), ("largo_plazo", "activo")}  # booleanos que, si faltan, valen sí
 EDITABLES = set(CAMPOS) - {"pendiente", "ignorado", "operacion"}
 # Referencias por nombre: al renombrar, se actualizan en los demás registros.
 REFERENCIAS = {

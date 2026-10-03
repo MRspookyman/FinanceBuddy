@@ -103,9 +103,9 @@ function flujosActivo(a) {
   fl.push({ fecha: hoy, importe: valorHoy(a) });
   return fl;
 }
-function resumenInversion() {
+function resumenInversion(soloLargo = false) {
   const AP = aportaciones(), APr = aportacionesReales();
-  const todas = activos().map((a) => {
+  const todas = activos().filter((a) => !soloLargo || a.largo).map((a) => {
     const conocido = a.aportadoIni != null;
     const mias = APr.filter((x) => x.activo === a.nombre);
     const aportado = (a.aportadoIni || 0) + sum(mias.map((x) => x.importe));
@@ -191,8 +191,8 @@ function saludInversion(soloDe) {
 }
 
 // Evolución mes a mes: lo aportado acumulado (al final de cada mes) y lo que valía (registros de saldos + hoy).
-function evolucionInversion() {
-  const A = activos().filter((a) => a.conValor || !vendidoDelTodo(a));
+function evolucionInversion(soloLargo = false) {
+  const A = activos().filter((a) => (a.conValor || !vendidoDelTodo(a)) && (!soloLargo || a.largo));
   if (!A.length) return null;
   const nombres = new Set(A.map((a) => a.nombre));
   const APr = aportacionesReales().filter((x) => nombres.has(x.activo));
@@ -216,9 +216,10 @@ function evolucionInversion() {
 // Compras (y ventas) de cada mes: lo que has metido en tu inversión. Los traspasos entre fondos (vender uno para comprar
 // otro) no son dinero nuevo: no cuentan.
 const sinTraspasos = () => aportacionesReales().filter((x) => !x.p.traspaso);
-function aportacionesMes(n = 12) {
+function aportacionesMes(n = 12, soloLargo = false) {
   const keys = mesesHasta(hoyKey, n);
-  const APr = sinTraspasos();
+  const largos = soloLargo ? new Set(activos().filter((a) => a.largo).map((a) => a.nombre)) : null;
+  const APr = sinTraspasos().filter((x) => !largos || largos.has(x.activo));
   return keys.map((k) => ({ key: k, compras: sum(APr.filter((x) => keyDe(x.fecha) === k && x.importe > 0).map((x) => x.importe)),
     ventas: -sum(APr.filter((x) => keyDe(x.fecha) === k && x.importe < 0).map((x) => x.importe)) }));
 }
@@ -546,4 +547,90 @@ function avisos() {
     add(vencido ? "warn" : "info", `${r.nombre} · ${vencido ? "desde el" : "el"} ${r.fecha.toFormat("dd/MM/yyyy")}${r.texto ? ` · ${r.texto}` : ""}`, r.p.file.path);
   }
   return out;
+}
+
+// ───────────── progreso: hitos, proyección, esfuerzo y mercado, comisiones ─────────────
+// Funciones puras (reciben los datos) para poder probarlas con números sencillos.
+const HITOS = [1000, 2500, 5000, 10000, 25000, 50000, 100000, 250000, 500000, 1000000];
+// Hitos del patrimonio: los ya cruzados (con la fecha del primer registro que los supera; si solo los cruza la estimación de
+// hoy, la fecha es hoy) y los siguientes. puntos: [{ fecha, neto }] por orden de fecha · actual: patrimonio estimado hoy.
+function hitosPatrimonio(puntos, actual, hoyF) {
+  const techo = Math.max(actual || 0, ...puntos.map((p) => p.neto));
+  const logrados = HITOS.filter((h) => h <= techo).map((h) => {
+    const p = puntos.find((x) => x.neto >= h);
+    return { valor: h, fecha: p ? p.fecha : hoyF, hoy: !p };
+  });
+  const faltan = HITOS.filter((h) => h > (actual || 0));
+  return { logrados, proximos: faltan.slice(0, 2).map((h) => ({ valor: h, falta: h - (actual || 0) })), siguiente: faltan[0] || null };
+}
+// Proyección con aportación mensual constante y rentabilidad anual constante (capitalización mensual, aportación a fin de mes).
+// → por año (0..años): valor, aportado acumulado (incluye lo que ya tienes) y, con ellos, lo que pone el mercado.
+function proyeccion(inicial, apoMes, rentAnual, años) {
+  const rm = Math.pow(1 + rentAnual, 1 / 12) - 1;
+  let v = inicial;
+  const valor = [inicial], aportado = [inicial];
+  for (let m = 1; m <= años * 12; m++) {
+    v = v * (1 + rm) + apoMes;
+    if (m % 12 === 0) { valor.push(v); aportado.push(inicial + apoMes * m); }
+  }
+  const fin = valor[valor.length - 1], ap = aportado[aportado.length - 1];
+  return { valor, aportado, final: fin, aportadoFinal: ap, mercado: fin - ap };
+}
+// Meses que tardarías en llegar a `meta` con esos supuestos (null si no llega en 50 años).
+function mesesHasta50(inicial, apoMes, rentAnual, meta) {
+  if (inicial >= meta) return 0;
+  const rm = Math.pow(1 + rentAnual, 1 / 12) - 1;
+  let v = inicial;
+  for (let m = 1; m <= 600; m++) { v = v * (1 + rm) + apoMes; if (v >= meta) return m; }
+  return null;
+}
+// Puntos mensuales del valor de la inversión (suma de los valores anotados en cada registro de patrimonio; el del último
+// registro de cada mes) y lo que se aportó entre un punto y el siguiente. hoyValor: lo que vale hoy (estimado).
+// → [{ key, valor, aport, mercado, r }]: `mercado` = lo que subió o bajó sin que tú pusieras dinero; `r` = rentabilidad del
+// periodo (TWR: (valor − aportado) / valor anterior − 1). El primer punto no tiene aport/mercado/r.
+function puntosInversion(registros, aportes, hoyValor, hoyF) {
+  const porMes = new Map();
+  for (const r of registros) {
+    const v = sum(Object.values(r.valores || {}).map(num));
+    if (v > 0) porMes.set(keyDe(r.fecha), { key: keyDe(r.fecha), fecha: r.fecha.endOf("month"), valor: v });
+  }
+  const hk = keyDe(hoyF);
+  if (hoyValor > 0 && !porMes.has(hk)) porMes.set(hk, { key: hk, fecha: hoyF.endOf("day"), valor: hoyValor });
+  const pts = [...porMes.values()].sort((a, b) => a.key.localeCompare(b.key));
+  return pts.map((p, i) => {
+    if (!i) return { key: p.key, valor: p.valor };
+    const ant = pts[i - 1];
+    const aport = sum(aportes.filter((x) => x.fecha > ant.fecha && x.fecha <= p.fecha).map((x) => x.importe));
+    return { key: p.key, valor: p.valor, aport, mercado: p.valor - ant.valor - aport, r: ant.valor > 0 ? (p.valor - aport) / ant.valor - 1 : NaN };
+  });
+}
+// De esos puntos: rentabilidad de cada año natural (encadenada, sin el efecto de cuándo metiste el dinero) y la peor caída
+// (el mayor descenso desde un máximo del índice, que no se mueve cuando aportas).
+function rendimientoPuntos(pts) {
+  let idx = 100, pico = 100, picoKey = pts[0] ? pts[0].key : null, peor = null;
+  const porAño = new Map();
+  for (const p of pts) {
+    if (p.r == null || !isFinite(p.r)) continue;
+    idx *= 1 + p.r;
+    const a = p.key.slice(0, 4), t = porAño.get(a) || { f: 1, meses: 0 };
+    t.f *= 1 + p.r; t.meses++; porAño.set(a, t);
+    if (idx > pico) { pico = idx; picoKey = p.key; }
+    const caida = idx / pico - 1;
+    if (!peor || caida < peor.caida) peor = { caida, desde: picoKey, hasta: p.key };
+  }
+  return { indice: idx, años: [...porAño].map(([año, t]) => ({ año, r: t.f - 1, meses: t.meses })), peor: peor && peor.caida < -0.0001 ? peor : null };
+}
+// Gastos corrientes (TER) de la cartera: € al año y al mes de cada activo que tiene TER.
+function comisionesInversion(filas) {
+  const con = filas.filter((f) => f.ter != null && f.valor > 0);
+  const lista = con.map((f) => ({ nombre: f.nombre, ter: f.ter, valor: f.valor, año: (f.valor * f.ter) / 100, p: f.p })).sort((a, b) => b.año - a.año);
+  const sobre = sum(lista.map((x) => x.valor)), año = sum(lista.map((x) => x.año));
+  return { lista, sobre, año, mes: año / 12, media: sobre > 0 ? (100 * año) / sobre : NaN, sinTer: filas.filter((f) => f.ter == null && f.valor > 0 && f.clase !== "cripto") };
+}
+// Tamaño de una compra frente a las que ya has hecho en ese activo (tercios): pequeña · habitual · grande. Con menos de 6, nada.
+function tamañoCompras(importes) {
+  const v = importes.filter((x) => x > 0).sort((a, b) => a - b);
+  if (v.length < 6) return null;
+  const p33 = v[Math.floor(v.length / 3)], p67 = v[Math.floor((2 * v.length) / 3)];
+  return { p33, p67, de: (x) => (x < p33 ? "pequeña" : x > p67 ? "grande" : "habitual") };
 }

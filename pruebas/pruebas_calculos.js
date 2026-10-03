@@ -91,4 +91,28 @@ const SA = F.saludInversion();
 caso("Revisa tu inversión: sin errores con los datos de ejemplo", !SA.some((x) => x.nivel === "error"), SA.map((x) => x.texto));
 caso("Valor: los activos de ejemplo tienen su valor anotado (no estimado)", RI.filas.every((f) => f.fuente === "anotado"), RI.filas.map((f) => f.fuente));
 
+// 12. Progreso: hitos, proyección, esfuerzo y mercado, comisiones (con números sencillos)
+const DT = luxon.DateTime, d = (iso) => DT.fromISO(iso);
+const HT = F.hitosPatrimonio([{ fecha: d("2026-01-31"), neto: 8000 }, { fecha: d("2026-03-31"), neto: 12000 }], 26000, d("2026-09-30"));
+caso("Hitos: 1 k, 2,5 k y 5 k cruzados con el primer registro", HT.logrados.slice(0, 3).every((h) => h.fecha.toISODate() === "2026-01-31"), HT.logrados.map((h) => [h.valor, h.fecha.toISODate()]));
+caso("Hitos: 10 k en marzo y 25 k «hoy» (solo lo cruza la estimación)", HT.logrados[3].fecha.toISODate() === "2026-03-31" && HT.logrados[4].valor === 25000 && HT.logrados[4].hoy, HT.logrados);
+caso("Hitos: los siguientes son 50 k (faltan 24.000 €) y 100 k", HT.proximos[0].valor === 50000 && HT.proximos[0].falta === 24000 && HT.proximos[1].valor === 100000 && HT.siguiente === 50000, HT.proximos);
+const PY0 = F.proyeccion(1000, 100, 0, 1);
+caso("Proyección sin rentabilidad: 1.000 + 12 × 100 = 2.200 €, el mercado pone 0", cerca(PY0.final, 2200) && cerca(PY0.mercado, 0) && PY0.valor.length === 2, PY0);
+const rm = Math.pow(1.06, 1 / 12) - 1, ann = 5000 * Math.pow(1 + rm, 120) + 200 * (Math.pow(1 + rm, 120) - 1) / rm;
+const PY1 = F.proyeccion(5000, 200, 0.06, 10);
+caso("Proyección al 6 % durante 10 años = fórmula de la anualidad", cerca(PY1.final, ann, 0.01) && cerca(PY1.aportadoFinal, 5000 + 200 * 120) && cerca(PY1.mercado, ann - 29000, 0.01), [PY1.final, ann]);
+caso("Meses hasta una meta: 10 meses de 100 € para llegar a 1.000 €", F.mesesHasta50(0, 100, 0, 1000) === 10 && F.mesesHasta50(2000, 0, 0, 1000) === 0 && F.mesesHasta50(0, 0, 0, 1000) === null, F.mesesHasta50(0, 100, 0, 1000));
+const PI = F.puntosInversion([{ fecha: d("2026-01-15"), valores: { A: 1000 } }, { fecha: d("2026-02-20"), valores: { A: 1100, B: 60 } }], [{ fecha: d("2026-02-05"), importe: 100 }], 0, d("2026-02-25"));
+caso("Esfuerzo y mercado: febrero 1.160 € = 1.000 + 100 aportados + 60 del mercado", PI.length === 2 && cerca(PI[1].aport, 100) && cerca(PI[1].mercado, 60) && cerca(PI[1].r, 0.06, 1e-9), PI);
+const RP = F.rendimientoPuntos([{ key: "2025-11", valor: 1 }, { key: "2025-12", valor: 1, r: 0.10 }, { key: "2026-01", valor: 1, r: -0.20 }, { key: "2026-02", valor: 1, r: 0.05 }]);
+caso("Rentabilidad encadenada: 1,10 × 0,80 × 1,05 y peor caída −20 %", cerca(RP.indice, 100 * 1.1 * 0.8 * 1.05, 1e-9) && cerca(RP.peor.caida, -0.2, 1e-9) && RP.peor.desde === "2025-12" && RP.peor.hasta === "2026-01", RP);
+caso("Rentabilidad por año: 2025 +10 % (1 mes) y 2026 −16 % (2 meses)", cerca(RP.años[0].r, 0.10, 1e-9) && cerca(RP.años[1].r, 0.8 * 1.05 - 1, 1e-9) && RP.años[1].meses === 2, RP.años);
+const CM = F.comisionesInversion([{ nombre: "A", ter: 0.2, valor: 10000, clase: "fondo", p: {} }, { nombre: "B", ter: null, valor: 500, clase: "fondo", p: {} }]);
+caso("Comisiones: 0,2 % de 10.000 € = 20 € al año, 1,67 al mes; B sin TER", cerca(CM.año, 20) && cerca(CM.mes, 20 / 12, 1e-9) && CM.sinTer.length === 1 && CM.lista.length === 1, CM);
+const TC = F.tamañoCompras([100, 100, 200, 200, 300, 300]);
+caso("Tamaño de compras: 100 pequeña, 200 habitual, 400 grande; con menos de 6, nada", TC.de(100) === "pequeña" && TC.de(200) === "habitual" && TC.de(400) === "grande" && F.tamañoCompras([1, 2, 3]) === null, TC && [TC.p33, TC.p67]);
+const RIs = F.resumenInversion(true);
+caso("«Solo largo plazo»: sin activos marcados como corto, es lo mismo que todo", cerca(RIs.total, RI.total) && RIs.filas.length === RI.filas.length, [RIs.total, RI.total]);
+
 return casos;

@@ -12,7 +12,7 @@ SALIDA = os.path.join(tempfile.gettempdir(), "fb-pruebas")
 # Navegadores con modo sin ventana (el primero que exista)
 EDGES = [r"C:\Program Files\Google\Chrome\Application\chrome.exe", r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
          r"C:\Program Files\Microsoft\Edge\Application\msedge.exe"]
-PANTALLAS = "inicio,movimientos,inversion,importar,revisar,apuntar,cerrar,valores,ajustes,fijos,gestionar/movimiento,gestionar/cuenta,editar/movimiento/nuevo,editar/recurrente/nuevo,revision,bienvenida"
+PANTALLAS = "inicio,movimientos,inversion,importar,revisar,apuntar,cerrar,valores,ajustes,fijos,gestionar/movimiento,gestionar/cuenta,editar/movimiento/nuevo,editar/recurrente/nuevo,revision,progreso,bienvenida"
 HOY = "2026-09-30"
 
 def main():

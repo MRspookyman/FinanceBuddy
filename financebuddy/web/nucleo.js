@@ -36,6 +36,54 @@
     montar();
   };
 
+  // ── modo discreto: desenfoca los importes (en euros) para mirar la app con gente al lado; los porcentajes se ven ──
+  // Las pantallas se dibujan con texto normal: un observador envuelve cada importe en un <span class="blur"> (o marca el
+  // texto del gráfico) en cuanto aparece, también en lo que se despliega después.
+  const RE_IMPORTE = /[−+\-]?\d[\d.]*(?:,\d+)?(?:[\u00a0 ]?[kKM])?[\u00a0 ]?€/g;
+  const leerDiscreto = () => { try { return localStorage.getItem("fb-discreto") === "1"; } catch (_) { return false; } };
+  let discreto = leerDiscreto();
+  // El eje vertical de un gráfico (números a la derecha de la escala, sin «€») también delata las cifras
+  const ejeDeImportes = (n) => { const p = n.parentElement; return p && p.namespaceURI === "http://www.w3.org/2000/svg" && p.getAttribute("text-anchor") === "end" && /^[−-]?\d[\d.,]*\s?[kM]?$/.test(n.nodeValue.trim()); };
+  const ocultarEn = (raiz) => {
+    const w = document.createTreeWalker(raiz, NodeFilter.SHOW_TEXT, { acceptNode: (n) => (n.parentElement && !n.parentElement.closest(".blur, script, style, option, textarea, #aviso") && (/€/.test(n.nodeValue) || ejeDeImportes(n)) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT) });
+    const nodos = []; while (w.nextNode()) nodos.push(w.currentNode);
+    for (const n of nodos) {
+      const padre = n.parentElement;
+      if (padre.namespaceURI === "http://www.w3.org/2000/svg") { padre.classList.add("blur"); continue; }  // texto de un gráfico
+      const t = n.nodeValue; RE_IMPORTE.lastIndex = 0;
+      if (!RE_IMPORTE.test(t)) continue;
+      const frag = document.createDocumentFragment(); let i = 0; RE_IMPORTE.lastIndex = 0; let m;
+      while ((m = RE_IMPORTE.exec(t))) {
+        if (m.index > i) frag.appendChild(document.createTextNode(t.slice(i, m.index)));
+        const s = document.createElement("span"); s.className = "blur"; s.textContent = m[0]; frag.appendChild(s); i = m.index + m[0].length;
+      }
+      if (i < t.length) frag.appendChild(document.createTextNode(t.slice(i)));
+      n.replaceWith(frag);
+    }
+  };
+  const observador = new MutationObserver((muts) => {
+    if (!discreto) return;
+    observador.disconnect();
+    for (const m of muts) for (const a of m.addedNodes) if (a.nodeType === 1) ocultarEn(a); else if (a.nodeType === 3 && a.parentElement) ocultarEn(a.parentElement);
+    observador.observe(document.getElementById("app"), { childList: true, subtree: true });
+  });
+  const aplicarDiscreto = () => {
+    document.body.classList.toggle("discreto", discreto);
+    const b = document.getElementById("discreto"); if (b) b.setAttribute("aria-pressed", String(discreto));
+    observador.disconnect();
+    if (discreto) { ocultarEn(document.getElementById("app")); observador.observe(document.getElementById("app"), { childList: true, subtree: true }); }
+    else document.querySelectorAll("#app .blur").forEach((e) => e.classList.remove("blur"));
+  };
+  const alternarDiscreto = () => { discreto = !discreto; try { localStorage.setItem("fb-discreto", discreto ? "1" : "0"); } catch (_) {} aplicarDiscreto(); };
+  document.getElementById("discreto").onclick = alternarDiscreto;
+  // Atajos de teclado (fuera de los campos de texto): D = discreto · 1…6 = secciones del menú
+  document.addEventListener("keydown", (e) => {
+    if (e.ctrlKey || e.metaKey || e.altKey || /^(INPUT|TEXTAREA|SELECT)$/.test((e.target || {}).tagName || "") || (e.target && e.target.isContentEditable)) return;
+    if (e.key === "d" || e.key === "D") { e.preventDefault(); alternarDiscreto(); return; }
+    const n = parseInt(e.key, 10);
+    if (n >= 1 && n <= 6) { const a = document.querySelectorAll("#menu a")[n - 1]; if (a) { e.preventDefault(); FB.ir(a.getAttribute("href")); } }
+  });
+
   // ── API ──
   const FB = window.FB = {
     DB: null, codigo: null, anterior: null,
@@ -80,7 +128,11 @@
       clearTimeout(FB._t); FB._t = setTimeout(() => (el.className = ""), error ? 6000 : 2600);
     },
     log,
+    discreto: () => discreto,
+    // Los importes de un texto, tapados (para los tooltips de los gráficos en modo discreto)
+    enmascarar: (t) => (discreto ? String(t).replace(RE_IMPORTE, "•••") : t),
   };
+  aplicarDiscreto();
 
   // ── menú lateral (abajo en el móvil) y barra de estado ──
   const ICO = {
@@ -92,7 +144,7 @@
     ajustes: '<path d="M4 7h9m4 0h3M4 17h3m4 0h9"/><circle cx="15" cy="7" r="2.2"/><circle cx="9" cy="17" r="2.2"/>',
   };
   const SECCION = { resumen: "inicio", gastos: "movimientos", prevision: "inicio", patrimonio: "inicio", objetivos: "ajustes",
-    gestionar: "ajustes", editar: "ajustes", fijos: "ajustes", revision: "ajustes", cerrar: "ajustes", valores: "inversion", activo: "inversion" };
+    gestionar: "ajustes", editar: "ajustes", fijos: "ajustes", revision: "ajustes", cerrar: "ajustes", valores: "inversion", activo: "inversion", progreso: "inicio" };
   function barra() {
     const DB = FB.DB; if (!DB) return;
     const fechas = (DB.registros.movimiento || []).map((m) => m.fecha).sort();
@@ -118,6 +170,7 @@
     FB.container = app.createDiv({ cls: "fin-page" });
     try { new Function("FB", "luxon", "input", FB.codigo)(FB, luxon, { vista, params, ...(extra || {}) }); }
     catch (e) { log("Error: " + (e.stack || e)); }
+    if (discreto) aplicarDiscreto();
     window.scrollTo(0, 0);
   }
   FB.montar = montar;

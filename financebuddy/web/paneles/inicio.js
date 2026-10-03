@@ -255,6 +255,7 @@ function tarjetaPatrimonio(p) {
     E.deudas ? { l: "Deudas", v: eur(-E.deudas, 0) } : null,
   ];
   filasDato(p, filas);
+  enlace(p.createDiv({ cls: "fin-note" }), "Hitos, proyección y mes a mes →", "#progreso");
   const o = objetivos().find((x) => x.vinculado && x.estado !== "conseguido");
   if (o && o.meta > 0) {
     const m = p.createDiv({ cls: "fin-note" });

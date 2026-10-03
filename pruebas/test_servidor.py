@@ -13,6 +13,14 @@ class TestFlujo(unittest.TestCase):
     def api(self, ruta, d=None):
         return self.app.manejar(ruta, d or {})
 
+    def test_activo_largo_plazo(self):
+        r = self.api("/api/guardar", {"tipo": "activo", "datos": {"nombre": "Fondo A", "clase": "fondo"}})
+        self.assertTrue(r["ok"], r)
+        self.api("/api/guardar", {"tipo": "activo", "datos": {"nombre": "Colchón", "clase": "fondo", "largo_plazo": False}})
+        A = {a["nombre"]: a for a in self.app.datos()["registros"]["activo"]}
+        self.assertTrue(A["Fondo A"]["largo_plazo"])        # si falta, vale sí
+        self.assertFalse(A["Colchón"]["largo_plazo"])
+
     def test_flujo_completo(self):
         self.assertEqual(self.app.datos()["registros"]["cuenta"], [])
         self.api("/api/bienvenida", {"cuentas": [{"nombre": "Nómina", "tipo": "corriente", "saldo": 1000}, {"nombre": "Ahorro", "tipo": "ahorro", "saldo": "2.000,50"}],

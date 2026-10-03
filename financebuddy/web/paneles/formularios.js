@@ -80,6 +80,7 @@ const FORMS = {
       { k: "fecha_inicio", l: "Fecha de la primera compra", t: "fecha", ayuda: "Aproximada: sirve para la rentabilidad anual." },
       { k: "patrones", l: "Cómo aparece en el extracto del bróker", t: "lista", ayuda: "Textos separados por comas (p. ej. «msci world»). Al importar, las compras con ese texto se asignan a este activo." },
       { k: "isin", l: "ISIN (opcional)" },
+      { k: "largo_plazo", l: "Inversión a largo plazo", t: "bool", ayuda: "Desmárcalo para lo que no es inversión a largo plazo (un colchón en un fondo monetario, una apuesta…): el botón «Solo largo plazo» de Inversión lo deja fuera de las cifras." },
       { k: "ter", l: "Gastos corrientes (% al año, opcional)", t: "num", ayuda: "El TER del fondo o ETF (p. ej. 0,06). Con él verás cuánto te cuesta al año." },
       { k: "estado", l: "Estado", t: "opc", opc: [["activo", "Lo tengo"], ["vendido", "Vendido"]] }],
     fila: (r) => [r.nombre, r.clase, r.valor != null ? eur(r.valor, 0) : "—", r.fecha_valor ? `a ${fechaCorta(r.fecha_valor)}` : ""], cols: ["Nombre", "Tipo", "Valor", ""] },
