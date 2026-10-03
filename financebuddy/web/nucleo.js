@@ -126,7 +126,7 @@
     aviso(texto, error) {
       const el = document.getElementById("aviso");
       el.textContent = texto; el.className = "on" + (error ? " err" : "");
-      clearTimeout(FB._t); FB._t = setTimeout(() => (el.className = ""), error ? 6000 : 2600);
+      clearTimeout(FB._t); FB._t = setTimeout(() => (el.className = ""), error ? 9000 : 4500);
     },
     // Precios por internet (opcional): pide la actualización y espera a que acabe (corre en segundo plano en el servidor).
     // UN solo aviso al terminar; el detalle de lo que falló se ve en Ajustes. `silencioso`: al abrir la app, solo avisa si algo falla.
@@ -140,7 +140,7 @@
         if (!r.ok) { if (!silencioso) FB.aviso(r.mensaje || "No se han podido actualizar los precios", true); return; }
         for (let i = 0; i < 400; i++) {  // hasta unos 5 min; cada consulta falla en ≤ 8 s, así que normalmente acaba en segundos
           await new Promise((f) => setTimeout(f, 700));
-          const e = await FB.api("/api/precios/estado");
+          const e = await FB.api("/api/precios/estado", {});
           if (e.ok && e.en_marcha && boton && e.progreso) boton.textContent = `Actualizando ${Math.min(e.progreso.hechos + 1, e.progreso.total)} de ${e.progreso.total}…`;
           if (!e.ok || e.en_marcha) continue;
           const mal = !(e.resultado && e.resultado.ok) || (e.resultado.fallos || []).length > 0;

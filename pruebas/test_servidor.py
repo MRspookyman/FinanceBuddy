@@ -179,6 +179,10 @@ class TestSeguridad(unittest.TestCase):
         self.assertEqual(self.pedir("POST", "/api/vaciar", cuerpo={"confirmar": "BORRAR"})[0], 403)
     def test_con_clave(self):
         self.assertEqual(self.pedir("GET", "/api/datos", self.app.token)[0], 200)
+    def test_estado_de_precios_se_consulta_por_post(self):
+        # La página lo pide con POST (FB.api con cuerpo); por GET no existe. Un GET aquí dejó la actualización «sin acabar» para siempre.
+        self.assertEqual(self.pedir("POST", "/api/precios/estado", self.app.token, cuerpo={})[0], 200)
+        self.assertEqual(self.pedir("GET", "/api/precios/estado", self.app.token)[0], 404)
     def test_host_ajeno(self):
         self.assertEqual(self.pedir("GET", "/", host="malo.com")[0], 403)
         self.assertEqual(self.pedir("GET", "/api/datos", self.app.token, host="malo.com")[0], 403)
