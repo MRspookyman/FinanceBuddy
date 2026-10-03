@@ -127,6 +127,27 @@
       el.textContent = texto; el.className = "on" + (error ? " err" : "");
       clearTimeout(FB._t); FB._t = setTimeout(() => (el.className = ""), error ? 6000 : 2600);
     },
+    // Precios por internet (opcional): pide la actualización y espera a que acabe (corre en segundo plano en el servidor).
+    // UN solo aviso al terminar; el detalle de lo que falló se ve en Ajustes. `silencioso`: al abrir la app, solo avisa si algo falla.
+    async actualizarPrecios({ boton, silencioso, forzar = true } = {}) {
+      if (FB._actualizando) return;
+      FB._actualizando = true;
+      const texto = boton ? boton.textContent : "";
+      if (boton) { boton.disabled = true; boton.textContent = "Actualizando…"; }
+      try {
+        const r = await FB.api("/api/precios/actualizar", { forzar });
+        if (!r.ok) { if (!silencioso) FB.aviso(r.mensaje || "No se han podido actualizar los precios", true); return; }
+        for (let i = 0; i < 150; i++) {
+          await new Promise((f) => setTimeout(f, 700));
+          const e = await FB.api("/api/precios/estado");
+          if (!e.ok || e.en_marcha) continue;
+          const mal = !(e.resultado && e.resultado.ok) || (e.resultado.fallos || []).length > 0;
+          if (!silencioso || mal) FB.aviso(e.mensaje || "Precios al día", mal);
+          await FB.refrescar();
+          return;
+        }
+      } finally { FB._actualizando = false; if (boton && boton.isConnected) { boton.disabled = false; boton.textContent = texto; } }
+    },
     log,
     discreto: () => discreto,
     // Los importes de un texto, tapados (para los tooltips de los gráficos en modo discreto)
@@ -191,6 +212,8 @@
     await FB.recargar();
     const params = new URLSearchParams(location.search);
     montar({ exponer: params.has("pruebas") });
+    const pr = ((FB.DB || {}).config || {}).precios;  // al abrir: si los precios por internet están activados y son de hace más de 6 h, se ponen al día
+    if (pr && pr.activo && pr.viejo && !pr.en_marcha && !params.has("pruebas")) FB.actualizarPrecios({ silencioso: true, forzar: false });
     if (params.has("pruebas")) {
       const src = await fetch("/pruebas.js").then((r) => (r.ok ? r.text() : null));
       if (src) {

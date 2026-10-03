@@ -39,7 +39,7 @@ function vistaInversion() {
 
   panelSalud(root, saludInversion());
   const pct0 = I.aportado > 0 ? I.gan / I.aportado : NaN;
-  const notaValor = [I.estimados ? `≈ ${I.estimados === 1 ? "uno" : I.estimados} con el precio de su última compra` : "", I.sinValor ? `${I.sinValor === 1 ? "uno" : I.sinValor} por lo metido` : ""].filter(Boolean).join(" · ");
+  const notaValor = [I.mercado ? `${I.mercado === I.filas.length ? "todo" : I.mercado === 1 ? "uno" : I.mercado} al precio de mercado del ${I.fechaMercado.toFormat("dd/MM")}` : "", I.estimados ? `≈ ${I.estimados === 1 ? "uno" : I.estimados} con el precio de su última compra` : "", I.sinValor ? `${I.sinValor === 1 ? "uno" : I.sinValor} por lo metido` : ""].filter(Boolean).join(" · ");
   tiles(root, [
     { l: "Vale hoy", v: eur(I.total, 0), s: notaValor || "según tus últimos valores" },
     { l: "Has metido", v: eur(I.aportadoTodo, 0), s: `${I.filas.reduce((s, f) => s + f.operaciones, 0)} compras y ventas` },
@@ -108,11 +108,11 @@ function tablaActivos(p, I) {
   const cols = [{ t: "Activo" }, conPart && { t: "Particip.", num: true, opt: true }, conPart && { t: "Precio medio", num: true, opt: true }, { t: "Metido", num: true, opt: true },
     { t: "Vale", num: true }, { t: "Ganancia", num: true }, { t: "Anual", num: true, opt: true }, { t: "Peso", num: true, opt: true }];
   const filas = [...I.filas].sort((a, b) => b.valor - a.valor).map((f) => [
-    { text: f.nombre, ruta: `#activo/${f.p.id}`, dot: colorActivo(f.nombre), badge: { metido: "sin valor", precio: "estimado" }[f.fuente] || "" },
+    { text: f.nombre, ruta: `#activo/${f.p.id}`, dot: colorActivo(f.nombre), badge: { metido: "sin valor", precio: "estimado", mercado: "mercado" }[f.fuente] || "" },
     conPart && (f.participaciones != null ? nf(f.participaciones, 0, 4) : "—"),
     conPart && (f.precioMedio != null ? eur(f.precioMedio) : "—"),
     eur(f.aportado, 0),
-    (f.fuente === "anotado" ? "" : "≈ ") + eur(f.valor, 0),
+    (f.fuente === "anotado" || f.fuente === "mercado" ? "" : "≈ ") + eur(f.valor, 0),
     isFinite(f.gan) ? { text: `${eurS(f.gan, 0)} · ${pct(f.aportado > 0 ? f.gan / f.aportado : NaN, true)}`, cls: tone(f.gan) } : "—",
     isFinite(f.tir) && unAño(f) ? { text: pct(f.tir, true), cls: tone(f.tir) } : "—",
     I.total > 0 ? pct(f.valor / I.total) : "—",
@@ -125,6 +125,7 @@ function tablaActivos(p, I) {
     n.appendText(".");
   }
   if (I.estimados) p.createDiv({ cls: "fin-note", text: "≈ estimado: participaciones × el precio de tu última compra o venta. Para el valor exacto, anota lo que vale en tu bróker (Actualizar valores)." });
+  if (I.mercado) notaPrecios(p);
   if (I.sinAport) p.createDiv({ cls: "fin-note", text: "Sin «aportado antes de usar la app», la ganancia de ese activo no se puede calcular: edítalo y pon lo que habías metido (0 si empezaste con la app)." });
 }
 
@@ -222,14 +223,14 @@ function vistaActivo() {
   enlace(bot, "+ Operación", `#editar/aportacion/nuevo/${reg.id}`).className = "fb-btn sec";
   enlace(bot, "Editar", `#editar/activo/${reg.id}`).className = "fb-btn sec";
 
-  const real = V.fuente === "anotado" || V.fuente === "precio";
+  const real = V.fuente === "anotado" || V.fuente === "precio" || V.fuente === "mercado";
   const gan = real && a.aportadoIni != null && aportado > 0 ? V.valor - aportado : NaN;
   tiles(root, [
     { l: "Participaciones", v: P.part != null ? nf(P.part, 0, 4) : "—", s: P.part != null ? (P.ajustes ? "con tus ajustes" : "según tus operaciones") : `faltan en ${P.faltan} operaci${P.faltan === 1 ? "ón" : "ones"}` },
     { l: "Precio medio", v: P.precioMedio != null ? eur(P.precioMedio) : "—", s: P.precioMedio != null ? "de tus compras" : "necesita las participaciones" },
     { l: "Has metido", v: eur(aportado, 0), s: `${normales.length} operaci${normales.length === 1 ? "ón" : "ones"}` },
-    { l: "Vale hoy", v: (V.fuente === "anotado" ? "" : "≈ ") + eur(V.valor, 0),
-      s: V.fuente === "anotado" ? `anotado el ${a.fechaValor.toFormat("dd/MM/yy")}` : V.fuente === "precio" ? `precio del ${V.precio.fecha.toFormat("dd/MM/yy")}: ${eur(V.precio.precio, 4)}` : V.fuente === "vendido" ? "vendido del todo" : "sin valor: lo metido" },
+    { l: "Vale hoy", v: (V.fuente === "anotado" || V.fuente === "mercado" ? "" : "≈ ") + eur(V.valor, 0),
+      s: V.fuente === "mercado" ? `precio de mercado del ${V.precio.fecha.toFormat("dd/MM/yy")}: ${eur(V.precio.precio, 4)} · ${FUENTES_PRECIO[V.precio.fuente] || V.precio.fuente}` : V.fuente === "anotado" ? `anotado el ${a.fechaValor.toFormat("dd/MM/yy")}` : V.fuente === "precio" ? `precio del ${V.precio.fecha.toFormat("dd/MM/yy")}: ${eur(V.precio.precio, 4)}` : V.fuente === "vendido" ? "vendido del todo" : "sin valor: lo metido" },
     isFinite(gan) ? { l: "Ganancia", v: eurS(gan, 0), t: tone(gan), s: `${pct(gan / aportado, true)} sobre lo metido` } : null,
   ]);
   panelSalud(root, saludInversion(a.nombre), { titulo: "Revisa este activo", max: 10 });

@@ -160,6 +160,12 @@ const activoDe = (p) => ({
   p, nombre: p.nombre, clase: txt(p.clase) || "otro", cuenta: txt(p.cuenta), valor: num(p.valor), conValor: hasNum(p.valor), ter: hasNum(p.ter) ? num(p.ter) : null, fechaValor: toDate(p.fecha_valor),
   aportadoIni: hasNum(p.aportado_inicial) ? num(p.aportado_inicial) : null, fechaIni: toDate(p.fecha_inicio), largo: p.largo_plazo !== false,
 });
+// Precios de mercado consultados por internet (opcional: Ajustes → Precios por internet). Solo cuentan mientras esté activado.
+const preciosActivos = () => !!(cfg.precios && cfg.precios.activo);
+function precioMercado(a) {
+  const m = preciosActivos() && (cfg.precios.activos || {})[a.nombre];
+  return m && m.precio > 0 && toDate(m.fecha) ? { precio: m.precio, fecha: toDate(m.fecha), fuente: m.fuente, moneda: m.moneda, mensual: m.mensual || {} } : null;
+}
 const activos = () => (_activos ??= registros("activo").filter((p) => txt(p.estado).toLowerCase() !== "vendido").map(activoDe));
 const esCripto = (a) => /cripto/i.test(a.clase);
 const claseActivo = (nombre) => ((registros("activo").find((a) => a.nombre === nombre) || {}).clase || "otro");

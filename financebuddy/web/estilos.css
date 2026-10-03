@@ -515,3 +515,8 @@ button:focus-visible,a:focus-visible,summary:focus-visible,[tabindex]:focus-visi
 .fb-slider input[type=range]{width:100%;accent-color:var(--brand);margin:0;padding:0;background:none;border:0;height:24px}
 .fb-slider .s{font-size:.76em;color:var(--ink-2)}
 .fb-proy-res{font-size:.95em;color:var(--ink);margin:6px 0 10px}
+/* Precios por internet: buscador del formulario de un activo */
+.fb-buscador{grid-column:1/-1;margin:6px 0 12px;padding:12px 14px;border-radius:14px;background:var(--surface-2);border:1px solid var(--line)}
+.fb-buscador .et{margin-top:0}.fb-buscador .fb-fila{margin:6px 0}.fb-buscador input{flex:1;min-width:0}
+.fb-candidato{display:grid;gap:4px;padding:10px 12px;margin-top:8px;border-radius:12px;background:var(--surface);border:1px solid var(--line)}
+.fb-candidato .c b{font-weight:650}.fb-candidato .s{font-size:.8em;color:var(--ink-2)}.fb-candidato button{justify-self:start;margin-top:2px}

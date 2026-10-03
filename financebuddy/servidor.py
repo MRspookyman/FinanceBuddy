@@ -1,11 +1,11 @@
 # Servidor local de la app: sirve las pantallas (web/) y una API JSON sobre la base de datos.
 # Solo escucha en 127.0.0.1 y cada arranque genera una clave que la página envía en la cabecera X-FB-Token.
 import base64, datetime, http.server, io, json, mimetypes, os, re, secrets, socketserver, tempfile, threading, traceback, urllib.parse
-from . import VERSION, bizums, cartera, clasificar as C, detectar, importar as IM, jev, modelo, plantilla, rutas
+from . import VERSION, bizums, cartera, clasificar as C, detectar, importar as IM, jev, modelo, plantilla, precios, rutas
 from .almacen import Almacen
 
 mimetypes.add_type("font/woff2", ".woff2")
-MODULOS = ["datos", "calculos", "componentes", "graficos", "inicio", "inversion", "progreso", "renta", "formularios", "pantallas"]
+MODULOS = ["datos", "calculos", "componentes", "graficos", "inicio", "inversion", "progreso", "renta", "precios", "formularios", "pantallas"]
 MAX_SUBIDA = 25 * 1024 * 1024
 ACENTOS = ["salvia", "violeta", "azul", "verde", "coral", "rosa", "grafito"]  # colores de acento (estilos.css: body[data-acento])
 
@@ -53,8 +53,9 @@ class App:
                              "fuente": "jev", "confianza": j.get("confianza")}
                     p["sugerencia"] = s
         regs.pop("ignorado", None)
-        cfg = self.alm.config()
+        cfg = self.alm.config(sin="precio_serie:")  # las series de precios (caché) se quedan en el servidor
         cfg["jev"] = jev.config_publica(self.alm)  # la clave nunca sale hacia la página
+        cfg["precios"] = precios.para_la_pagina(self.alm)
         return {"registros": regs, "pendientes": pend, "config": cfg,
                 "info": {"version": VERSION, "carpeta": self.carpeta.raiz, "hoy": self.hoy, "ejemplo": self.ejemplo,
                          "archivos": [{"nombre": os.path.basename(p), "tipo": t} for p, t in IM.archivos_pendientes(self.carpeta)]}}
@@ -197,6 +198,27 @@ class App:
             self.alm.guardar("cierre", {"mes": mes, "fecha": fecha, "notas": d.get("notas") or ""}, c["id"] if c else None)
         return {"ok": True, "mensaje": f"Mes cerrado: registro de patrimonio del {IM.fmt(fecha)} guardado."}
 
+    def precios(self, accion, d):
+        """Precios por internet (opcional, apagado de serie): ajustes, actualizar en segundo plano, buscar y comparar."""
+        a = self.alm
+        try:
+            if accion == "config":
+                precios.guardar_config(a, d)
+                return {"ok": True, "precios": precios.para_la_pagina(a)}
+            if accion == "actualizar":
+                precios._exigir(a)
+                return {"ok": True, "iniciado": precios.actualizar_en_segundo_plano(a, bool(d.get("forzar")))}
+            if accion == "estado":
+                e = precios.estado(a)
+                r = e.get("resultado") or {}
+                return {"ok": True, **e, "mensaje": precios.mensaje_resultado(r) if r.get("ok") else r.get("mensaje", ""), "precios": precios.para_la_pagina(a)}
+            if accion == "autoconfigurar": return {"ok": True, **precios.autoconfigurar(a)}
+            if accion == "buscar": return {"ok": True, "candidatos": precios.buscar(a, str(d.get("texto") or ""))}
+            if accion == "comparar": return {"ok": True, **precios.comparar(a, str(d.get("ref") or "mundo"))}
+        except precios.ErrorPrecios as e:
+            return {"ok": False, "mensaje": str(e)}
+        raise ValueError("Acción de precios desconocida.")
+
     def valores(self, d):
         fecha = modelo.fecha(d.get("fecha")) or (self.hoy or datetime.date.today().isoformat())
         n = 0
@@ -303,6 +325,7 @@ class App:
             if not n: return {"ok": True, "mensaje": f"Jev ya lo había repasado todo: {h} para revisar" if h else "Jev ya lo había repasado todo: está en orden"}
             return {"ok": True, "mensaje": f"Jev ha repasado {n} comercios: {h} para revisar" if h else f"Jev ha repasado {n} comercios: todo en orden"}
         if ruta == "/api/jev/hallazgo": return {"ok": True, "mensaje": jev.resolver_hallazgo(a, str(d.get("clave") or ""), d.get("accion"))}
+        if ruta.startswith("/api/precios/"): return self.precios(ruta[len("/api/precios/"):], d)
         if ruta == "/api/config/descartar_aviso":  # avisos de la revisión de la cartera que el usuario da por buenos
             k = str(d.get("clave") or "")[:120]
             if k: a.set_config("avisos_descartados", list(dict.fromkeys((a.config("avisos_descartados") or []) + [k]))[-200:])

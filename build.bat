@@ -17,7 +17,7 @@ if errorlevel 1 (
 )
 
 rem 2) Pruebas (si fallan, se muestra el detalle y no se genera el .exe)
-python -m unittest pruebas.test_importar pruebas.test_servidor pruebas.test_jev
+python -m unittest pruebas.test_importar pruebas.test_servidor pruebas.test_jev pruebas.test_precios
 if errorlevel 1 (
   echo.
   echo Las pruebas fallan: no se genera el .exe. Arriba tienes el detalle de cada error.

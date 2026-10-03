@@ -68,9 +68,17 @@ function posicion(a) {
   return r;
 }
 const vendidoDelTodo = (a) => posicion(a).vendido;
-// Lo que vale hoy y de dónde sale: «anotado» (Actualizar valores), «precio» (participaciones × precio de la última
-// operación: estimado), «metido» (sin datos: lo aportado) o «vendido» (0).
+// Lo que vale hoy y de dónde sale: «mercado» (participaciones × el precio de internet, si lo activaste y es más nuevo que lo
+// anotado), «anotado» (Actualizar valores), «precio» (participaciones × precio de la última operación: estimado), «metido»
+// (sin datos: lo aportado) o «vendido» (0).
+// El precio de internet manda si se conocen las participaciones y es más nuevo que el valor que anotaste a mano.
+const usaMercado = (P, M, a) => !!(M && P.conPart && P.part > 0 && !P.vendido && (!a.conValor || !a.fechaValor || M.fecha >= a.fechaValor));
 function valorInfo(a) {
+  const M = precioMercado(a);
+  if (M) {
+    const P = posicion(a);
+    if (usaMercado(P, M, a)) return { valor: P.part * M.precio, fuente: "mercado", precio: M };
+  }
   if (a.conValor) return { valor: a.valor + aportTrasValor(a), fuente: "anotado" };
   const P = posicion(a);
   if (P.vendido) return { valor: 0, fuente: "vendido" };
@@ -78,7 +86,7 @@ function valorInfo(a) {
   return { valor: Math.max(0, aportadoActivo(a)), fuente: "metido" };  // nunca negativo (p. ej. un traspaso tomado por venta)
 }
 const valorHoy = (a) => valorInfo(a).valor;
-const conValorReal = (a) => ["anotado", "precio"].includes(valorInfo(a).fuente);
+const conValorReal = (a) => ["anotado", "precio", "mercado"].includes(valorInfo(a).fuente);
 // TIR anualizada (XIRR). flujos: [{ fecha, importe }], negativo = dinero que pones, positivo = lo que recibes/vale.
 function xirr(fl) {
   if (fl.length < 2 || !fl.some((f) => f.importe > 0) || !fl.some((f) => f.importe < 0)) return NaN;
@@ -111,7 +119,7 @@ function resumenInversion(soloLargo = false) {
     const mias = APr.filter((x) => x.activo === a.nombre);
     const aportado = (a.aportadoIni || 0) + sum(mias.map((x) => x.importe));
     const V = valorInfo(a), P = posicion(a);
-    const valor = V.valor, real = V.fuente === "anotado" || V.fuente === "precio";
+    const valor = V.valor, real = V.fuente === "anotado" || V.fuente === "precio" || V.fuente === "mercado";
     const CB = cobros().filter((c) => c.activo === a.nombre);
     const dividendos = sum(CB.filter((c) => c.tipo === "dividendo").map((c) => c.importe)), comisionesCobro = sum(CB.filter((c) => c.tipo === "comision").map((c) => c.importe));
     const cobrado = dividendos - comisionesCobro;  // lo que el activo te ha dado (o cobrado) además de su valor
@@ -131,7 +139,8 @@ function resumenInversion(soloLargo = false) {
   const tir = conTir.length ? xirr(conTir.flatMap((f) => f.fl)) : NaN;
   const desde = conTir.length ? DateTime.min(...conTir.map((f) => f.desde)) : null;
   return { filas, cerradas, total, aportado, gan, dividendos: sum(filas.map((f) => f.dividendos)), AP, sinAport: filas.filter((f) => !f.conocido).length, sinValor: filas.filter((f) => f.fuente === "metido").length,
-    estimados: filas.filter((f) => f.fuente === "precio").length,
+    estimados: filas.filter((f) => f.fuente === "precio").length, mercado: filas.filter((f) => f.fuente === "mercado").length,
+    fechaMercado: filas.filter((f) => f.fuente === "mercado").reduce((m, f) => (!m || f.precioEstimado.fecha < m ? f.precioEstimado.fecha : m), null),
     aportadoTodo: sum(filas.map((f) => f.aportado)), tir, tirParcial: conTir.length < filas.length, tirCorta: desde ? hoy.diff(desde, "days").days < 365 : false };
 }
 

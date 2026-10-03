@@ -80,6 +80,12 @@ const FORMS = {
       { k: "fecha_inicio", l: "Fecha de la primera compra", t: "fecha", ayuda: "Aproximada: sirve para la rentabilidad anual." },
       { k: "patrones", l: "Cómo aparece en el extracto del bróker", t: "lista", ayuda: "Textos separados por comas (p. ej. «msci world»). Al importar, las compras con ese texto se asignan a este activo." },
       { k: "isin", l: "ISIN (opcional)" },
+      { t: "buscador", si: () => preciosActivos() },
+      { k: "fuente_precio", l: "Precio por internet", t: "opc", si: (d) => preciosActivos() || d.fuente_precio,
+        opc: [["", "— lo anoto yo —"], ["morningstar", "Morningstar (fondos, por su ISIN)"], ["yahoo", "Yahoo Finance (ETF, acciones, materias primas)"], ["coingecko", "CoinGecko (cripto)"]],
+        ayuda: "De dónde sale su precio si activas «Precios por internet» (Ajustes). Lo más fácil: «Buscar el precio por internet», justo encima." },
+      { k: "codigo_precio", l: "Código para consultar el precio", ph: "p. ej. IWDA.AS · 0P0000YXQE · bitcoin", si: (d) => d.fuente_precio, ayuda: "Solo este código sale de tu ordenador." },
+      { k: "moneda", l: "Moneda del precio", t: "opc", opc: MONEDAS_PRECIO, si: (d) => d.fuente_precio, defecto: () => "EUR", ayuda: "Si no es el euro, se pasa a euros con el cambio de cada día." },
       { k: "largo_plazo", l: "Inversión a largo plazo", t: "bool", ayuda: "Desmárcalo para lo que no es inversión a largo plazo (un colchón en un fondo monetario, una apuesta…): el botón «Solo largo plazo» de Inversión lo deja fuera de las cifras." },
       { k: "ter", l: "Gastos corrientes (% al año, opcional)", t: "num", ayuda: "El TER del fondo o ETF (p. ej. 0,06). Con él verás cuánto te cuesta al año." },
       { k: "estado", l: "Estado", t: "opc", opc: [["activo", "Lo tengo"], ["vendido", "Vendido"]] }],
@@ -175,6 +181,7 @@ function formulario(padre, tipo, reg, opciones = {}) {
     for (const c of F.campos) {
       if (c.si && !c.si(d)) continue;
       if (c.t === "oculto") continue;
+      if (c.t === "buscador") { buscadorPrecio(form, d, dibujar); continue; }
       if (c.t === "mapa") {
         const claves = c.claves(d);
         if (!claves.length) continue;
@@ -248,7 +255,7 @@ function formulario(padre, tipo, reg, opciones = {}) {
   bG.onclick = async () => {
     const datos = { ...d };
     if (F.antes) F.antes(datos);
-    for (const c of F.campos) if (c.virtual) delete datos[c.k];
+    for (const c of F.campos) if (c.virtual || !c.k) delete datos[c.k];
     for (const k of Object.keys(datos)) if (k[0] === "_") delete datos[k];  // ayudas de la pantalla (p. ej. _sug)
     bG.disabled = true;
     const r = await FB.api("/api/guardar", { tipo, id: reg && reg.id, datos });

@@ -889,10 +889,12 @@ function vistaAjustes() {
   const bT = fT.createEl("button", { cls: "fb-btn", text: "Guardar" });
   bT.onclick = async () => { await FB.api("/api/titulares", { titulares: iT.value.split(";") }); FB.aviso("Guardado ✓"); await FB.refrescar(); };
   panelJev(root);
+  panelPrecios(root);
   const pI = panel(root, "Tu inicio", null, "Elige qué ves en la pantalla de inicio y en qué orden. Se guarda al momento.");
   pI.id = "tu-inicio";
   personalizarInicio(pI);
   if (params[0] === "inicio") setTimeout(() => { pI.scrollIntoView({ block: "start" }); pI.classList.add("resalta"); }, 30);
+  if (params[0] === "precios") setTimeout(() => { const e = document.getElementById("precios"); if (e) { e.scrollIntoView({ block: "start" }); e.classList.add("resalta"); } }, 30);
   if (params[0] === "jev") setTimeout(() => { const e = document.getElementById("jev"); if (e) { e.scrollIntoView({ block: "start" }); e.classList.add("resalta"); } }, 30);
   const pD = panel(root, "Tus datos");
   accesos(pD, [
@@ -1169,5 +1171,5 @@ if (input && input.exponer) {
   window.__fin = { finMes, repartoAhorro, estimacion, conciliacion, prevision, resumenInversion, fondoEmergencia, gastoVariable, tasa12,
     movimientos, aportaciones, objetivos, patrimonio, avisos, categorias, grupoDe, limiteVar, mesesHasta, mesAnterior, hoyKey,
     fechaDatos, presupuestoSemana, planReparto, cuentas, proyectar, resumenCategorias, ritmoMes, evolucionInversion, aportacionesMes, constancia, interesesBroker, saludInversion, posicion, valorInfo,
-    hitosPatrimonio, proyeccion, mesesHasta50, puntosInversion, rendimientoPuntos, comisionesInversion, tamañoCompras, fifoVentas, cobros };
+    hitosPatrimonio, proyeccion, mesesHasta50, puntosInversion, rendimientoPuntos, comisionesInversion, tamañoCompras, fifoVentas, cobros, usaMercado };
 }

@@ -130,4 +130,11 @@ const FY = F.fifoVentas([op(1, "2026-01-10", "A", 100, 10), op(2, "2026-02-10", 
 caso("Vender más de lo comprado: se avisa de lo que falta (5 participaciones)", cerca(FY.ventas[0].faltan, 5) && cerca(FY.ventas[0].unidades, 10) && cerca(FY.ventas[0].valor, 200), FY.ventas[0]);
 caso("Dividendos: sin cobros en los datos de ejemplo, la ganancia no cambia", F.cobros().length === 0 && RI.filas.every((f) => f.cobrado === 0), F.cobros().length);
 
+// 14. Precio de mercado de internet: manda si se conocen las participaciones y es más nuevo que lo anotado
+const Pn = { conPart: true, part: 10, vendido: false }, Mx = { precio: 5, fecha: d("2026-09-29") };
+caso("Mercado: sin valor anotado, manda el precio de internet", F.usaMercado(Pn, Mx, { conValor: false, fechaValor: null }), null);
+caso("Mercado: un valor anotado más nuevo (30/09) gana al precio del 29/09", !F.usaMercado(Pn, Mx, { conValor: true, fechaValor: d("2026-09-30") }), null);
+caso("Mercado: el mismo día o uno anterior al precio, gana el precio", F.usaMercado(Pn, Mx, { conValor: true, fechaValor: d("2026-09-29") }) && F.usaMercado(Pn, Mx, { conValor: true, fechaValor: d("2026-08-31") }), null);
+caso("Mercado: sin participaciones, vendido o sin precio, no se usa", !F.usaMercado({ ...Pn, conPart: false }, Mx, { conValor: false }) && !F.usaMercado({ ...Pn, vendido: true }, Mx, { conValor: false }) && !F.usaMercado(Pn, null, { conValor: false }), null);
+
 return casos;

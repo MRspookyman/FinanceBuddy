@@ -121,9 +121,13 @@ class Almacen:
             return self.con.execute("SELECT COUNT(*) FROM registros WHERE tipo=?", (tipo,)).fetchone()[0]
 
     # ───── configuración ─────
-    def config(self, clave=None, defecto=None):
+    def config(self, clave=None, defecto=None, sin=None):
+        """Un ajuste (o todos). `sin`: al pedir todos, deja fuera los que empiezan por ese prefijo (sin leerlos)."""
         with self.lock:
-            if clave is None: return {k: json.loads(v) for k, v in self.con.execute("SELECT clave, valor FROM config")}
+            if clave is None:
+                filas = self.con.execute("SELECT clave, valor FROM config WHERE clave NOT LIKE ? ESCAPE '\\'", (sin.replace("%", "\\%").replace("_", "\\_") + "%",)).fetchall() if sin \
+                    else self.con.execute("SELECT clave, valor FROM config").fetchall()
+                return {k: json.loads(v) for k, v in filas}
             f = self.con.execute("SELECT valor FROM config WHERE clave=?", (clave,)).fetchone()
         return json.loads(f[0]) if f else defecto
 
