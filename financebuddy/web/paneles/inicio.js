@@ -422,6 +422,12 @@ function vistaPorCategoria(M) {
     const l = p.createDiv({ cls: "fb-lista" });
     for (const [n, v] of [...ing].sort((a, b) => b[1] - a[1])) item(l, { av: { cat: n, sm: true }, t: n, s: pct(v / M.ingresos), v: eur(v, 0), pos: true, onclick: abrirCat(n) });
   }
+  // «Salió» es el gasto menos lo que te devolvieron; una devolución de un gasto de otro mes deja su categoría en negativo y no sale en las listas
+  const dev = [...gastoPorCategoria(mes)].filter(([, v]) => v < -0.005);
+  if (dev.length) {
+    const totalDev = -sum(dev.map(([, v]) => v));
+    root.createDiv({ cls: "fin-note", text: `Salió ${eur(M.gastos, 0)} = ${eur(M.gastos + totalDev, 0)} de gasto − ${eur(totalDev, 0)} que te han devuelto de gastos de otros meses (${dev.map(([n, v]) => `${n} ${eur(-v, 0)}`).join(", ")}).` });
+  }
   const nota = root.createDiv({ cls: "fin-note" });
   nota.appendText(refs.length ? `▲▼ comparado con la media de ${refs.map(mesCorto).join(", ").toLowerCase()}. ` : "");
   nota.appendText("¿Quieres un tope para una categoría? ");
