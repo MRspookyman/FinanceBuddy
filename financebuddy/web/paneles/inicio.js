@@ -18,7 +18,7 @@ const PANELES_INICIO = [
   { id: "ritmo", t: "Ritmo de gasto del mes" },
   { id: "categorias", t: "A dónde va tu dinero" },
   { id: "patrimonio", t: "Tu patrimonio (cuentas e inversión)" },
-  { id: "proximos", t: "Próximos cargos (mes en curso)" },
+  { id: "proximos", t: "Próximos cargos (el mes que viene)" },
   { id: "objetivos", t: "Objetivos y recordatorios" },
   { id: "semana", t: "Esta semana", defecto: false },
   { id: "meses", t: "Tus últimos meses", defecto: false },
@@ -324,21 +324,21 @@ function miniArea(padre, vals) {
     + `<path d="${d}" style="fill:none;stroke:var(--brand);stroke-width:2;vector-effect:non-scaling-stroke;stroke-linejoin:round"/></svg>`;
 }
 
-// Los cargos y cobros fijos de los próximos 14 días.
+// Los cargos y cobros fijos del próximo mes (30 días); se enseñan los 8 primeros y el total cuenta todos.
 function tarjetaProximos(p) {
-  const hasta = hoy.plus({ days: 14 }).endOf("day");
+  const hasta = hoy.plus({ days: 30 }).endOf("day");
   const P = movimientos().filter((m) => m.previsto && m.recurrente && m.fecha <= hasta && (m.clase === "gasto" || m.clase === "ingreso"))
-    .sort((a, b) => a.fecha - b.fecha).slice(0, 5);
+    .sort((a, b) => a.fecha - b.fecha);
   if (!P.length) {
     const hay = recurrentes().some((r) => r.clase !== "aportacion");
-    vacio(p, hay ? "Nada en los próximos 14 días" : "Sin fijos todavía", hay ? "" : " Nómina, alquiler, recibos… la app puede detectarlos en tus movimientos.");
+    vacio(p, hay ? "Nada en el próximo mes" : "Sin fijos todavía", hay ? "" : " Nómina, alquiler, recibos… la app puede detectarlos en tus movimientos.");
     if (!hay) enlace(p.createDiv({ cls: "fin-note" }), "Detectar mis fijos →", "#fijos");
     return;
   }
   const l = p.createDiv({ cls: "fb-lista" });
-  for (const m of P) item(l, { fecha: m.fecha, t: m.concepto, s: m.categoria, v: (m.clase === "ingreso" ? "+" : "−") + eur(m.importe, 0), pos: m.clase === "ingreso", ruta: m.p && m.p.id ? `#editar/recurrente/${m.p.id}` : null });
+  for (const m of P.slice(0, 8)) item(l, { fecha: m.fecha, t: m.concepto, s: m.categoria, v: (m.clase === "ingreso" ? "+" : "−") + eur(m.importe, 0), pos: m.clase === "ingreso", ruta: m.p && m.p.id ? `#editar/recurrente/${m.p.id}` : null });
   const tot = sum(P.map((m) => (m.clase === "ingreso" ? m.importe : -m.importe)));
-  p.createDiv({ cls: "fin-note", text: `En total ${eurS(tot, 0)} en los próximos 14 días` });
+  p.createDiv({ cls: "fin-note", text: `${P.length > 8 ? `y ${P.length - 8} más · ` : ""}En total ${eurS(tot, 0)} en los próximos 30 días` });
 }
 
 const objetivosActivos = () => objetivos().filter((o) => o.estado !== "conseguido" && o.meta > 0);
