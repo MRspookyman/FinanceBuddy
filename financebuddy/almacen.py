@@ -137,6 +137,18 @@ class Almacen:
                              (clave, json.dumps(valor, ensure_ascii=False)))
 
     # ───── copias de seguridad ─────
+    def instantanea(self):
+        """Foto en memoria de todos los datos (para poder deshacer la última decisión)."""
+        with self.lock:
+            return ([tuple(r) for r in self.con.execute("SELECT id,tipo,datos FROM registros")], [tuple(r) for r in self.con.execute("SELECT clave,valor FROM config")])
+
+    def recuperar(self, foto):
+        regs, cfg = foto
+        with self.transaccion():
+            self.con.execute("DELETE FROM registros"); self.con.execute("DELETE FROM config")
+            self.con.executemany("INSERT INTO registros(id,tipo,datos) VALUES(?,?,?)", regs)
+            self.con.executemany("INSERT INTO config(clave,valor) VALUES(?,?)", cfg)
+
     def copia(self, carpeta, motivo="diaria", forzar=False):
         """Copia datos.db en carpeta/datos AAAA-MM-DD[ motivo].db (una al día salvo `forzar`). Guarda las últimas 30."""
         os.makedirs(carpeta, exist_ok=True)

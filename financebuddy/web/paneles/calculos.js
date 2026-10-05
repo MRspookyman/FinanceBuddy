@@ -574,7 +574,7 @@ function hitosPatrimonio(puntos, actual, hoyF) {
   const techo = Math.max(actual || 0, ...puntos.map((p) => p.neto));
   const logrados = HITOS.filter((h) => h <= techo).map((h) => {
     const p = puntos.find((x) => x.neto >= h);
-    return { valor: h, fecha: p ? p.fecha : hoyF, hoy: !p };
+    return { valor: h, fecha: p ? p.fecha : hoyF, hoy: !p, inicial: !!p && p === puntos[0] };  // inicial: ya lo tenías en el primer registro
   });
   const faltan = HITOS.filter((h) => h > (actual || 0));
   return { logrados, proximos: faltan.slice(0, 2).map((h) => ({ valor: h, falta: h - (actual || 0) })), siguiente: faltan[0] || null };

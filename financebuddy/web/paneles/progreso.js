@@ -14,7 +14,7 @@ function vistaProgreso() {
   const P = patrimonio();
   // Lo que metes al mes: la media desde el primer mes con compras (como mucho, el último año)
   const apoMedia = (() => { const m = aportacionesMes(12), i = m.findIndex((x) => x.compras || x.ventas); return i < 0 ? 0 : sum(m.map((x) => x.compras - x.ventas)) / (m.length - i); })();
-  const rentPropia = isFinite(I.tir) && !I.tirCorta ? Math.min(0.1, Math.max(0, I.tir)) : 0.05;
+  const rentPropia = isFinite(I.tir) && !I.tirCorta ? Math.min(0.05, Math.max(0, I.tir)) : 0.05;
   const pts = puntosInversion(P, aportacionesReales(), I.total, hoy);
   const R = pts.length >= 3 ? rendimientoPuntos(pts) : null;
 
@@ -26,7 +26,7 @@ function vistaProgreso() {
   ]);
 
   panelHitos(panel(root, "Hitos", null, "Las cifras redondas que tu patrimonio ha ido cruzando. La fecha es la del primer registro de saldos que lo supera."), P, E.neto, apoMedia, rentPropia);
-  panelProyeccion(panel(root, "Si sigo así…", null, "Una proyección orientativa con rentabilidad y aportación constantes. No es una promesa ni un consejo: sin impuestos ni inflación."), E.neto, apoMedia, rentPropia, isFinite(I.tir) && !I.tirCorta ? I.tir : NaN);
+  panelProyeccion(panel(root, "Si sigo así…", null, "Una proyección orientativa con rentabilidad y aportación constantes. No es una promesa ni un consejo: sin impuestos ni inflación."), E.neto, apoMedia, rentPropia, isFinite(I.tir) && !I.tirCorta ? I.tir : NaN, I.total);
   panelEsfuerzoMercado(panel(root, "Tu inversión, mes a mes", null, "De lo que cambia cada mes el valor de tu inversión: lo que has puesto tú (compras menos ventas) y lo que ha subido o bajado el mercado."), pts);
   panelComparador(panel(root, "¿Y si lo hubieras metido en un indexado?", null, "Tus mismas compras y ventas, en las mismas fechas, en un ETF indexado o en dinero sin riesgo: lo que habría pasado, no lo que pasará."), I);
   if (R) panelAños(panel(root, "Rentabilidad por año", null, "Lo que ha rendido tu inversión cada año natural, sin el efecto de cuándo metiste el dinero (rentabilidad encadenada mes a mes con tus valores anotados)."), R);
@@ -39,7 +39,7 @@ function hitosEnPantalla(padre) {
   const I = resumenInversion(), P = patrimonio();
   const m = aportacionesMes(12), i = m.findIndex((x) => x.compras || x.ventas);
   const apo = i < 0 ? 0 : sum(m.map((x) => x.compras - x.ventas)) / (m.length - i);
-  const rent = isFinite(I.tir) && !I.tirCorta ? Math.min(0.1, Math.max(0, I.tir)) : 0.05;
+  const rent = isFinite(I.tir) && !I.tirCorta ? Math.min(0.05, Math.max(0, I.tir)) : 0.05;
   panelHitos(panel(padre, "Hitos", { text: "Tu progreso", ruta: "#progreso" }, "Las cifras redondas que tu patrimonio ha ido cruzando. La fecha es la del primer registro de saldos que lo supera."), P, E.neto, apo, rent);
 }
 
@@ -47,7 +47,7 @@ function hitosEnPantalla(padre) {
 function panelHitos(p, P, neto, apo, rent) {
   const H = hitosPatrimonio(P.map((x) => ({ fecha: x.fecha, neto: x.neto })), neto, hoy);
   const fila = p.createDiv({ cls: "fb-hitos" });
-  for (const h of H.logrados.slice(-5)) {
+  for (const h of H.logrados.filter((x) => !x.inicial).slice(-5)) {  // los que ya tenías al empezar no se celebran
     const c = fila.createDiv({ cls: "h ok" });
     c.createDiv({ cls: "v", text: `✓ ${compactoEur(h.valor)}` });
     c.createDiv({ cls: "s", text: h.hoy ? "ya, según tu estimación de hoy" : h.fecha.setLocale("es").toFormat("LLL yyyy").replace(".", "") });
@@ -71,17 +71,23 @@ function panelHitos(p, P, neto, apo, rent) {
 const compactoEur = (v) => (v >= 1e6 ? `${nf(v / 1e6, 0, 1)} M€` : v >= 1000 ? `${nf(v / 1000, 0, 1)} k€` : `${nf(v, 0, 0)} €`);
 
 // Tres deslizadores (años, rentabilidad, aportación mensual) y la curva resultante frente a lo que habrías aportado.
-function panelProyeccion(p, neto, apoMedia, rentPropia, tirReal) {
+function panelProyeccion(p, neto, apoMedia, rentPropia, tirReal, invertido) {
+  const inv = Math.max(0, Math.min(neto, invertido || 0)), resto = neto - inv;  // la rentabilidad solo se aplica a lo invertido; el resto (cuentas) se queda igual
   const S = (FB.estado.proy = FB.estado.proy || { años: 15, rent: Math.round(rentPropia * 1000) / 10, apo: Math.max(0, Math.round(apoMedia / 50) * 50) });
   const cont = p.createDiv();
   const salida = p.createDiv({ cls: "fin-note fb-proy-res" });
   const grafico = p.createDiv();
   const pintar = () => {
-    const R = proyeccion(neto, S.apo, S.rent / 100, S.años);
+    const R = proyeccion(inv, S.apo, S.rent / 100, S.años);
+    for (const k of ["valor", "aportado"]) R[k] = R[k].map((x) => x + resto);
+    R.final += resto; R.aportadoFinal += resto;
+    const redondeo = (v) => { const u = v >= 20000 ? 1000 : 500; return Math.round(v / u) * u; };
+    const bajo = proyeccion(inv, S.apo, Math.max(0, S.rent - 2) / 100, S.años).final + resto, alto = proyeccion(inv, S.apo, (S.rent + 2) / 100, S.años).final + resto;
     salida.empty();
     salida.appendText(`Partiendo de ${eur(neto, 0)}, en `);
-    salida.createEl("b", { text: `${S.años} años` }); salida.appendText(" tendrías ");
-    salida.createEl("b", { text: eur(R.final, 0) }); salida.appendText(` · habrías aportado ${eur(R.aportadoFinal, 0)} · el mercado pondría ${eur(R.mercado, 0)}.`);
+    salida.createEl("b", { text: `${S.años} años` }); salida.appendText(" tendrías entre ");
+    salida.createEl("b", { text: `${eur(redondeo(bajo), 0)} y ${eur(redondeo(alto), 0)}` });
+    salida.appendText(` (con ${nf(S.rent, 0, 1)} % ± 2 puntos) · habrías aportado ${eur(redondeo(R.aportadoFinal), 0)}. Orientativo: la rentabilidad real es incierta.`);
     grafico.empty();
     const etq = R.valor.map((_, i) => String(hoy.year + i));
     const paso = Math.max(1, Math.ceil(etq.length / 7));

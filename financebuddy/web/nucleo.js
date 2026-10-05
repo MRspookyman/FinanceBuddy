@@ -85,6 +85,13 @@
     if (n >= 1 && n <= 6) { const a = document.querySelectorAll("#menu a")[n - 1]; if (a) { e.preventDefault(); FB.ir(a.getAttribute("href")); } }
   });
 
+  // Soltar un Excel/CSV en cualquier pantalla lleva a Importar y lo sube
+  document.addEventListener("dragover", (e) => { if (e.dataTransfer && [...e.dataTransfer.types].includes("Files")) e.preventDefault(); });
+  document.addEventListener("drop", (e) => {
+    if (!e.dataTransfer || !e.dataTransfer.files.length || e.target.closest(".fb-zona")) return;
+    e.preventDefault(); FB.soltados = [...e.dataTransfer.files]; FB.ir("#importar");
+  });
+
   // ── API ──
   const FB = window.FB = {
     DB: null, codigo: null, anterior: null,
@@ -123,10 +130,12 @@
       const h = ruta.startsWith("#") ? ruta : "#" + ruta;
       if (location.hash === h) montar(); else location.hash = h;
     },
-    aviso(texto, error) {
+    // accion: { texto, fn } añade un botón (p. ej. «Deshacer») y alarga el aviso
+    aviso(texto, error, accion) {
       const el = document.getElementById("aviso");
       el.textContent = texto; el.className = "on" + (error ? " err" : "");
-      clearTimeout(FB._t); FB._t = setTimeout(() => (el.className = ""), error ? 9000 : 4500);
+      if (accion) { const b = document.createElement("button"); b.type = "button"; b.className = "fin-link"; b.textContent = accion.texto; b.onclick = () => { el.className = ""; accion.fn(); }; el.appendChild(b); }
+      clearTimeout(FB._t); FB._t = setTimeout(() => (el.className = ""), error ? 9000 : accion ? 9000 : 4500);
     },
     // Precios por internet (opcional): pide la actualización y espera a que acabe (corre en segundo plano en el servidor).
     // UN solo aviso al terminar; el detalle de lo que falló se ve en Ajustes. `silencioso`: al abrir la app, solo avisa si algo falla.
@@ -169,7 +178,7 @@
     ajustes: '<path d="M4 7h9m4 0h3M4 17h3m4 0h9"/><circle cx="15" cy="7" r="2.2"/><circle cx="9" cy="17" r="2.2"/>',
   };
   const SECCION = { resumen: "inicio", gastos: "movimientos", prevision: "inicio", patrimonio: "inicio", objetivos: "ajustes",
-    gestionar: "ajustes", editar: "ajustes", fijos: "ajustes", revision: "ajustes", cerrar: "ajustes", valores: "inversion", activo: "inversion", progreso: "inicio", renta: "inversion" };
+    gestionar: "ajustes", editar: "ajustes", fijos: "ajustes", revision: "ajustes", cerrar: "inicio", valores: "inversion", activo: "inversion", progreso: "inversion", renta: "inversion" };
   function barra() {
     const DB = FB.DB; if (!DB) return;
     const fechas = (DB.registros.movimiento || []).map((m) => m.fecha).sort();

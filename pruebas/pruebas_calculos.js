@@ -147,4 +147,7 @@ caso("Resumen sin importes: ni un euro en el archivo", !/€|EUR/.test(HTs), (HT
 caso("Resumen sin importes: ninguna cifra real del patrimonio ni de la inversión", cifras.length > 0 && cifras.every((c) => !HTs.includes(c)), cifras.filter((c) => HTs.includes(c)));
 caso("Resumen sin importes: sí lleva porcentajes y el índice (100)", /\d %/.test(HTs) && /Índice/.test(HTs), null);
 
+const HI = F.hitosPatrimonio([{ fecha: d("2026-01-31"), neto: 8000 }, { fecha: d("2026-03-31"), neto: 12000 }], 26000, d("2026-09-30"));
+caso("Hitos: lo que ya tenías en el primer registro se marca como inicial", HI.logrados.filter((h) => h.inicial).map((h) => h.valor).join() === "1000,2500,5000" && !HI.logrados.find((h) => h.valor === 10000).inicial, JSON.stringify(HI.logrados));
+
 return casos;

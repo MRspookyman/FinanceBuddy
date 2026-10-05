@@ -105,6 +105,7 @@ function vistaImportar() {
     await FB.refrescar();
   };
   inp.onchange = () => subir([...inp.files]);
+  if (FB.soltados) { const f = FB.soltados; FB.soltados = null; subir(f); }  // archivo soltado en otra pantalla
   zona.addEventListener("dragover", (e) => { e.preventDefault(); zona.classList.add("sobre"); });
   zona.addEventListener("dragleave", () => zona.classList.remove("sobre"));
   zona.addEventListener("drop", (e) => { e.preventDefault(); zona.classList.remove("sobre"); subir([...e.dataTransfer.files]); });
@@ -299,7 +300,7 @@ function vistaRevisar() {
   const fil = root.createDiv({ cls: "fb-chips fb-filtro-rev" });
   for (const [k, t, n] of F) { const b = fil.createEl("button", { text: `${t} · ${n}`, cls: k === filtroRev ? "act" : "" }); b.onclick = () => { FB.estado.filtroRev = k; FB.estado.pag_rev_banco = 0; FB.estado.pag_rev_broker = 0; render(); }; }
   if (conProp.length) panelSugerencias(root, conProp);
-  botonJev(root, G, GI);
+  botonJev(root, G, GI, conSug);
   const ver = (g, tipo) => filtroRev === "todo" || filtroRev === tipo || (filtroRev === "sug" && conSug.has(g));
   const Gv = G.filter((g) => ver(g, "banco")), GIv = GI.filter((g) => ver(g, "broker"));
   if (Gv.length) {
@@ -336,7 +337,7 @@ const sugDe = (g) => (g.reparto ? g.map((p) => p.sugerencia).find((s) => s && s.
 // Asistente Jev (opcional): pedir categoría para los grupos del banco que no tienen sugerencia, y qué son los textos
 // del bróker que la app no reconoce.
 const JEV_SEGURA = 0.85;  // igual que jev.SEGURA: desde aquí, la sugerencia sale marcada al aceptar en bloque
-function botonJev(padre, G, GI) {
+function botonJev(padre, G, GI, conSug = new Set()) {
   const J = (DB.config || {}).jev || {};
   const sinB = (GI || []).filter((g) => g[0].sugerencia && g[0].sugerencia.nuevo && !g[0].sugerencia.isin && !g[0].jev);
   const sin = [...G.filter((g) => !sugDe(g) && !g[0].jev && g[0].fila.clase !== "transferencia"), ...sinB];
@@ -344,7 +345,9 @@ function botonJev(padre, G, GI) {
   const f = padre.createDiv({ cls: "fb-fila fb-bloque-sug" });
   if (!J.activo) {
     const n = f.createSpan({ cls: "fin-note" });
-    n.appendText(`${sin.length} grupo${sin.length > 1 ? "s" : ""} sin sugerencia. `);
+    const nSin = sin.filter((g) => !conSug.has(g)).length;
+    if (!nSin) return;
+    n.appendText(`${nSin} grupo${nSin > 1 ? "s" : ""} sin sugerencia. `);
     enlace(n, "Activa el asistente Jev para que proponga su categoría →", "#ajustes/jev");
     return;
   }
@@ -408,19 +411,19 @@ function panelSugerencias(padre, conProp) {
     for (const [g, pr] of elegidos) {
       est.setText(`Guardando ${hechos + 1} de ${elegidos.length}…`);
       const f = g[0].fila;
-      const r = await FB.api("/api/resolver", { id: g[0].id, ids: g.map((x) => x.id), recordar: true, patron: f.patron || sugerirPatron(f.texto), ...pr.datos });
+      const r = await FB.api("/api/resolver", { id: g[0].id, ids: g.map((x) => x.id), recordar: true, patron: f.patron || sugerirPatron(f.texto), mantener: hechos > 0, ...pr.datos });
       if (r.ok) hechos++;  // si otro grupo ya lo resolvió («recordar» con el mismo patrón), no pasa nada
     }
-    FB.aviso(`Aceptadas ${hechos} sugerencia${hechos === 1 ? "" : "s"} ✓`);
+    FB.aviso(`Aceptadas ${hechos} sugerencia${hechos === 1 ? "" : "s"} ✓`, false, avisoDeshacer());
     await FB.refrescar();
   };
 }
 // Categorías que más usas (por número de movimientos), para ofrecerlas a un clic.
-function catsFrecuentes(entra, n = 6) {
+function catsFrecuentes(entra, n = 6, importe = 0) {
   const c = new Map();
   for (const m of movimientos()) if (!m.auto && m.categoria && m.clase !== "transferencia" && (m.clase === "ingreso") === entra) c.set(m.categoria, (c.get(m.categoria) || 0) + 1);
   const validas = new Set(catSegunClase({ clase: entra ? "ingreso" : "gasto" }).map(([v]) => v));
-  return [...c].filter(([k]) => validas.has(k)).sort((a, b) => b[1] - a[1]).map(([k]) => k).slice(0, n);
+  return [...c].filter(([k]) => validas.has(k) && !(Math.abs(importe) < 25 && grupoDe(k) === "fijo")).sort((a, b) => b[1] - a[1]).map(([k]) => k).slice(0, n);
 }
 // Cabecera común de un grupo de «Por revisar»: avatar, nombre, fechas, total y el texto del extracto.
 function cabGrupo(card, g, av, nombre) {
@@ -436,12 +439,14 @@ function cabGrupo(card, g, av, nombre) {
   if (p.duda) card.createDiv({ cls: "duda", text: p.duda });
 }
 // Resolver un grupo entero (ids) con la misma decisión; la tarjeta se desliza fuera y la pantalla se refresca.
+// Botón «Deshacer» del aviso tras una decisión de «Por revisar» (el servidor guarda una foto de antes)
+const avisoDeshacer = () => ({ texto: "Deshacer", fn: async () => { const r = await FB.api("/api/deshacer", {}); FB.aviso(r.mensaje || "Hecho", !r.ok); await FB.refrescar(); } });
 const resolverGrupo = (card, g, extra) => async (datos, btn) => {
   btn.disabled = true;
   const r = await FB.api("/api/resolver", { id: g[0].id, ids: g.map((x) => x.id), ...extra(), ...datos });
   if (!r.ok) { btn.disabled = false; mensaje(card, r.mensaje || "Error", "err"); return; }
   card.classList.add("fuera");
-  FB.aviso(r.mensaje);
+  FB.aviso(r.mensaje, false, avisoDeshacer());
   setTimeout(() => FB.refrescar(), 220);
 };
 // Traspaso a una cuenta tuya que aún no está en la app: se crea y se resuelve el grupo.
@@ -538,7 +543,7 @@ function tarjetaGrupo(padre, g) {
     b.title = `Sugerida: ${sug.motivo}`;
     vistas.add(sug.categoria);
   }
-  for (const c of catsFrecuentes(entra)) if (!vistas.has(c)) { vistas.add(c); chip(`${catIcono(c)} ${c}`, { accion: "guardar", clase: claseCat(c), categoria: c }); }
+  for (const c of catsFrecuentes(entra, 6, f.importe)) if (!vistas.has(c)) { vistas.add(c); chip(`${catIcono(c)} ${c}`, { accion: "guardar", clase: claseCat(c), categoria: c }); }
   // Cualquier otra categoría (o gasto/ingreso cruzado: un ingreso que en realidad te devuelve un gasto)
   const sOtra = chips.createEl("select", { cls: "otra" });
   const o0 = sOtra.createEl("option", { text: "Otra…" }); o0.value = "";
@@ -976,7 +981,7 @@ function panelVersion(p) {
   b.onclick = async () => { b.disabled = true; const r = await FB.api("/api/actualizaciones/comprobar", { forzar: true }); if (!r.ok) FB.aviso(r.mensaje || "No se ha podido comprobar", true); await FB.refrescar(); };
 }
 // Tema (en este navegador) y color de acento (en tus datos).
-const ACENTOS = [["salvia", "#5E8266"], ["violeta", "#6A5AA8"], ["azul", "#44688A"], ["verde", "#3E7558"], ["coral", "#C9603F"], ["rosa", "#B84A6E"], ["grafito", "#3F3A34"]];
+const ACENTOS = [["salvia", "#4A7052"], ["violeta", "#6A5AA8"], ["azul", "#44688A"], ["verde", "#3E7558"], ["coral", "#C9603F"], ["rosa", "#B84A6E"], ["grafito", "#3F3A34"]];
 // Asistente Jev (TypeSafe AI), opcional: la clave se guarda solo en tu carpeta de datos y nunca vuelve a la página.
 function panelJev(padre) {
   const J = (DB.config || {}).jev || {};

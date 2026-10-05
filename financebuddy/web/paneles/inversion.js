@@ -26,8 +26,8 @@ function vistaInversion() {
   const INT = interesesBroker();
   const botones = root.createDiv({ cls: "fb-filtros" });
   if (preciosActivos()) { const b = botones.createEl("button", { cls: "fb-btn", text: cfg.precios.en_marcha ? "Actualizando…" : "Actualizar precios" }); b.title = "Pone al día el precio de mercado de los activos con fuente en internet"; b.onclick = () => FB.actualizarPrecios({ boton: b }); }
-  else enlace(botones, "Activar precios automáticos", "#ajustes/precios").className = "fb-btn";
-  enlace(botones, "Anotar valores a mano", "#valores").className = "fb-btn sec";
+  else enlace(botones, "Activar precios automáticos", "#ajustes/precios").className = "fb-btn sec";
+  enlace(botones, "Anotar valores a mano", "#valores").className = preciosActivos() ? "fb-btn sec" : "fb-btn";
   enlace(botones, "+ Activo", "#editar/activo/nuevo").className = "fb-btn sec";
   enlace(botones, "Compras y ventas", "#gestionar/aportacion").className = "fb-btn sec";
   enlace(botones, "Para la renta", "#renta").className = "fb-btn sec";
@@ -58,7 +58,6 @@ function vistaInversion() {
 
   tablaActivos(panel(root, "Tus activos", { text: "Editar", ruta: "#gestionar/activo" }), I);
 
-  hitosEnPantalla(root);
   panelComisiones(root, I);
   const g2 = root.createDiv({ cls: "fin-grid dos" });
   tarjetaAportaciones(panel(g2, "Lo que metes cada mes"), solo);
@@ -145,11 +144,14 @@ function panelComisiones(padre, I) {
     return;
   }
   const p = panel(padre, "Lo que pagas en comisiones", { text: `${eur(C.año, 0)} al año` }, "Los gastos corrientes (TER) de cada fondo o ETF se descuentan del valor poco a poco, sin que veas ningún cobro. Es una estimación: valor de hoy × TER.");
-  tabla(p, [{ t: "Activo" }, { t: "TER", num: true }, { t: "Sobre", num: true, opt: true }, { t: "Al año", num: true }, { t: "Al mes", num: true, opt: true }],
-    [...C.lista.map((x) => [{ text: x.nombre, ruta: `#activo/${x.p.id}`, dot: colorActivo(x.nombre) }, `${nf(x.ter, 2, 2)} %`, eur(x.valor, 0), eur(x.año, 2), eur(x.año / 12, 2)]),
-      conFila(["Total", `${nf(C.media, 2, 2)} %`, eur(C.sobre, 0), eur(C.año, 2), eur(C.mes, 2)], "total")]);
-  const años = [10, 20, 30].map((n) => `${n} años: ${eur(C.año * n, 0)}`).join(" · ");
-  p.createDiv({ cls: "fin-note", text: `Si el valor y el TER se mantuvieran: ${años} (sin contar lo que habría crecido ese dinero).` });
+  p.createDiv({ cls: "fin-note", text: `Son ${eur(C.mes, 2)} al mes, un ${nf(C.media, 2, 2)} % de media sobre ${eur(C.sobre, 0)}.` });
+  plegable(p, "Ver el detalle por activo", (c) => {
+    tabla(c, [{ t: "Activo" }, { t: "TER", num: true }, { t: "Sobre", num: true, opt: true }, { t: "Al año", num: true }, { t: "Al mes", num: true, opt: true }],
+      [...C.lista.map((x) => [{ text: x.nombre, ruta: `#activo/${x.p.id}`, dot: colorActivo(x.nombre) }, `${nf(x.ter, 2, 2)} %`, eur(x.valor, 0), eur(x.año, 2), eur(x.año / 12, 2)]),
+        conFila(["Total", `${nf(C.media, 2, 2)} %`, eur(C.sobre, 0), eur(C.año, 2), eur(C.mes, 2)], "total")]);
+    const años = [10, 20, 30].map((n) => `${n} años: ${eur(C.año * n, 0)}`).join(" · ");
+    c.createDiv({ cls: "fin-note", text: `Si el valor y el TER se mantuvieran: ${años} (sin contar lo que habría crecido ese dinero).` });
+  });
   if (C.sinTer.length) p.createDiv({ cls: "fin-note", text: `Sin TER anotado: ${C.sinTer.map((f) => f.nombre).join(", ")}.` });
 }
 

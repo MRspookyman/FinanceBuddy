@@ -617,6 +617,12 @@ class TestBase(Base):
         c = next(x for x in self.a.todos("cuenta") if x["nombre"] == "Ahorro")
         self.a.guardar("cuenta", {**c, "nombre": "Colchón"}, c["id"])
         self.assertTrue(any(m.get("destino") == "Colchón" for m in self.movs()))
+    def test_instantanea_y_recuperar(self):
+        foto = self.a.instantanea()
+        self.importar(self.extracto())
+        self.assertTrue(self.movs())
+        self.a.recuperar(foto)
+        self.assertFalse(self.movs())
     def test_nombres_unicos(self):
         with self.assertRaises(ValueError): self.a.guardar("cuenta", {"nombre": "nómina".capitalize().replace("o", "ó")})
     def test_validacion(self):

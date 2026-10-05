@@ -20,9 +20,11 @@ class App:
         self.pruebas = pruebas
         self.lock = threading.RLock()
         self.ejemplo = False
+        self.deshacer = None  # foto de los datos antes de la última decisión de «Por revisar»
         self.abrir(raiz)
 
     def abrir(self, raiz):
+        self.deshacer = None
         self.carpeta = rutas.Carpeta(raiz)
         self.alm = Almacen(self.carpeta.db)
         plantilla.instalar(self.alm)
@@ -293,7 +295,12 @@ class App:
         if ruta == "/api/importar/descartar": return self.descartar_archivo(d)
         if ruta == "/api/importar/subir": return self.subir(d)
         if ruta == "/api/importar/reintentar": return self.reintentar(d)
+        if ruta == "/api/deshacer":  # vuelve a como estaba antes de la última decisión de «Por revisar»
+            if not self.deshacer: return {"ok": False, "mensaje": "No hay nada que deshacer."}
+            a.recuperar(self.deshacer); self.deshacer = None
+            return {"ok": True, "mensaje": "Deshecho"}
         if ruta == "/api/resolver":
+            if not d.get("mantener"): self.deshacer = a.instantanea()
             msg = IM.resolver(a, int(d["id"]), d)
             bizums.enlazar(a)
             return {"ok": True, "mensaje": msg}

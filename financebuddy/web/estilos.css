@@ -8,7 +8,7 @@
 body{margin:0;font-family:"Segoe UI Variable Text","Segoe UI",system-ui,-apple-system,sans-serif;font-size:15px;line-height:1.45;-webkit-font-smoothing:antialiased;
  --serif:"Fraunces","Sitka Heading",Georgia,"Times New Roman",serif;
  --bg:#F4EFE7;--surface:#FCFAF6;--surface-2:#F4EEE5;--line:#E8E0D3;--ink:#2A2119;--ink-2:#6B6056;--ink-3:#7D7063;
- --brand:#5E8266;--brand-soft:#E4ECE1;--coral:#D2775F;--mint:#4F9A6A;--rose:#C8574B;--amber:#D69A3A;
+ --brand:#4A7052;--brand-soft:#E4ECE1;--coral:#D2775F;--mint:#3A8057;--rose:#C8574B;--amber:#D69A3A;
  --sand:#EAD7B4;--sand-soft:#F1E7D6;--hero:#F1E7D8;
  --aurora:linear-gradient(135deg,#5E8266 0%,#8FAF91 55%,#D9BE8C 100%);
  --textura:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .35 0 0 0 0 .27 0 0 0 0 .18 0 0 0 .05 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
@@ -62,7 +62,7 @@ body{display:grid;grid-template-columns:236px minmax(0,1fr);min-height:100vh}
 #menu .num{margin-left:auto;min-width:22px;padding:1px 7px;border-radius:999px;font-size:.78em;text-align:center;color:#fff;background:var(--rose)}
 #lateral .pie{margin-top:auto;display:flex;flex-direction:column;gap:10px}
 #lateral .apuntar{display:block;padding:11px 16px;font-size:.95em}
-#datos{font-size:.76em;color:var(--ink-3);padding:0 6px}
+#datos{font-size:.8em;color:var(--ink-3);padding:0 6px}
 #tema{all:unset;cursor:pointer;padding:7px 12px;border-radius:10px;font-size:.84em;color:var(--ink-2)}
 #tema:hover{background:var(--surface-2)}
 #discreto{all:unset;cursor:pointer;padding:7px 12px;border-radius:10px;font-size:.84em;color:var(--ink-2)}
@@ -81,7 +81,7 @@ body.discreto input[type=number]{filter:blur(6px)} body.discreto input[type=numb
 #log{white-space:pre-wrap;color:#c33;font:12px monospace;position:fixed;left:250px;bottom:0;max-width:60vw}
 #aviso{position:fixed;left:50%;bottom:28px;transform:translate(-50%,20px);opacity:0;pointer-events:none;transition:all .2s;z-index:50;
  padding:11px 20px;border-radius:999px;font-size:.9em;font-weight:600;color:#fff;background:#221F2B;box-shadow:var(--shadow-s);max-width:90vw}
-#aviso.on{opacity:1;transform:translate(-50%,0)} #aviso.err{background:#B3261E}
+#aviso.on{opacity:1;transform:translate(-50%,0)} #aviso.err{background:#B3261E} #aviso.on{pointer-events:auto} #aviso .fin-link{color:#fff;text-decoration:underline;margin-left:12px;cursor:pointer}
 @media (max-width:860px){
  body{display:block;padding-bottom:78px}
  #lateral{position:fixed;z-index:30;top:auto;bottom:0;left:0;right:0;height:auto;flex-direction:row;align-items:center;padding:6px 8px calc(6px + env(safe-area-inset-bottom));border-right:none;border-top:1px solid var(--line)}
@@ -115,7 +115,7 @@ body.theme-dark .fin-panel{border-color:transparent}
 .fin .fin-panel>h3{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin:0 0 16px;font-size:1.3em;font-weight:560;letter-spacing:-.01em}
 .fin .fin-panel>h3 .x{font-family:"Segoe UI Variable Text","Segoe UI",system-ui,sans-serif;font-size:.66em}
 .fin-panel>h3 .x{font-size:.82em;font-weight:500;color:var(--ink-2)}
-.fin-note{font-size:.8em;color:var(--ink-2);margin-top:10px}
+.fin-note{font-size:.86em;color:var(--ink-2);margin-top:10px}
 .fin-empty{padding:26px 18px;text-align:center;border-radius:var(--r-s);border:1.5px dashed var(--line);color:var(--ink-2);font-size:.9em;margin-bottom:var(--g)}
 .fin-panel .fin-empty{margin:0;padding:18px}
 .fin-empty b{display:block;margin-bottom:4px;color:var(--ink);font-size:1.05em}
@@ -171,7 +171,7 @@ body.theme-dark .fb-stat.ahorro{background:var(--sand-soft)}
 .fb-semana .d.alto .b{background:var(--rose)}
 .fb-semana .d.fut .b{background:var(--surface-2);border:1.5px dashed var(--line)}
 .fb-semana .d.hoy .dl{color:var(--ink);font-weight:800}
-.fb-semana .dl{font-size:.74em;color:var(--ink-3);font-weight:650}
+.fb-semana .dl{font-size:.8em;color:var(--ink-3);font-weight:650}
 .fb-semana .dv{font-size:.7em;color:var(--ink-2);font-variant-numeric:tabular-nums;min-height:1.2em}
 .fb-semana .meta{position:absolute;left:0;right:0;border-top:2px dashed color-mix(in srgb,var(--ink-3) 70%,transparent);pointer-events:none}
 .fb-semana .meta span{position:absolute;right:0;top:-18px;font-size:.68em;color:var(--ink-3);background:var(--surface);padding:0 4px}
@@ -184,7 +184,7 @@ body.theme-dark .fb-stat.ahorro{background:var(--sand-soft)}
 a.fb-item:hover,.fb-item.click:hover{background:var(--surface-2);cursor:pointer}
 .fb-item .n{flex:1;min-width:0}
 .fb-item .t{font-weight:620;font-size:.93em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.fb-item .s{font-size:.78em;color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fb-item .s{font-size:.84em;color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .fb-item .v{font-weight:700;white-space:nowrap;font-variant-numeric:tabular-nums;text-align:right}
 .fb-item .v small{display:block;font-size:.74em;font-weight:500;color:var(--ink-3)}
 .fb-item .v.pos{color:var(--fin-up)}
@@ -210,7 +210,7 @@ a.fb-item:hover,.fb-item.click:hover{background:var(--surface-2);cursor:pointer}
 .fb-chips button.act{color:#fff;background:var(--ink);border-color:var(--ink)}
 body.theme-dark .fb-chips button.act{color:var(--bg)}
 .fb-dia{margin-bottom:12px}
-.fb-dia>.cab{display:flex;justify-content:space-between;padding:4px 8px 6px;font-size:.78em;font-weight:700;color:var(--ink-3);text-transform:uppercase;letter-spacing:.04em}
+.fb-dia>.cab{display:flex;justify-content:space-between;padding:4px 8px 6px;font-size:.84em;font-weight:700;color:var(--ink-3);text-transform:uppercase;letter-spacing:.04em}
 
 /* ── componentes compartidos (pantallas de tareas y ajustes) ── */
 .fin-hero{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px 20px;padding:20px 22px;margin-bottom:var(--g);border-radius:var(--r);background:var(--surface);border:1px solid var(--line)}
@@ -220,13 +220,13 @@ body.theme-dark .fb-chips button.act{color:var(--bg)}
 .fin-hero .s{color:var(--ink-2);font-size:.8em}
 .fin-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,152px),1fr));gap:10px;margin-bottom:var(--g)}
 .fin-tile{display:flex;flex-direction:column;gap:3px;min-width:0;padding:14px 16px;border-radius:var(--r-s);background:var(--surface);border:1px solid var(--line)}
-.fin-tile .l{font-size:.78em;color:var(--ink-2);font-weight:600}
+.fin-tile .l{font-size:.84em;color:var(--ink-2);font-weight:600}
 .fin-tile .v{font-size:1.6em;font-weight:560;letter-spacing:-.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.fin-tile .s{font-size:.74em;color:var(--ink-3)}
+.fin-tile .s{font-size:.8em;color:var(--ink-3)}
 .fin-delta{display:inline-flex;align-items:center;gap:4px;width:fit-content;font-size:.76em;font-weight:650;padding:1px 8px;border-radius:999px;background:var(--surface-2);color:var(--ink-2);white-space:nowrap}
 .fin-delta.good{color:var(--fin-up)} .fin-delta.bad{color:var(--fin-down)}
 .fin-kv{display:flex;flex-wrap:wrap;gap:8px 24px;margin-bottom:12px}
-.fin-kv .l{font-size:.76em;color:var(--ink-2)} .fin-kv .v{font-weight:700;font-size:1.05em;white-space:nowrap}
+.fin-kv .l{font-size:.82em;color:var(--ink-2)} .fin-kv .v{font-weight:700;font-size:1.05em;white-space:nowrap}
 .fin-meter{margin:12px 0}
 .fin-meter .top{display:flex;justify-content:space-between;align-items:baseline;gap:10px;font-size:.88em}
 .fin-meter .n{display:flex;align-items:center;gap:7px;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
@@ -278,7 +278,7 @@ body.theme-dark .fb-chips button.act{color:var(--bg)}
 .fin-rows .r{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:11px 2px;border-bottom:1px solid var(--line)}
 .fin-rows .r:last-child{border-bottom:none}
 .fin-rows .n{display:flex;align-items:center;gap:8px;font-size:.93em;font-weight:600}
-.fin-rows .s{font-size:.78em;color:var(--ink-2);margin-top:2px;font-weight:400}
+.fin-rows .s{font-size:.84em;color:var(--ink-2);margin-top:2px;font-weight:400}
 .fin-rows .v{font-weight:700;white-space:nowrap;font-variant-numeric:tabular-nums}
 .fin-big{margin:2px 0 8px}
 .fin-big .l{font-size:.8em;color:var(--ink-2);font-weight:600}
@@ -323,7 +323,7 @@ a.fb-btn,.fin a.fb-btn.internal-link{color:#fff}
 .fin input[type=checkbox],.fin input[type=radio]{accent-color:var(--brand);width:17px;height:17px}
 .fb-form{display:grid;grid-template-columns:minmax(150px,1fr) minmax(160px,320px);gap:10px 18px;align-items:center;max-width:640px}
 .fb-form .et{font-size:.9em;font-weight:600}
-.fb-form .s{grid-column:1/-1;font-size:.76em;color:var(--ink-2);margin-top:-5px}
+.fb-form .s{grid-column:1/-1;font-size:.82em;color:var(--ink-2);margin-top:-5px}
 .fin .fb-form input.fb-precio{width:96px;padding:3px 8px;margin:0 2px;font-size:1em}
 .fb-form .sep,.fin-panel>div>.sep{grid-column:1/-1;margin-top:12px;font-size:.76em;font-weight:750;color:var(--ink-3);text-transform:uppercase;letter-spacing:.06em}
 .fb-form textarea{grid-column:1/-1}
@@ -527,7 +527,7 @@ button:focus-visible,a:focus-visible,summary:focus-visible,[tabindex]:focus-visi
 /* Inicio: acciones a la vista */
 .fb-acciones{margin:0 0 16px;grid-template-columns:repeat(auto-fit,minmax(min(100%,205px),1fr))}.fb-acciones .fb-acceso{position:relative;padding:14px 16px}
 .fb-acciones .fb-acceso.toca{border-color:var(--brand);background:color-mix(in srgb,var(--brand) 9%,var(--surface))}
-.fb-toca{position:absolute;top:8px;right:10px;font-size:.66em;font-weight:750;text-transform:uppercase;letter-spacing:.06em;color:#fff;background:var(--brand);border-radius:99px;padding:2px 8px}
+.fb-toca{position:absolute;top:8px;right:10px;font-size:.74em;font-weight:750;text-transform:uppercase;letter-spacing:.06em;color:#fff;background:var(--brand);border-radius:99px;padding:2px 8px}
 
 .fb-estado-precios{margin:0 0 14px;padding:10px 14px;border-radius:14px;background:var(--surface-2);border:1px solid var(--line);font-size:.86em}
 .fb-estado-precios .t{font-weight:650}.fb-estado-precios .s{color:var(--ink-2);margin-top:3px}

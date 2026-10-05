@@ -141,7 +141,7 @@ function heroGasto(padre, S, M) {
   const dato = (l, v, cls) => { const d = r.createDiv({ cls: "d " + (cls || "") }); d.createDiv({ cls: "k", text: l }); d.createDiv({ cls: "n", text: v }); };
   dato(actual ? "Ha entrado" : "Entró", eur(M.ingresos, 0), "entra");
   dato(actual ? "Ha salido" : "Salió", eur(M.gastos, 0), "sale");
-  dato(actual ? "Te queda" : "Ahorraste", eurS(M.ahorro, 0), M.ahorro < 0 ? "neg" : "");
+  dato("Ahorro del mes", eurS(M.ahorro, 0), M.ahorro < 0 ? "neg" : "");
 }
 
 function tarjetaSemana(p, S) {
@@ -244,8 +244,10 @@ function accionesRapidas(padre) {
     { ic: "📈", t: "Actualizar inversión", s: preciosActivos() ? `precios de ${(cfg.precios.ultima || "nunca").slice(0, 10).split("-").reverse().join("/")}` : "lo que vale cada activo", ruta: preciosActivos() ? "#inversion/actualizar" : "#valores" },
     { ic: "✏️", t: "Apuntar un gasto", s: "uno a mano, al momento", ruta: "#apuntar" },
   ];
+  const tocan = A.filter((x) => x.toca);  // solo lo que toca ahora; el resto está en el menú
+  if (!tocan.length) return;
   const box = padre.createDiv({ cls: "fb-accesos fb-acciones" });
-  for (const x of A) {
+  for (const x of tocan) {
     const a = box.createEl("a", { cls: "fb-acceso internal-link" + (x.toca ? " toca" : ""), href: x.ruta });
     setVar(a.createDiv({ cls: "fb-av", text: x.ic }), "--cc", "var(--brand)");
     const d = a.createDiv(); d.createDiv({ cls: "t", text: x.t }); d.createDiv({ cls: "s", text: x.s });
@@ -328,12 +330,13 @@ function tarjetaMeses(p) {
 // ───────────── movimientos ─────────────
 function vistaMovimientos() {
   cabecera("Movimientos", true, "Todo lo que ha entrado y salido. Pulsa uno para cambiarlo.");
+  enlace(root.createDiv({ cls: "fin-note" }), "+ Apuntar un gasto a mano", "#apuntar");
   const M = finMes(mes);
   const g = root.createDiv({ cls: "fb-stats" });
   const st = (cls, ic, l, v) => { const c = g.createDiv({ cls: "fb-stat " + cls }); c.createDiv({ cls: "ic", text: ic }); c.createDiv({ cls: "l", text: l }); c.createDiv({ cls: "v", text: v }); };
   st("entra", "↑", "Entró", eur(M.ingresos, 0));
   st("sale", "↓", "Salió", eur(M.gastos, 0));
-  st("ahorro", "⚖️", "Diferencia", eurS(M.ahorro, 0));
+  st("ahorro", "⚖️", "Ahorro del mes", eurS(M.ahorro, 0));
   const modo = params[0] === "lista" || filtroCat ? "lista" : "categorias";  // de primeras, por categoría; con una categoría elegida, su lista
   const seg = root.createDiv({ cls: "fb-seg" });
   for (const [k, t, r] of [["categorias", "Por categoría", "#movimientos"], ["lista", "Lista", "#movimientos/lista"]]) { const l = enlace(seg, t, r); l.className += k === modo ? " act" : ""; if (k === "categorias") l.addEventListener("click", () => { filtroCat = null; guardarEstado({ filtroCat: null }); }); }
@@ -420,7 +423,7 @@ function vistaPorCategoria(M) {
   if (ing.size) {
     const p = panel(g, "Ingresos", { text: eur(M.ingresos, 0) });
     const l = p.createDiv({ cls: "fb-lista" });
-    for (const [n, v] of [...ing].sort((a, b) => b[1] - a[1])) item(l, { av: { cat: n, sm: true }, t: n, s: pct(v / M.ingresos), v: eur(v, 0), pos: true, onclick: abrirCat(n) });
+    for (const [n, v] of [...ing].sort((a, b) => b[1] - a[1])) item(l, { av: { cat: n, sm: true }, t: n, s: ing.size > 1 ? pct(v / M.ingresos) : "", v: eur(v, 0), pos: true, onclick: abrirCat(n) });
   }
   // «Salió» es el gasto menos lo que te devolvieron; una devolución de un gasto de otro mes deja su categoría en negativo y no sale en las listas
   const dev = [...gastoPorCategoria(mes)].filter(([, v]) => v < -0.005);
