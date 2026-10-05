@@ -220,10 +220,20 @@ function evolucionInversion(soloLargo = false) {
     const fin = mesDT(k).endOf("month");
     return sum(A.filter((a) => a.aportadoIni > 0 && a.fechaIni && a.fechaIni <= fin).map((a) => a.aportadoIni)) + sum(APr.filter((x) => x.fecha <= fin).map((x) => x.importe));
   });
-  const valor = keys.map((k, i) => {
+  // Cada mes: el valor anotado de cada activo y, si no lo hay, participaciones de ese mes × precio de fin de mes (precios por internet).
+  const valorMercado = (a, k) => {
+    const m = precioMercado(a), po = posicion(a);
+    const precio = m && m.mensual[k];
+    if (!precio || !po.conPart) return null;
+    const fin = mesDT(k).endOf("month");
+    const part = sum(po.ops.filter((x) => x.fecha <= fin).map((x) => num(x.p.participaciones)));
+    return part > 1e-9 ? part * precio : null;
+  };
+  const valor = keys.map((k) => {
     if (k === hoyKey) return sum(A.map(valorHoy));
     const r = [...P].reverse().find((x) => keyDe(x.fecha) === k && Object.keys(x.valores || {}).some((v) => nombres.has(v)));
-    return r ? sum(Object.entries(r.valores).filter(([v]) => nombres.has(v)).map(([, v]) => num(v))) : null;
+    const porActivo = A.map((a) => (r && r.valores && hasNum(r.valores[a.nombre]) ? num(r.valores[a.nombre]) : valorMercado(a, k)));
+    return porActivo.every((v) => v != null) ? sum(porActivo) : (r ? sum(Object.entries(r.valores).filter(([v]) => nombres.has(v)).map(([, v]) => num(v))) : null);
   });
   const i0 = Math.max(0, Math.min(aportado.findIndex((v) => v > 0), keys.length - 2));  // sin meses vacíos delante
   return { keys: keys.slice(i0), aportado: aportado.slice(i0), valor: valor.slice(i0) };
