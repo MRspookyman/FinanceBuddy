@@ -221,25 +221,41 @@ function resultadoImport(padre, r) {
   if (r.necesita === "perfil") { configurarFormato(card, r); return; }
   mensaje(card, r.mensaje || "No se ha podido importar", "err");
 }
-// Tras importar: ¿el saldo que dice el banco coincide con el que calcula la app?
+// Tras importar: ¿el saldo que dice el banco coincide con el que calcula la app? (si no, autoCuadre lo iguala al del banco)
 function cuadreExtracto(card, r) {
   const ext = r.tipo === "banco" ? cfg[`saldo_extracto:${r.cuenta}`] : null;
   if (!ext) return;
   const f = DateTime.fromISO(ext.fecha), P = patrimonio();
   const u = [...P].reverse().find((x) => x.fecha < f.startOf("day")) || P[0];
   const est = u ? proyectar(u, f.endOf("day")).cuentas.saldos[r.cuenta] : null;
-  if (est == null) return;
-  const dif = ext.saldo - est, n = card.createDiv({ cls: "fin-note" });
-  if (Math.abs(dif) < 0.01) { n.setText(`✓ El saldo del banco (${eur(ext.saldo)}) coincide con el de la app: no falta ningún movimiento.`); return; }
-  n.appendText(`El banco dice ${eur(ext.saldo)} y la app calcula ${eur(est)} (${eurS(dif, 2)}). Suele ser un movimiento que falta o uno repetido. `);
-  const b = n.createEl("button", { cls: "fin-link", text: "Dar por bueno el saldo del banco" });
-  b.title = "Anota el saldo del banco como punto de partida; el resto de tus cuentas se quedan como estaban";
-  b.onclick = async () => {
-    b.disabled = true;
-    const saldos = { ...proyectar(u, f.endOf("day")).cuentas.saldos, [r.cuenta]: ext.saldo };
-    const x = await FB.api("/api/cierre", { fecha: ext.fecha, mes: ext.fecha.slice(0, 7), saldos, valores: {}, otros: u.otros || "", deudas: u.deudas || "", notas: "Saldo del extracto" });
-    FB.aviso(x.ok ? "Saldo del banco anotado ✓" : (x.mensaje || "Error"), !x.ok); await FB.refrescar();
-  };
+  if (est != null && Math.abs(ext.saldo - est) < 0.01) card.createDiv({ cls: "fin-note", text: `✓ El saldo de ${r.cuenta} (${eur(ext.saldo)}) es el que dice tu banco.` });
+}
+// El saldo de cada cuenta con extracto es el que dice el banco: si la app calcula otro, se anota el del banco (un registro de saldos de ese día;
+// el mes no se cierra ni cambia el valor de la inversión). Se intenta una vez por cada saldo distinto del extracto.
+async function autoCuadre() {
+  const P = patrimonio();
+  if (!P.length || (DB.info || {}).ejemplo) return false;
+  const ultima = P[P.length - 1].fecha;
+  const hechos = [];
+  for (const c of cuentas().filter((c) => c.extracto && c.tipo !== "broker")) {
+    const ext = cfg[`saldo_extracto:${c.nombre}`], f = ext && DateTime.fromISO(ext.fecha);
+    if (!f || !f.isValid || f > hoy.endOf("day") || ultima > f.endOf("day")) continue;  // sin extracto, futuro, o ya anotaste saldos después
+    const u = [...P].reverse().find((x) => x.fecha < f.startOf("day")) || P[0];
+    const est = proyectar(u, f.endOf("day")).cuentas.saldos[c.nombre];
+    if (est == null || Math.abs(ext.saldo - est) < 0.01) continue;
+    hechos.push({ c, ext, f, u });
+  }
+  if (!hechos.length) return false;
+  const F = DateTime.max(...hechos.map((x) => x.f)), delDia = hechos.filter((x) => x.f.hasSame(F, "day"));
+  const clave = "fb-cuadre:" + delDia.map((x) => `${x.c.nombre}:${x.ext.fecha}:${x.ext.saldo}`).join("|");
+  try { if (sessionStorage.getItem(clave)) return false; sessionStorage.setItem(clave, "1"); } catch (_) {}
+  const u0 = delDia[0].u, saldos = { ...proyectar(u0, F.endOf("day")).cuentas.saldos };
+  for (const x of delDia) saldos[x.c.nombre] = x.ext.saldo;
+  const r = await FB.api("/api/saldo_banco", { fecha: F.toISODate(), saldos });
+  if (!r.ok) return false;
+  FB.aviso(`Saldo igualado al del banco: ${delDia.map((x) => `${x.c.nombre} ${eur(x.ext.saldo)}`).join(", ")}`);
+  await FB.refrescar();
+  return true;
 }
 const reemplazar = async (viejo, nuevo) => { guardarImport(resultadosImport.map((x) => (x === viejo ? nuevo : x))); await FB.refrescar(); };
 // Formato nuevo: el usuario dice qué columna es cada cosa (se guarda como «formato» y se reconoce solo la próxima vez).
@@ -1215,6 +1231,7 @@ function render() {
   document.title = "FinanceBuddy · " + (TITULOS[sinConfigurar ? "bienvenida" : vista] || "Inicio");
 }
 render();
+if (!(input && input.exponer)) autoCuadre();
 // Para las pruebas automáticas.
 if (input && input.exponer) {
   window.__fin = { finMes, repartoAhorro, estimacion, conciliacion, prevision, resumenInversion, fondoEmergencia, gastoVariable, tasa12, repartoObjetivo, resumenMes, subidasFijos,

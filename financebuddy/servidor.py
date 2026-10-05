@@ -193,6 +193,17 @@ class App:
             self.alm.set_config("configurado", True)
         return {"ok": True}
 
+    def saldo_banco(self, d):
+        """El saldo que dice el extracto del banco pasa a ser el de la app: registro de patrimonio de ese día (sin cerrar el mes ni tocar el valor de los activos)."""
+        fecha = modelo.fecha(d.get("fecha"))
+        if not fecha or not isinstance(d.get("saldos"), dict): raise ValueError("Faltan la fecha y los saldos.")
+        regs = self.alm.todos("patrimonio")
+        ya = next((r for r in regs if r["fecha"] == fecha), None)
+        base = ya or max([r for r in regs if r["fecha"] < fecha], key=lambda r: r["fecha"], default={})
+        reg = {"fecha": fecha, "saldos": d["saldos"], "valores": base.get("valores") or {}, "otros": base.get("otros"), "deudas": base.get("deudas"), "nota": "Saldo del extracto"}
+        self.alm.guardar("patrimonio", reg, ya["id"] if ya else None)
+        return {"ok": True}
+
     def cierre(self, d):
         """Registro de patrimonio del día del cierre + valores de los activos + nota del mes."""
         fecha = modelo.fecha(d.get("fecha"))
@@ -303,6 +314,7 @@ class App:
         if ruta == "/api/importar/descartar": return self.descartar_archivo(d)
         if ruta == "/api/importar/subir": return self.subir(d)
         if ruta == "/api/importar/reintentar": return self.reintentar(d)
+        if ruta == "/api/saldo_banco": return self.saldo_banco(d)
         if ruta == "/api/deshacer":  # vuelve a como estaba antes de la última decisión de «Por revisar»
             if not self.deshacer: return {"ok": False, "mensaje": "No hay nada que deshacer."}
             a.recuperar(self.deshacer); self.deshacer = None

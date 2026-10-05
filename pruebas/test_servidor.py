@@ -54,6 +54,18 @@ class TestFlujo(unittest.TestCase):
         self.assertEqual((len(self.app.alm.todos("pendiente")), len(self.app.alm.todos("movimiento"))), (3, antes))
         self.assertFalse(self.api("/api/deshacer")["ok"])
 
+    def test_saldo_banco_no_cierra_el_mes_ni_toca_los_valores(self):
+        self.api("/api/bienvenida", {"cuentas": [{"nombre": "Nómina", "tipo": "corriente", "saldo": 1000}]})
+        self.app.alm.guardar("activo", {"nombre": "Fondo", "clase": "fondo", "valor": 500, "fecha_valor": "2026-08-31"})
+        ant = self.app.alm.todos("patrimonio")[0].get("valores", {})
+        self.assertTrue(self.api("/api/saldo_banco", {"fecha": "2026-10-02", "saldos": {"Nómina": 373.5}})["ok"])
+        pat = sorted(self.app.alm.todos("patrimonio"), key=lambda r: r["fecha"])
+        self.assertEqual((pat[-1]["fecha"], pat[-1]["saldos"]["Nómina"], pat[-1].get("valores", {})), ("2026-10-02", 373.5, ant))
+        self.assertEqual(self.app.alm.todos("cierre"), [])
+        self.assertEqual(self.app.alm.todos("activo")[0]["valor"], 500)
+        self.api("/api/saldo_banco", {"fecha": "2026-10-02", "saldos": {"Nómina": 400}})   # el mismo día se actualiza, no se duplica
+        self.assertEqual(len([r for r in self.app.alm.todos("patrimonio") if r["fecha"] == "2026-10-02"]), 1)
+
     def test_descartar_un_archivo_subido(self):
         self.api("/api/bienvenida", {"cuentas": [{"nombre": "Nómina", "tipo": "corriente", "saldo": 1000}]})
         ruta = os.path.join(self.dir, "x.xlsx"); excel_santander(ruta, FILAS)
