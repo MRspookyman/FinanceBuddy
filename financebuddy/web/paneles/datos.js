@@ -131,6 +131,14 @@ const movimientos = () => {
     concepto: txt(p.concepto) || "Movimiento", recurrente: txt(p.recurrente), destino: txt(p.destino), origen: txt(p.origen),
     cuenta: txt(p.cuenta) || principal(), auto: false,
   })).filter((m) => m.fecha);
+  // Lo que está «por revisar» (banco) cuenta desde el primer momento, como «Sin clasificar»: gasto si sale, ingreso si entra.
+  // Al clasificarlo deja de ser pendiente y pasa a ser un movimiento de verdad (no se cuenta dos veces).
+  for (const q of (typeof DB !== "undefined" && DB.pendientes) || []) {
+    const f = q.fila || {};
+    if (q.tipo_import === "inversion" || f.clase === "transferencia" || !toDate(f.op) || !isFinite(Number(f.importe))) continue;
+    reales.push({ p: q, fecha: toDate(f.op), importe: Math.abs(Number(f.importe)), clase: Number(f.importe) < 0 ? "gasto" : "ingreso", categoria: "Sin clasificar",
+      concepto: txt(f.concepto) || txt(f.texto) || "Sin clasificar", recurrente: "", destino: "", origen: "", cuenta: txt(q.cuenta) || principal(), auto: false, pendiente: true });
+  }
   const virtuales = [];
   const vinculados = new Set(reales.filter((m) => m.recurrente).map((m) => `${m.recurrente}|${keyDe(m.fecha)}`));
   for (const r of recurrentes().filter((r) => r.clase !== "aportacion")) {

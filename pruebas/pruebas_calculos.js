@@ -28,7 +28,8 @@ caso("El seguro anual (marzo) no aparece en septiembre", !S.ms.some((m) => m.rec
 // 3. «Te lo devolvieron» resta del gasto: cena de 84 € − 42 € de la parte del amigo = 42 € netos.
 const cena = suma(S.real.filter((m) => /El Puerto|Parte de Marta/.test(m.concepto)).map((m) => m.gasto));
 caso("Reembolso: la cena queda en 42 € netos", cerca(cena, 42), cena);
-caso("Septiembre: ingresos = nómina 1.850 €", cerca(S.ingresos, 1850), S.ingresos);
+caso("Septiembre: ingresos = nómina 1.850 € + 50 € sin clasificar", cerca(S.ingresos, 1900), S.ingresos);
+caso("Lo por revisar cuenta como gasto sin clasificar (72,70 €)", cerca(F.finMes("2026-09").real.filter((m) => m.pendiente && m.clase === "gasto").reduce((t, m) => t + m.importe, 0), 72.7), null);
 
 // 4. Destino del ahorro: lo que «se queda en la corriente» en agosto = variación del saldo de la corriente en agosto.
 const P31_07 = P.find((x) => x.fecha.toISODate() === "2026-07-31"), P31_08 = P.find((x) => x.fecha.toISODate() === "2026-08-31");

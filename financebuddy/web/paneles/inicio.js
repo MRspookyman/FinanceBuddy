@@ -137,6 +137,8 @@ function heroGasto(padre, S, M) {
     barra(vari / limiteVar, `gastaste ${eur(vari, 0)} de ${eur(limiteVar, 0)}`);
     const e = estado(); if (e) h.createDiv({ cls: "s", text: e });
   }
+  const sinRev = M.real.filter((m) => m.pendiente);
+  if (sinRev.length) enlace(h.createDiv({ cls: "pie" }), `Incluye ${eur(sum(sinRev.map((m) => (m.clase === "gasto" ? m.importe : -m.importe))), 0)} de ${sinRev.length} movimiento${sinRev.length > 1 ? "s" : ""} sin revisar →`, "#revisar");
   const r = h.createDiv({ cls: "fb-resumen" });
   const dato = (l, v, cls) => { const d = r.createDiv({ cls: "d " + (cls || "") }); d.createDiv({ cls: "k", text: l }); d.createDiv({ cls: "n", text: v }); };
   dato(actual ? "Ha entrado" : "Entró", eur(M.ingresos, 0), "entra");
@@ -344,12 +346,20 @@ function vistaMovimientos() {
   if (nJev) enlace(root.createDiv({ cls: "fin-note fb-pista" }), `✨ El asistente Jev cree que ${nJev === 1 ? "un comercio está" : `${nJev} comercios están`} en otra categoría · revísalo →`, "#revision");
   if (modo === "categorias") { vistaPorCategoria(M); return; }
 
-  const todos = [...M.ms].sort((a, b) => b.fecha - a.fecha || (b.p.id || 0) - (a.p.id || 0));
-  const cats = [...new Set(todos.map((m) => (m.clase === "transferencia" ? "Entre tus cuentas" : m.categoria)).filter(Boolean))].sort((a, b) => a.localeCompare(b, "es"));
+  // Un mes o todo el historial (buscar un concepto siempre mira en todo)
+  let todos = [], cats = [];
+  const cargar = (todo) => {
+    todos = (todo ? movimientos().filter((m) => !m.auto && !m.previsto) : [...M.ms]).sort((a, b) => b.fecha - a.fecha || (b.p.id || 0) - (a.p.id || 0));
+    cats = [...new Set(todos.map((m) => (m.clase === "transferencia" ? "Entre tus cuentas" : m.categoria)).filter(Boolean))].sort((a, b) => a.localeCompare(b, "es"));
+  };
+  cargar(FB.estado.hist);
   const filtros = root.createDiv({ cls: "fb-filtros" });
   const inp = filtros.createEl("input", { cls: "fin-search", attr: { type: "search", placeholder: "Buscar un concepto, comercio o importe…" } });
   inp.value = busqueda;
+  const per = filtros.createDiv({ cls: "fb-seg mini" });
+  for (const [k, t] of [[false, mesLbl(mes)], [true, "Todo el historial"]]) { const b = per.createEl("button", { text: t, cls: !!FB.estado.hist === k ? "act" : "", attr: { type: "button" } }); b.onclick = () => { FB.estado.hist = k; FB.estado.pagMov = 0; render(); }; }
   const chips = root.createDiv({ cls: "fb-chips" });
+  const total = root.createDiv({ cls: "fin-note" });
   const lista = root.createDiv({ cls: "fin-panel" });
   const pie = root.createDiv({ cls: "fb-pagina" });
   const POR_PAGINA = 40;
@@ -364,11 +374,15 @@ function vistaMovimientos() {
   const devuelto = new Map();  // gasto → lo que te han devuelto de él (Bizums enlazados)
   for (const r of registros("movimiento")) if (r.reembolsa) devuelto.set(r.reembolsa, (devuelto.get(r.reembolsa) || 0) + num(r.importe));
   const pintar = () => {
-    lista.innerHTML = ""; pie.innerHTML = "";
+    lista.innerHTML = ""; pie.innerHTML = ""; total.textContent = "";
     const q = norm(inp.value.trim());
+    if (q && !FB.estado.hist) { cargar(true); }  // buscar mira en todo el historial; sin búsqueda vuelve al mes
+    else if (!q && !FB.estado.hist) cargar(false);
     const f = todos.filter((m) => (!filtroCat || (m.clase === "transferencia" ? "Entre tus cuentas" : m.categoria) === filtroCat)
       && (!q || norm(`${m.concepto} ${m.categoria} ${m.cuenta} ${m.p.ext_texto || ""} ${nf(m.importe, 2, 2)}`).includes(q)));
     if (!f.length) { vacio(lista, todos.length ? "Nada coincide" : "Sin movimientos este mes", todos.length ? "" : " Importa el extracto de tu banco o apunta uno a mano."); return; }
+    const neto = sum(f.map((x) => (x.clase === "ingreso" || x.clase === "reembolso" ? x.importe : x.clase === "gasto" ? -x.importe : 0)));
+    total.textContent = `${f.length} movimiento${f.length > 1 ? "s" : ""}${q && !FB.estado.hist ? " en todo el historial" : ""} · ${eurS(neto, 0)} en total (sin contar traspasos)`;
     let dia = null, cont = null;
     const paginas = Math.ceil(f.length / POR_PAGINA), pag = Math.min(FB.estado.pagMov || 0, paginas - 1);
     for (const m of f.slice(pag * POR_PAGINA, (pag + 1) * POR_PAGINA)) {
@@ -387,9 +401,9 @@ function vistaMovimientos() {
       const sub = m.clase === "transferencia" ? `Entre tus cuentas ${m.destino ? "→ " + m.destino : m.origen ? "← " + m.origen : ""}` : `${m.categoria}${m.clase === "reembolso" ? " · te lo devolvieron" : ""}${devuelto.has(m.p.id) ? ` · te devolvieron ${eur(devuelto.get(m.p.id))}` : ""}`;
       item(cont, {
         av: { cat: m.clase === "transferencia" ? null : m.categoria, clase: m.clase }, t: m.concepto,
-        s: `${sub}${cuentas().length > 1 ? " · " + m.cuenta : ""}${m.auto ? " · previsto" : ""}`,
+        s: `${sub}${cuentas().length > 1 ? " · " + m.cuenta : ""}${m.auto ? " · previsto" : ""}${m.pendiente ? " · sin revisar" : ""}`,
         v: signo + eur(m.importe), pos: entra, prev: m.auto || m.previsto,
-        ruta: m.auto ? (m.p.id ? `#editar/recurrente/${m.p.id}` : null) : `#editar/movimiento/${m.p.id}`,
+        ruta: m.pendiente ? "#revisar" : m.auto ? (m.p.id ? `#editar/recurrente/${m.p.id}` : null) : `#editar/movimiento/${m.p.id}`,
       });
     }
     if (paginas > 1) {  // paginación: la lista larga se corta en páginas de 40

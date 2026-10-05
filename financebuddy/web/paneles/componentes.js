@@ -22,7 +22,7 @@ const accion = (padre, texto, fn, title) => {
 };
 
 // Icono y color de cada categoría (las que cree el usuario reciben uno genérico y un color estable).
-const CAT_ICONO = { Vivienda: "🏠", Suministros: "💡", Seguros: "🛡️", Suscripciones: "📺", Supermercado: "🛒", "Comer fuera": "🍽️", Ocio: "🎉",
+const CAT_ICONO = { "Sin clasificar": "❔", Vivienda: "🏠", Suministros: "💡", Seguros: "🛡️", Suscripciones: "📺", Supermercado: "🛒", "Comer fuera": "🍽️", Ocio: "🎉",
   Transporte: "🚌", Coche: "🚗", Salud: "💊", Compras: "🛍️", Hogar: "🛋️", Viajes: "✈️", "Formación": "📚", Regalos: "🎁", "Cuidado personal": "💇",
   Mascotas: "🐾", Efectivo: "💶", Comisiones: "🏦", Otros: "📦", "Nómina": "💼", "Otros ingresos": "💰", Apuestas: "🎲", Videojuegos: "🎮", Deporte: "🏀" };
 // Pastel (salvia, arena, terracota, lavanda, cielo, rosa, oliva, agua, melocotón, piedra): legibles en claro y oscuro.

@@ -784,13 +784,10 @@ function vistaCerrar() {
       refs.s[c.nombre] = i;
       form.createDiv({ cls: "s", text: est != null ? `según los movimientos: ${eur(est)}${ext ? ` · último extracto: ${eur(ext.saldo)} el ${fmtISO(ext.fecha)}` : ""}` : "saldo de ese día" });
       if (est != null && ext && ext.fecha <= fecha.toISODate() && Math.abs(ext.saldo - est) >= 0.01) {  // el banco dice otra cosa: por qué puede ser
-        const dif = ext.saldo - est, desde = u ? u.fecha.toISODate() : "";
-        const pend = (DB.pendientes || []).filter((x) => x.tipo_import !== "inversion" && x.cuenta === c.nombre && x.fila && x.fila.op > desde && x.fila.op <= fecha.toISODate());
-        const sumaP = sum(pend.map((x) => x.fila.importe));
+        const dif = ext.saldo - est;
         const n = form.createDiv({ cls: "s aviso-saldo" });
         n.appendText(`El banco dice ${eur(ext.saldo)}: ${eurS(dif, 2)} respecto a la cuenta de la app. `);
-        if (pend.length) { n.appendText(`Hay ${pend.length} movimiento${pend.length > 1 ? "s" : ""} de esta cuenta sin revisar (${eurS(sumaP, 2)}${Math.abs(sumaP - dif) < 0.01 ? ", justo la diferencia" : ""}): no cuentan hasta que los clasifiques. `); enlace(n, "Por revisar →", "#revisar"); }
-        else n.appendText("Falta algún movimiento (o sobra uno apuntado a mano o previsto) entre el último registro y hoy. Si tu banco dice " + eur(ext.saldo) + ", anota ese saldo.");
+        n.appendText("Falta algún movimiento (o sobra uno apuntado a mano o previsto) entre el último registro y hoy. Si tu banco dice " + eur(ext.saldo) + ", anota ese saldo.");
       }
     }
     const A = activos().filter((a) => !vendidoDelTodo(a));
@@ -879,7 +876,12 @@ function vistaAjustes() {
     const b = e.createEl("button", { cls: "fb-btn", text: "Volver a mis datos" });
     b.onclick = async () => { await FB.api("/api/ejemplo", { activar: false }); await FB.recargar(); FB.ir("#inicio"); };
   }
-  const g = rejilla();
+  const tab = { datos: "datos", jev: "integraciones", precios: "integraciones", integraciones: "integraciones" }[params[0]] || "general";
+  const seg = root.createDiv({ cls: "fb-seg" });
+  for (const [k, t] of [["general", "General"], ["integraciones", "Asistente y precios"], ["datos", "Tus datos y copias"]]) { const l = enlace(seg, t, "#ajustes/" + k); l.className += k === tab ? " act" : ""; }
+  const cnt = (t) => (DB.registros[t] || []).length;
+  const g = tab === "general" ? rejilla() : null;
+  if (tab === "general") {
   const pL = panel(g, "Tu límite de gasto variable");
   pL.createDiv({ cls: "fin-note", text: "Al mes, sin contar gastos fijos. 0 = sin límite." });
   const f = pL.createDiv({ cls: "fb-fila" });
@@ -888,8 +890,23 @@ function vistaAjustes() {
   bL.onclick = async () => { await FB.api("/api/config", { limite_variable: iL.value }); FB.aviso("Guardado ✓"); await FB.refrescar(); };
 
   apariencia(panel(g, "Apariencia"));
-  const pG = panel(g, "Lo más usado");
-  const cnt = (t) => (DB.registros[t] || []).length;
+  const pT = panel(g, "Tú", null, "Tu nombre tal y como sale en el banco. Con él, el dinero que mueves entre cuentas a tu nombre se reconoce como traspaso y no como gasto o ingreso.");
+  pT.createDiv({ cls: "fin-note", text: "Se rellena solo con el titular del primer extracto que lo traiga. Si hay más titulares (cuenta conjunta), sepáralos con «;»." });
+  const fT = pT.createDiv({ cls: "fb-fila" });
+  const iT = fT.createEl("input", { attr: { type: "text", placeholder: "p. ej. GARCÍA LÓPEZ ANA" } }); iT.value = (cfg.titulares || []).join("; ");
+  const bT = fT.createEl("button", { cls: "fb-btn", text: "Guardar" });
+  bT.onclick = async () => { await FB.api("/api/titulares", { titulares: iT.value.split(";") }); FB.aviso("Guardado ✓"); await FB.refrescar(); };
+  }
+  if (tab === "integraciones") { panelJev(root); panelPrecios(root); }
+  if (tab === "general") {
+  const pI = panel(root, "Tu inicio", null, "Elige qué ves en la pantalla de inicio y en qué orden. Se guarda al momento.");
+  pI.id = "tu-inicio";
+  personalizarInicio(pI);
+  if (params[0] === "inicio") setTimeout(() => { pI.scrollIntoView({ block: "start" }); pI.classList.add("resalta"); }, 30);
+  if (params[0] === "precios") setTimeout(() => { const e = document.getElementById("precios"); if (e) { e.scrollIntoView({ block: "start" }); e.classList.add("resalta"); } }, 30);
+  if (params[0] === "jev") setTimeout(() => { const e = document.getElementById("jev"); if (e) { e.scrollIntoView({ block: "start" }); e.classList.add("resalta"); } }, 30);
+  }
+  if (tab === "datos") {
   const accesos = (padre, lista) => {
     const box = padre.createDiv({ cls: "fb-accesos" });
     for (const [ic, t, s, ruta] of lista) {
@@ -898,25 +915,6 @@ function vistaAjustes() {
       const d = a.createDiv(); d.createDiv({ cls: "t", text: t }); d.createDiv({ cls: "s", text: s });
     }
   };
-  accesos(pG, [
-    ["🔍", "Detectar fijos", "nóminas, alquiler, recibos y de dónde viene tu dinero", "#fijos"],
-    ["🧾", "Actualizar saldos", "cierra el mes: lo que tienes en cada cuenta", "#cerrar"],
-    ...(((cfg.jev || {}).activo) ? [["✨", "Revisar tus categorías", ((cfg.jev.revision || {}).hallazgos || []).length ? `${cfg.jev.revision.hallazgos.length} para revisar` : "el asistente Jev repasa lo ya clasificado", "#revision"]] : []),
-  ]);
-  const pT = panel(g, "Tú", null, "Tu nombre tal y como sale en el banco. Con él, el dinero que mueves entre cuentas a tu nombre se reconoce como traspaso y no como gasto o ingreso.");
-  pT.createDiv({ cls: "fin-note", text: "Se rellena solo con el titular del primer extracto que lo traiga. Si hay más titulares (cuenta conjunta), sepáralos con «;»." });
-  const fT = pT.createDiv({ cls: "fb-fila" });
-  const iT = fT.createEl("input", { attr: { type: "text", placeholder: "p. ej. GARCÍA LÓPEZ ANA" } }); iT.value = (cfg.titulares || []).join("; ");
-  const bT = fT.createEl("button", { cls: "fb-btn", text: "Guardar" });
-  bT.onclick = async () => { await FB.api("/api/titulares", { titulares: iT.value.split(";") }); FB.aviso("Guardado ✓"); await FB.refrescar(); };
-  panelJev(root);
-  panelPrecios(root);
-  const pI = panel(root, "Tu inicio", null, "Elige qué ves en la pantalla de inicio y en qué orden. Se guarda al momento.");
-  pI.id = "tu-inicio";
-  personalizarInicio(pI);
-  if (params[0] === "inicio") setTimeout(() => { pI.scrollIntoView({ block: "start" }); pI.classList.add("resalta"); }, 30);
-  if (params[0] === "precios") setTimeout(() => { const e = document.getElementById("precios"); if (e) { e.scrollIntoView({ block: "start" }); e.classList.add("resalta"); } }, 30);
-  if (params[0] === "jev") setTimeout(() => { const e = document.getElementById("jev"); if (e) { e.scrollIntoView({ block: "start" }); e.classList.add("resalta"); } }, 30);
   const pD = panel(root, "Tus datos");
   accesos(pD, [
     ["🔁", "Fijos", `${cnt("recurrente")} ingresos y gastos que se repiten`, "#gestionar/recurrente"],
@@ -927,7 +925,6 @@ function vistaAjustes() {
     ["🎯", "Objetivos", `${cnt("objetivo")} metas de ahorro`, "#gestionar/objetivo"],
     ["⏰", "Recordatorios", "renta, ITV, seguros anuales…", "#gestionar/recordatorio"],
     ["📄", "Formatos de archivo", "cómo se lee el Excel de cada banco", "#gestionar/perfil"],
-    ["📒", "Todos los movimientos", `${cnt("movimiento")} registrados`, "#gestionar/movimiento"],
     ["📥", "Compras de inversión", `${cnt("aportacion")} aportaciones`, "#gestionar/aportacion"],
     ["💵", "Dividendos y comisiones", `${cnt("cobro")} registrados · para la renta`, "#gestionar/cobro"],
   ]);
@@ -957,12 +954,15 @@ function vistaAjustes() {
   const bB = fr3.createEl("button", { cls: "fb-btn sec peligro", text: "Borrar todo" });
   bB.onclick = async () => { const r = await FB.api("/api/vaciar", { confirmar: iB.value }); FB.aviso(r.mensaje || "Hecho", !r.ok); if (r.ok) { await FB.recargar(); FB.ir("#bienvenida"); } };
 
+  }
+  if (tab === "general") {
   const pS = panel(root, "FinanceBuddy");
   pS.createDiv({ cls: "fin-note", text: `Versión ${DB.info.version}. La app funciona en tu ordenador: cerrar la pestaña no la cierra.` });
   pS.createDiv({ cls: "fin-note", text: "Atajos de teclado: D = modo discreto · A = apuntar un movimiento · 1 a 6 = las secciones del menú." });
   panelVersion(pS);
   const bS = pS.createDiv({ cls: "fb-fila" }).createEl("button", { cls: "fb-btn sec", text: "Cerrar FinanceBuddy" });
   bS.onclick = async () => { await FB.api("/api/salir", {}); document.body.innerHTML = "<p style='padding:40px;font-family:sans-serif'>FinanceBuddy se ha cerrado. Puedes cerrar esta pestaña.</p>"; };
+  }
 }
 
 // Aviso de versión nueva (opcional, apagado de serie): una consulta pública a GitHub como mucho al día; no descarga ni instala nada.
