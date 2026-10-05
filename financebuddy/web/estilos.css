@@ -19,7 +19,7 @@ body{margin:0;font-family:"Segoe UI Variable Text","Segoe UI",system-ui,-apple-s
  --text-normal:var(--ink);--text-muted:var(--ink-2);--text-faint:var(--ink-3);--text-accent:var(--brand);--interactive-accent:var(--brand);--text-on-accent:#fff;
  --font-interface:inherit;
  --fin-s1:#6F9577;--fin-s2:#D98C6E;--fin-s3:#D2AE66;--fin-s4:#A794CC;--fin-s5:#7FA7BF;--fin-s6:#C9848F;--fin-s7:#A4A77A;
- --fin-good:var(--mint);--fin-bad:var(--rose);--fin-warn:var(--amber);--fin-up:#3F8A5A;--fin-down:#B9523F;
+ --fin-good:var(--mint);--fin-bad:var(--rose);--fin-warn:var(--amber);--fin-up:#2F7448;--fin-down:#B9523F;
  background:var(--bg) var(--textura);color:var(--ink)}
 body.theme-dark{color-scheme:dark;
  --bg:#15120E;--surface:#1E1A15;--surface-2:#28231C;--line:#352E25;--ink:#F1EADF;--ink-2:#BCB0A0;--ink-3:#9A8E7E;
@@ -531,3 +531,5 @@ button:focus-visible,a:focus-visible,summary:focus-visible,[tabindex]:focus-visi
 
 .fb-estado-precios{margin:0 0 14px;padding:10px 14px;border-radius:14px;background:var(--surface-2);border:1px solid var(--line);font-size:.86em}
 .fb-estado-precios .t{font-weight:650}.fb-estado-precios .s{color:var(--ink-2);margin-top:3px}
+
+.theme-dark .fb-btn:not(.sec),.theme-dark .fb-toca{color:#14201A}

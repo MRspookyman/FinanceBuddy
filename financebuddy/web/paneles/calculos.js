@@ -502,11 +502,40 @@ function prevision(n = 12) {
 }
 
 // ───────────── avisos (Resumen) ─────────────
+// Fijos que han subido de precio: el último cargo real de cada recurrente frente al anterior (más de un 5 % y 1 €), de los últimos 45 días.
+function subidasFijos() {
+  const por = new Map();
+  for (const m of movimientos().filter((m) => !m.auto && !m.previsto && m.recurrente && m.clase === "gasto")) { if (!por.has(m.recurrente)) por.set(m.recurrente, []); por.get(m.recurrente).push(m); }
+  const out = [];
+  for (const [nombre, l] of por) {
+    l.sort((a, b) => a.fecha - b.fecha);
+    const u = l[l.length - 1], a = l[l.length - 2];
+    if (a && diasDesde(u.fecha) <= 45 && u.importe - a.importe >= 1 && u.importe > a.importe * 1.05) out.push({ nombre, antes: a.importe, ahora: u.importe });
+  }
+  return out;
+}
+// Resumen de un mes en pocas frases (para cuando se cierra)
+function resumenMes(key) {
+  const M = finMes(key), C = resumenCategorias(key).filter((c) => c.valor > 0.5 && c.grupo !== "fijo"), out = [];
+  if (!M.real.some((m) => !m.auto)) return out;
+  out.push(`Entraron ${eur(M.ingresos, 0)} y salieron ${eur(M.gastos, 0)}: ${M.ahorro >= 0 ? "ahorraste" : "gastaste de más"} ${eur(Math.abs(M.ahorro), 0)}.`);
+  if (C.length) {
+    const top = C.slice(0, 2).map((c) => `${c.nombre} (${eur(c.valor, 0)})`).join(" y ");
+    const raro = C.map((c) => ({ c, d: difMedia(c) })).filter((x) => x.d != null).sort((a, b) => Math.abs(b.d) - Math.abs(a.d))[0];
+    out.push(`En gasto variable pesó sobre todo ${top}.${raro ? ` ${raro.c.nombre}: ${eur(Math.abs(raro.d), 0)} ${raro.d > 0 ? "más" : "menos"} de lo habitual.` : ""}`);
+  }
+  const R = repartoAhorro(key);
+  if (R.compras > 0) out.push(`Metiste ${eur(R.compras, 0)} en tu inversión.`);
+  const sin = M.real.filter((m) => m.pendiente).length;
+  if (sin) out.push(`Quedan ${sin} movimiento${sin > 1 ? "s" : ""} sin revisar que ya cuentan como «Sin clasificar».`);
+  return out;
+}
 function avisos() {
   const out = [];
   const add = (nivel, texto, ruta) => out.push({ nivel, texto, ruta });
   const nPend = (DB.pendientes || []).length;
   if (nPend) add("warn", `${nPend} movimiento${nPend > 1 ? "s" : ""} por revisar: la app no ha sabido clasificarlo${nPend > 1 ? "s" : ""} sola`, "#revisar");
+  for (const x of subidasFijos()) add("warn", `${x.nombre} ha subido: de ${eur(x.antes, 2)} a ${eur(x.ahora, 2)}`, "#gestionar/recurrente");
   const nArch = ((DB.info || {}).archivos || []).length;
   if (nArch) add("warn", `${nArch} archivo${nArch > 1 ? "s" : ""} en la carpeta Importar sin procesar`, "#importar");
   const K = conciliacion();

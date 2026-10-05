@@ -58,7 +58,6 @@ function vistaInversion() {
 
   tablaActivos(panel(root, "Tus activos", { text: "Editar", ruta: "#gestionar/activo" }), I);
 
-  panelComisiones(root, I);
   const g2 = root.createDiv({ cls: "fin-grid dos" });
   tarjetaAportaciones(panel(g2, "Lo que metes cada mes"), solo);
   tarjetaSinInvertir(panel(g2, "Tu dinero sin invertir", { text: "Aportaciones periódicas", ruta: "#gestionar/recurrente" }), efectivo, INT);

@@ -231,8 +231,15 @@ function cuadreExtracto(card, r) {
   if (est == null) return;
   const dif = ext.saldo - est, n = card.createDiv({ cls: "fin-note" });
   if (Math.abs(dif) < 0.01) { n.setText(`✓ El saldo del banco (${eur(ext.saldo)}) coincide con el de la app: no falta ningún movimiento.`); return; }
-  n.appendText(`El banco dice ${eur(ext.saldo)} y la app calcula ${eur(est)} (${eurS(dif, 2)}). Suele ser un movimiento que falta o uno repetido; `);
-  enlace(n, "anota el saldo del banco →", "#cerrar");
+  n.appendText(`El banco dice ${eur(ext.saldo)} y la app calcula ${eur(est)} (${eurS(dif, 2)}). Suele ser un movimiento que falta o uno repetido. `);
+  const b = n.createEl("button", { cls: "fin-link", text: "Dar por bueno el saldo del banco" });
+  b.title = "Anota el saldo del banco como punto de partida; el resto de tus cuentas se quedan como estaban";
+  b.onclick = async () => {
+    b.disabled = true;
+    const saldos = { ...proyectar(u, f.endOf("day")).cuentas.saldos, [r.cuenta]: ext.saldo };
+    const x = await FB.api("/api/cierre", { fecha: ext.fecha, mes: ext.fecha.slice(0, 7), saldos, valores: {}, otros: u.otros || "", deudas: u.deudas || "", notas: "Saldo del extracto" });
+    FB.aviso(x.ok ? "Saldo del banco anotado ✓" : (x.mensaje || "Error"), !x.ok); await FB.refrescar();
+  };
 }
 const reemplazar = async (viejo, nuevo) => { guardarImport(resultadosImport.map((x) => (x === viejo ? nuevo : x))); await FB.refrescar(); };
 // Formato nuevo: el usuario dice qué columna es cada cosa (se guarda como «formato» y se reconoce solo la próxima vez).
@@ -786,6 +793,8 @@ function vistaCerrar() {
   const primer = P.length ? keyDe(P[0].fecha) : hoyKey;
   const pendienteAnt = ant >= primer && !cierres().some((c) => c.mes === ant);
   let fecha = pendienteAnt ? mesDT(ant).endOf("month") : hoy;
+  const resumen = resumenMes(ant);
+  if (resumen.length) { const pr = panel(root, `Así fue ${mesLbl(ant).toLowerCase()}`); for (const t of resumen) pr.createDiv({ cls: "fin-note fb-frase", text: t }); }
   const p = panel(root, pendienteAnt ? `Cierre de ${mesLbl(ant).toLowerCase()}` : "Registro de saldos de hoy");
   if (!pendienteAnt && cierres().some((c) => c.mes === ant)) p.createDiv({ cls: "fin-note", text: `${mesLbl(ant)} ya está cerrado. Puedes anotar los saldos de hoy si quieres (por ejemplo, para comprobar que todo cuadra).` });
   const form = p.createDiv({ cls: "fb-form" });
@@ -825,7 +834,15 @@ function vistaCerrar() {
         i.value = campos["v:" + a.nombre] ?? Math.round(valorHoy(a) * 100) / 100;
         i.oninput = () => (campos["v:" + a.nombre] = i.value);
         refs.v[a.nombre] = i;
-        form.createDiv({ cls: "s", text: a.fechaValor ? `último valor anotado: ${eur(a.valor)} el ${a.fechaValor.toFormat("dd/MM")}` : "lo que vale hoy en tu bróker" });
+        const sa = form.createDiv({ cls: "s" });
+        const part = resumenInversion().filas.find((x) => x.nombre === a.nombre);
+        if (part && part.participaciones > 0) {
+          sa.appendText(`${nf(part.participaciones, 0, 4)} participaciones × precio `);
+          const pr = sa.createEl("input", { cls: "fb-precio", attr: { type: "number", step: "0.0001", min: "0", placeholder: "€", "aria-label": `Precio de ${a.nombre}` } });
+          pr.oninput = () => { const v = parseFloat(pr.value); if (v > 0) { i.value = (Math.round(v * part.participaciones * 100) / 100).toFixed(2); campos["v:" + a.nombre] = i.value; } };
+          sa.appendText(" € · ");
+        }
+        sa.appendText(a.fechaValor ? `último valor anotado: ${eur(a.valor)} el ${a.fechaValor.toFormat("dd/MM")}` : "lo que vale hoy en tu bróker");
       }
     }
     form.createDiv({ cls: "sep", text: "Otros" });
@@ -858,39 +875,6 @@ function vistaCerrar() {
     tabla(c, [{ t: "Mes" }, { t: "Ingresos", num: true }, { t: "Gastos", num: true }, { t: "Ahorro", num: true }, { t: "Tasa", num: true, opt: true }, { t: "Notas", opt: true }],
       C.filter((x) => mesDT(x.mes).isValid).map((x) => { const M = finMes(x.mes); return [{ text: mesLbl(x.mes), ruta: x.file.path }, eur(M.ingresos, 0), eur(M.gastos, 0), { text: eurS(M.ahorro, 0), cls: tone(M.ahorro) }, pct(M.tasa), x.notas || ""]; }));
   }, { extra: `${C.length}` });
-}
-
-// ───────────── valores de la inversión ─────────────
-function vistaValores() {
-  titulo("Actualizar valores", "Lo que vale hoy cada activo (míralo en tu bróker)");
-  // Los que tienes (los vendidos del todo no). Con participaciones, basta el precio que ves en el bróker.
-  const A = resumenInversion().filas.filter((f) => f.estado !== "vendido");
-  if (!A.length) { vacio(root, "Aún no hay activos"); enlace(root.createDiv({ cls: "fin-note" }), "Añadir un activo →", "#editar/activo/nuevo"); return; }
-  const p = panel(root, "");
-  const form = p.createDiv({ cls: "fb-form" });
-  form.createDiv({ cls: "et", text: "Fecha" });
-  const iF = form.createEl("input", { attr: { type: "date" } }); iF.value = hoy.toISODate();
-  const ins = {};
-  for (const a of A) {
-    form.createDiv({ cls: "et", text: a.nombre });
-    const i = form.createEl("input", { attr: { type: "number", step: "0.01", placeholder: "Valor total (€)" } }); i.value = a.p.valor ?? ""; ins[a.nombre] = i;
-    const s = form.createDiv({ cls: "s" });
-    if (a.participaciones > 0) {
-      s.appendText(`${nf(a.participaciones, 0, 4)} participaciones × precio `);
-      const pr = s.createEl("input", { cls: "fb-precio", attr: { type: "number", step: "0.0001", min: "0", placeholder: "€", "aria-label": `Precio de ${a.nombre}` } });
-      if (a.p.valor != null && a.p.fecha_valor) pr.placeholder = nf(num(a.p.valor) / a.participaciones, 2, 4);
-      pr.oninput = () => { const v = parseFloat(pr.value); if (v > 0) i.value = (Math.round(v * a.participaciones * 100) / 100).toFixed(2); };
-      s.appendText(" € = valor");
-    }
-    if (a.p.fecha_valor) s.appendText(`${a.participaciones > 0 ? " · " : ""}anterior: ${eur(num(a.p.valor))} el ${fmtISO(a.p.fecha_valor)}`);
-  }
-  const b = p.createEl("button", { cls: "fb-btn", text: "Guardar" });
-  b.onclick = async () => {
-    const valores = {}; for (const [n, i] of Object.entries(ins)) if (i.value !== "") valores[n] = i.value;
-    const r = await FB.api("/api/valores", { fecha: iF.value, valores });
-    if (r.ok) { FB.aviso(r.mensaje); await FB.recargar(); FB.ir("#inicio"); } else mensaje(p, r.mensaje, "err");
-  };
-  enlace(p.createDiv({ cls: "fin-note" }), "Editar o añadir activos →", "#gestionar/activo");
 }
 
 // ───────────── ajustes ─────────────
@@ -1219,7 +1203,7 @@ function cambioCategoria(padre, reg, volver) {
 
 // ───────────── render ─────────────
 const TODAS = { ...VISTAS, bienvenida: vistaBienvenida, importar: vistaImportar, revisar: vistaRevisar, apuntar: vistaApuntar, cerrar: vistaCerrar,
-  valores: vistaValores, ajustes: vistaAjustes, gestionar: vistaGestionar, editar: vistaEditar, fijos: vistaFijos, activo: vistaActivo, revision: vistaRevision, progreso: vistaProgreso, renta: vistaRenta };
+  valores: vistaCerrar, ajustes: vistaAjustes, gestionar: vistaGestionar, editar: vistaEditar, fijos: vistaFijos, activo: vistaActivo, revision: vistaRevision, progreso: vistaProgreso, renta: vistaRenta };
 const TITULOS = { inicio: "Inicio", movimientos: "Movimientos", inversion: "Inversión",
   bienvenida: "Bienvenida", importar: "Importar", revisar: "Por revisar", apuntar: "Apuntar", cerrar: "Cerrar el mes", valores: "Valores", ajustes: "Ajustes", gestionar: "Ajustes", editar: "Editar", fijos: "Fijos", activo: "Inversión", revision: "Revisar categorías", progreso: "Tu progreso", renta: "Para la renta" };
 function render() {
@@ -1233,7 +1217,7 @@ function render() {
 render();
 // Para las pruebas automáticas.
 if (input && input.exponer) {
-  window.__fin = { finMes, repartoAhorro, estimacion, conciliacion, prevision, resumenInversion, fondoEmergencia, gastoVariable, tasa12, repartoObjetivo,
+  window.__fin = { finMes, repartoAhorro, estimacion, conciliacion, prevision, resumenInversion, fondoEmergencia, gastoVariable, tasa12, repartoObjetivo, resumenMes, subidasFijos,
     movimientos, aportaciones, objetivos, patrimonio, avisos, categorias, grupoDe, limiteVar, mesesHasta, mesAnterior, hoyKey,
     fechaDatos, presupuestoSemana, planReparto, cuentas, proyectar, resumenCategorias, ritmoMes, evolucionInversion, aportacionesMes, constancia, interesesBroker, saludInversion, posicion, valorInfo,
     hitosPatrimonio, proyeccion, mesesHasta50, puntosInversion, rendimientoPuntos, comisionesInversion, tamañoCompras, fifoVentas, cobros, usaMercado, generarResumen };

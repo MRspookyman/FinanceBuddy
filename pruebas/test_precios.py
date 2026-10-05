@@ -62,6 +62,8 @@ class PreciosFalso(http.server.BaseHTTPRequestHandler):
         if p == "/coingecko/api/v3/search":
             return self._json({"coins": [{"id": "bitcoin", "name": "Bitcoin", "market_cap_rank": 1}, {"id": "bitcoin-cash", "name": "Bitcoin Cash", "market_cap_rank": 20}]
                                if q["query"][0].lower() == "bitcoin" else []})
+        if p.startswith("/bce/v1/") and q.get("base") == ["USD"]:  # cambio del BCE (solo dólares: lo demás cae a Yahoo)
+            return self._json({"rates": {(datetime.date.today() - datetime.timedelta(days=i)).isoformat(): {"EUR": 0.5} for i in range(30)}})
         self._json({}, 404)
 
 class Base(unittest.TestCase):
@@ -137,6 +139,15 @@ class TestActualizar(Base):
         precios.actualizar(self.alm)
         self.assertEqual(sum("IWDA.AS" in p for p in PEDIDOS), 1)
         self.assertEqual(set(self.alm.config("precio_ultimos")), {"A", "B"})
+
+    def test_cambio_del_bce_y_respaldo_en_yahoo(self):
+        self.activar()
+        self.activo("Apple", clase="accion", fuente_precio="yahoo", codigo_precio="AAPL", moneda="USD")
+        self.activo("Vanguard UK", fuente_precio="yahoo", codigo_precio="VUSA.L", moneda="GBp")
+        self.assertEqual(precios.actualizar(self.alm)["fallos"], [])
+        usd, gbp = precios.leer_serie(self.alm, "yahoo", "USDEUR=X"), precios.leer_serie(self.alm, "yahoo", "GBPEUR=X")
+        self.assertTrue(usd and all(abs(v - 0.5) < 1e-9 for v in usd.values()))   # del BCE
+        self.assertTrue(gbp and any(abs(v - 0.5) > 1e-3 for v in gbp.values()))   # el BCE no lo tenía: de Yahoo
 
     def test_al_dia_no_vuelve_a_descargar_salvo_forzar(self):
         self.activar(); self.activo("Mundo", fuente_precio="yahoo", codigo_precio="IWDA.AS")

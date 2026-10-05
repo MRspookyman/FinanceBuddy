@@ -156,4 +156,8 @@ caso("Reparto objetivo: la próxima aportación va al activo más por debajo", R
 const RO2 = F.repartoObjetivo([{ valor: 650, p: { objetivo: 70 } }, { valor: 350, p: { objetivo: 30 } }]);
 caso("Reparto objetivo: dentro de la banda de 5 puntos no hay que hacer nada", RO2 && !RO2.proxima && RO2.dentro, null);
 
+const RESMES = F.resumenMes("2026-08");
+caso("Resumen del mes: frases de entradas y salidas, lo que más pesó y la inversión", RESMES.length >= 3 && /Entraron 1\.850/.test(RESMES[0]) && /Metiste/.test(RESMES[RESMES.length - 1]), JSON.stringify(RESMES));
+caso("Fijos que suben de precio: sin subidas en los datos de ejemplo", F.subidasFijos().length === 0, JSON.stringify(F.subidasFijos()));
+
 return casos;

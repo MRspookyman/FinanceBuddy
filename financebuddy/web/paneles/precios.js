@@ -48,6 +48,11 @@ function panelPrecios(padre) {
     FB.aviso(c.checked ? "Activado: elige de dónde sale el precio de cada activo" : "Apagado: la app no vuelve a conectarse"); await FB.refrescar();
   };
   if (!C.activo) return;
+  const fk = p.createDiv({ cls: "fb-fila" });
+  const iK = fk.createEl("input", { attr: { type: "password", autocomplete: "off", placeholder: C.hay_clave_cg ? "Clave de CoinGecko guardada" : "Clave gratuita de CoinGecko (opcional)", "aria-label": "Clave de CoinGecko" } });
+  const bK = fk.createEl("button", { cls: "fb-btn sec", text: C.hay_clave_cg ? "Cambiar" : "Guardar" });
+  bK.onclick = async () => { const r = await FB.api("/api/precios/config", { clave_coingecko: iK.value }); FB.aviso(r.ok ? "Clave guardada" : (r.mensaje || "Error"), !r.ok); await FB.refrescar(); };
+  p.createDiv({ cls: "fin-note", text: "Sin clave, CoinGecko limita las consultas por conexión. Con la clave gratuita «Demo» (la sacas en su web) no sueles toparte con el límite. Solo se envía a CoinGecko." });
   const A = registros("activo").filter((a) => a.estado !== "vendido");
   const con = A.filter((a) => a.fuente_precio), sin = A.filter((a) => !a.fuente_precio);
   const f = p.createDiv({ cls: "fb-fila" });

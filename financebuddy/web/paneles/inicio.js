@@ -19,6 +19,7 @@ const PANELES_INICIO = [
   { id: "categorias", t: "A dónde va tu dinero" },
   { id: "patrimonio", t: "Tu patrimonio (cuentas e inversión)" },
   { id: "proximos", t: "Próximos cargos (mes en curso)" },
+  { id: "objetivos", t: "Objetivos y recordatorios" },
   { id: "semana", t: "Esta semana", defecto: false },
   { id: "meses", t: "Tus últimos meses", defecto: false },
 ];
@@ -65,6 +66,7 @@ function vistaInicio() {
     categorias: (padre) => tarjetaCategorias(panel(padre, "A dónde va tu dinero", { text: "Ver todo", ruta: "#movimientos/categorias" }), mes),
     patrimonio: (padre) => tarjetaPatrimonio(panel(padre, "Tu patrimonio", { text: "Actualizar saldos", ruta: "#cerrar" })),
     proximos: (padre) => { if (actual) tarjetaProximos(panel(padre, "Próximos cargos", { text: "Fijos", ruta: "#gestionar/recurrente" })); },
+    objetivos: (padre) => { if (objetivosActivos().length || recordatoriosCercanos().length) tarjetaObjetivos(panel(padre, "Objetivos y recordatorios", { text: "Editar", ruta: "#gestionar/objetivo" })); },
     semana: (padre) => { if (actual) tarjetaSemana(panel(padre, "Esta semana", { text: `${S.lunes.toFormat("d/M")} – ${S.domingo.toFormat("d/M")}` }), S); },
     meses: (padre) => tarjetaMeses(panel(padre, "Tus últimos meses")),
   };
@@ -127,7 +129,11 @@ function heroGasto(padre, S, M) {
     h.createDiv({ cls: "v", text: eur(vari, 0) });
     if (actual) barra(dia / dm, `día ${dia} de ${dm}`);
     h.createDiv({ cls: "s", text: estado() || "en gasto variable: comer fuera, compras, ocio…" });
-    if (actual) enlace(h.createDiv({ cls: "pills" }), `Ponte un límite al mes para saber cuánto te queda${limiteSugerido() ? ` (tu media: ${eur(limiteSugerido(), 0)})` : ""} →`, "#ajustes").className += " pill fb-hero-link";
+    if (actual) {
+      const pills = h.createDiv({ cls: "pills" }), sug = limiteSugerido();
+      if (sug) { const b = pills.createEl("button", { cls: "pill fb-hero-link", text: `Usar ${eur(sug, 0)} al mes como límite (tu media)`, attr: { type: "button" } }); b.onclick = async () => { await FB.api("/api/config", { limite_variable: sug }); FB.aviso("Límite guardado ✓"); await FB.refrescar(); }; }
+      enlace(pills, "Poner otro límite →", "#ajustes").className += " pill fb-hero-link";
+    }
   } else if (actual) {
     const pasado = S.disponible < 0, usado = S.vari / limiteVar;
     if (pasado) h.classList.add("pasado");
@@ -189,12 +195,15 @@ const textoDif = (dif) => `${dif > 0 ? "+" : "−"}${eur(Math.abs(dif), 0)} vs t
 
 // Gasto del mes por categoría: las 5 mayores en barras en píldora de su color (el contorno discontinuo es su presupuesto).
 function tarjetaCategorias(p, key) {
-  const C = resumenCategorias(key).filter((c) => c.valor > 0.5);
-  const total = sum(C.map((c) => c.valor));
-  if (!C.length) { vacio(p, "Sin gastos este mes", ""); return; }
+  const TODAS = resumenCategorias(key).filter((c) => c.valor > 0.5);
+  const total = sum(TODAS.map((c) => c.valor));
+  if (!TODAS.length) { vacio(p, "Sin gastos este mes", ""); return; }
+  // Lo que puedes mover (variable) en barras; los fijos, en una línea aparte: el alquiler no debe aplastar al resto
+  const C = TODAS.filter((c) => c.grupo !== "fijo").length ? TODAS.filter((c) => c.grupo !== "fijo") : TODAS;
+  const fijos = C === TODAS ? [] : TODAS.filter((c) => c.grupo === "fijo");
   const t = p.createDiv({ cls: "fb-total" });
-  t.createDiv({ cls: "v", text: eur(total, 0) });
-  t.createDiv({ cls: "s", text: `gastado en ${mesLbl(key).toLowerCase()}` });
+  t.createDiv({ cls: "v", text: eur(total - sum(fijos.map((c) => c.valor)), 0) });
+  t.createDiv({ cls: "s", text: `${fijos.length ? "de gasto variable" : "gastado"} en ${mesLbl(key).toLowerCase()}` });
   const VISIBLES = 5, top = C.slice(0, VISIBLES), resto = C.slice(VISIBLES);
   const max = Math.max(...top.map((c) => Math.max(c.valor, c.presupuesto || 0)));
   const box = p.createDiv({ cls: "fb-pildoras" });
@@ -215,6 +224,7 @@ function tarjetaCategorias(p, key) {
     if (dif != null) v.createDiv({ cls: "dif " + (dif > 0 ? "sube" : "baja"), text: textoDif(dif) });
     r.title = `${c.nombre}: ${eur(c.valor, 0)} · ${pct(c.valor / total)} del gasto${isFinite(c.media) ? ` · tu media ${eur(c.media, 0)}` : ""}${c.presupuesto > 0 ? ` · presupuesto ${eur(c.presupuesto, 0)}` : ""}`;
   }
+  if (fijos.length) enlace(p.createDiv({ cls: "fin-note" }), `Además, ${eur(sum(fijos.map((c) => c.valor)), 0)} de gastos fijos (${fijos.map((c) => c.nombre.toLowerCase()).join(", ")}) →`, "#movimientos/categorias");
   if (resto.length) enlace(p.createDiv({ cls: "fin-note" }), `y ${resto.length} categoría${resto.length > 1 ? "s" : ""} más (${eur(sum(resto.map((c) => c.valor)), 0)}) →`, "#movimientos/categorias");
 }
 // Una categoría (vista «Por categoría»): nombre, % del total y diferencia con la media; barra si tiene presupuesto.
@@ -303,12 +313,6 @@ function tarjetaPatrimonio(p) {
     enlace(n, "Anotar saldos de hoy →", "#cerrar");
   }
   enlace(p.createDiv({ cls: "fin-note" }), "Hitos, proyección y mes a mes →", "#progreso");
-  const o = objetivos().find((x) => x.vinculado && x.estado !== "conseguido");
-  if (o && o.meta > 0) {
-    const m = p.createDiv({ cls: "fin-note" });
-    m.setText(`${o.nombre}: ${eur(o.ahorrado, 0)} de ${eur(o.meta, 0)}${o.ahorrado >= o.meta ? " ✓" : ""}`);
-    const b = p.createDiv({ cls: "fb-barra fina" }); b.createDiv().style.width = `${(Math.min(1, o.ahorrado / o.meta) * 100).toFixed(1)}%`;
-  }
 }
 
 // Evolución en pequeño: área suave a todo lo ancho (sin ejes), con el último punto marcado.
@@ -335,6 +339,22 @@ function tarjetaProximos(p) {
   for (const m of P) item(l, { fecha: m.fecha, t: m.concepto, s: m.categoria, v: (m.clase === "ingreso" ? "+" : "−") + eur(m.importe, 0), pos: m.clase === "ingreso", ruta: m.p && m.p.id ? `#editar/recurrente/${m.p.id}` : null });
   const tot = sum(P.map((m) => (m.clase === "ingreso" ? m.importe : -m.importe)));
   p.createDiv({ cls: "fin-note", text: `En total ${eurS(tot, 0)} en los próximos 14 días` });
+}
+
+const objetivosActivos = () => objetivos().filter((o) => o.estado !== "conseguido" && o.meta > 0);
+const recordatoriosCercanos = () => recordatorios().filter((r) => r.estado !== "hecho" && r.estado !== "hecha" && r.fecha >= hoy.startOf("day") && r.fecha <= hoy.plus({ days: Math.max(30, r.avisar) }).endOf("day")).sort((a, b) => a.fecha - b.fecha);
+// Tus metas de ahorro con su progreso y lo que vence pronto (renta, seguros, ITV…)
+function tarjetaObjetivos(p) {
+  for (const o of objetivosActivos().slice(0, 3)) {
+    const f = Math.min(1, o.ahorrado / o.meta);
+    const fila = p.createDiv({ cls: "fb-obj" });
+    const cab = fila.createDiv({ cls: "fb-fila" });
+    cab.createSpan({ cls: "fb-et", text: o.nombre });
+    cab.createSpan({ cls: "fin-note", text: `${eur(o.ahorrado, 0)} de ${eur(o.meta, 0)}${o.limite ? ` · para el ${o.limite.toFormat("dd/MM/yyyy")}` : ""}` });
+    const b = fila.createDiv({ cls: "fb-barra fina" }); b.createDiv().style.width = `${(f * 100).toFixed(1)}%`;
+  }
+  const R = recordatoriosCercanos().slice(0, 3);
+  if (R.length) { const l = p.createDiv({ cls: "fb-lista" }); for (const r of R) item(l, { fecha: r.fecha, t: r.nombre, s: r.texto || "recordatorio", v: "", ruta: `#editar/recordatorio/${r.p.id}` }); }
 }
 
 function tarjetaMeses(p) {

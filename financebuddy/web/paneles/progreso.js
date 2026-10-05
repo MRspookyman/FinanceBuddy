@@ -29,6 +29,7 @@ function vistaProgreso() {
   panelProyeccion(panel(root, "Si sigo así…", null, "Una proyección orientativa con rentabilidad y aportación constantes. No es una promesa ni un consejo: sin impuestos ni inflación."), E.neto, apoMedia, rentPropia, isFinite(I.tir) && !I.tirCorta ? I.tir : NaN, I.total);
   panelEsfuerzoMercado(panel(root, "Tu inversión, mes a mes", null, "De lo que cambia cada mes el valor de tu inversión: lo que has puesto tú (compras menos ventas) y lo que ha subido o bajado el mercado."), pts);
   panelComparador(panel(root, "¿Y si lo hubieras metido en un indexado?", null, "Tus mismas compras y ventas, en las mismas fechas, en un ETF indexado o en dinero sin riesgo: lo que habría pasado, no lo que pasará."), I);
+  panelComisiones(root, I);
   if (R) panelAños(panel(root, "Rentabilidad por año", null, "Lo que ha rendido tu inversión cada año natural, sin el efecto de cuándo metiste el dinero (rentabilidad encadenada mes a mes con tus valores anotados)."), R);
 }
 

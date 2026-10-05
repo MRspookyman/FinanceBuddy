@@ -4,7 +4,7 @@
 #
 # · Cada activo dice de dónde sale su precio (activo.fuente_precio / codigo_precio / moneda).
 # · Las series de precios se guardan en la base de datos (caché): sin conexión se sigue con el último precio conocido.
-# · Todo se convierte a euros con el cambio del día (Yahoo, «USDEUR=X»).
+# · Todo se convierte a euros con el cambio del día (el del BCE vía Frankfurter; si falla, Yahoo «USDEUR=X»).
 # · Lo que falla no rompe nada: se cuenta y se enseña UNA sola vez («2 precios no se han podido actualizar»).
 # · Comparador «¿y si lo hubieras metido en un indexado?»: las mismas compras y ventas en las mismas fechas, en otra cartera.
 #
@@ -18,7 +18,7 @@ import datetime, json, os, re, threading, time, urllib.error, urllib.parse, urll
 from concurrent.futures import ThreadPoolExecutor
 
 FUENTES = {"yahoo": "Yahoo Finance", "morningstar": "Morningstar", "coingecko": "CoinGecko"}
-BASES = {"yahoo": "https://query1.finance.yahoo.com", "morningstar": "https://lt.morningstar.com", "coingecko": "https://api.coingecko.com"}
+BASES = {"yahoo": "https://query1.finance.yahoo.com", "morningstar": "https://lt.morningstar.com", "coingecko": "https://api.coingecko.com", "bce": "https://api.frankfurter.dev"}
 MS_TOKEN = "t92wz0sj7c"       # el que usan las propias páginas públicas de Morningstar
 UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"}
 HORAS = 6                      # los precios se consideran al día durante este tiempo
@@ -40,14 +40,19 @@ class ErrorPrecios(Exception):
 # ───────────── configuración (apagado de serie) ─────────────
 def config(alm):
     c = alm.config("precios") or {}
-    return {"activo": bool(c.get("activo", False)), "ultima": c.get("ultima"), "resultado": c.get("resultado")}
+    return {"activo": bool(c.get("activo", False)), "ultima": c.get("ultima"), "resultado": c.get("resultado"), "hay_clave_cg": bool(c.get("clave_coingecko"))}
 
 def guardar_config(alm, d):
     c = dict(alm.config("precios") or {})
     if "activo" in d: c["activo"] = bool(d["activo"])
+    if "clave_coingecko" in d: c["clave_coingecko"] = str(d["clave_coingecko"] or "").strip()  # clave gratuita «Demo» de CoinGecko (opcional)
     alm.set_config("precios", c)
 
+_clave_cg = ""  # clave Demo de CoinGecko (cabecera x-cg-demo-api-key); se lee de la configuración al empezar cada consulta
+
 def _exigir(alm):
+    global _clave_cg
+    _clave_cg = (alm.config("precios") or {}).get("clave_coingecko") or ""
     if not config(alm)["activo"]: raise ErrorPrecios("Los precios por internet están desactivados (Ajustes → Precios por internet).")
 
 def _base(fuente):
@@ -63,7 +68,8 @@ def _get(url, timeout=8):
     if host in _caidos: raise ErrorPrecios(f"{host}: sin conexión")
     for intento in range(2):
         try:
-            with urllib.request.urlopen(urllib.request.Request(url, headers=UA), timeout=timeout) as r:
+            cab = {**UA, "x-cg-demo-api-key": _clave_cg} if _clave_cg and "coingecko" in host else UA
+            with urllib.request.urlopen(urllib.request.Request(url, headers=cab), timeout=timeout) as r:
                 return json.loads(r.read().decode("utf-8", "replace"))
         except urllib.error.HTTPError as e:
             if e.code in (429, 500, 502, 503, 504) and intento == 0: time.sleep(1.0); continue
@@ -106,6 +112,15 @@ def serie_coingecko(moneda, dias=365):
     except (TypeError, ValueError, AttributeError): raise ErrorPrecios(f"CoinGecko: no entiendo la respuesta para {moneda}")
     if not serie: raise ErrorPrecios(f"CoinGecko: {moneda} no tiene precios")
     return serie, {"moneda": "EUR", "mercado": "CoinGecko"}
+
+def serie_bce(moneda, dias):
+    """Cambio oficial del BCE (vía Frankfurter, sin clave): euros por 1 `moneda`. Mejor que Yahoo para el cambio: es el de referencia."""
+    desde = (datetime.date.today() - datetime.timedelta(days=dias)).isoformat()
+    d = _get(f"{_base('bce')}/v1/{desde}..?base={urllib.parse.quote(moneda)}&symbols=EUR")
+    try: serie = {k: float(v["EUR"]) for k, v in (d.get("rates") or {}).items()}
+    except (TypeError, ValueError, KeyError, AttributeError): raise ErrorPrecios(f"BCE: no entiendo la respuesta para {moneda}")
+    if not serie: raise ErrorPrecios(f"BCE: sin cambio para {moneda}")
+    return serie, {"moneda": "EUR", "mercado": "BCE"}
 
 def _sin_finde(serie):
     """Un valor liquidativo fechado en sábado o domingo es el del viernes (si ese viernes no tiene dato)."""
@@ -192,7 +207,11 @@ def actualizar(alm, forzar=False):
         previa = alm.config(_k(fuente, codigo)) or {}
         completa = not previa.get("serie") or (datetime.date.today() - datetime.date.fromisoformat(max(previa["serie"]))).days > 20
         if not forzar and not completa and _al_dia(alm, fuente, codigo): return "al día"
-        serie, info = descargar(fuente, codigo, desde=desde, completa=completa)
+        serie = None
+        if fuente == "yahoo" and codigo.endswith("EUR=X") and len(codigo) == 8:  # un cambio de moneda: primero el del BCE, y si falla, el de Yahoo
+            try: serie, info = serie_bce(codigo[:3], 400 if completa else 30)
+            except ErrorPrecios: serie = None
+        if serie is None: serie, info = descargar(fuente, codigo, desde=desde, completa=completa)
         guardar_serie(alm, fuente, codigo, serie, info)
         return "ok"
     def uno(trabajo):
