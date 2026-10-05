@@ -17,7 +17,7 @@ Solo para **Windows**. Todo en español y en euros.
 
 ## Empezar
 
-1. Descarga `FinanceBuddy.exe` y ábrelo (doble clic). No hace falta instalar nada.
+1. Descomprime la carpeta `FinanceBuddy` y abre `FinanceBuddy.exe` (doble clic). No hace falta instalar nada. Verás su icono en la bandeja de Windows mientras esté en marcha (clic derecho → Cerrar).
    - Windows puede avisar de que es una aplicación desconocida: pulsa «Más información» → «Ejecutar de todas formas».
 2. Se abre en tu navegador. La primera vez te pide:
    - tus cuentas y cuánto tienes hoy en cada una;
@@ -130,7 +130,7 @@ se proponen como traspaso desde tu banco, no como la venta de un activo.
 icono, color y presupuesto de cada categoría (con aviso si te pasas). En *Movimientos → Por categoría* ves cada una
 frente a tu media de los meses anteriores, y en el Inicio, el ritmo de gasto del mes frente a lo que sueles llevar.
 
-Cerrar la pestaña del navegador no cierra la app: para cerrarla, *Ajustes → Cerrar FinanceBuddy*. Si la vuelves a abrir, se reutiliza la que ya estaba en marcha.
+Cerrar la pestaña del navegador no cierra la app: para cerrarla, clic derecho en su icono de la bandeja → *Cerrar FinanceBuddy* (o *Ajustes → General → Cerrar FinanceBuddy*). Si la vuelves a abrir, se reutiliza la que ya estaba en marcha.
 
 ## Uso semanal
 

@@ -6,6 +6,20 @@
 #   --hoy      fija la fecha de «hoy» (pruebas)
 import argparse, json, os, sys, tempfile, threading, urllib.request, webbrowser
 
+def _bandeja(url, srv):
+    """Icono en la bandeja de Windows: se ve que la app sigue en marcha y se puede abrir o cerrar desde ahí (opcional: sin pystray, no pasa nada)."""
+    try:
+        import pystray
+        from PIL import Image
+        from . import rutas
+        icono = Image.open(os.path.join(os.path.dirname(rutas.PAQUETE), "recursos", "icono.ico")) if os.path.exists(os.path.join(os.path.dirname(rutas.PAQUETE), "recursos", "icono.ico")) else Image.new("RGB", (64, 64), "#4A7052")
+        def salir(ic, _=None):
+            ic.stop(); threading.Thread(target=srv.shutdown, daemon=True).start()
+        menu = pystray.Menu(pystray.MenuItem("Abrir FinanceBuddy", lambda ic, _=None: webbrowser.open(url), default=True), pystray.MenuItem("Cerrar FinanceBuddy", salir))
+        pystray.Icon("FinanceBuddy", icono, "FinanceBuddy (en marcha)", menu).run_detached()
+    except Exception:
+        pass
+
 def main(argv=None):
     if sys.stdout is None: sys.stdout = open(os.devnull, "w")  # .exe sin consola
     if sys.stderr is None: sys.stderr = open(os.devnull, "w")
@@ -37,6 +51,7 @@ def main(argv=None):
             return 1
     print(f"FinanceBuddy en {url} · datos en {raiz}")
     if not a.sin_navegador: threading.Timer(0.5, lambda: webbrowser.open(url)).start()
+    if not a.sin_navegador: _bandeja(url, srv)
     try: srv.serve_forever()
     except KeyboardInterrupt: pass
     return 0

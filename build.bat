@@ -1,10 +1,10 @@
 @echo off
-rem Genera dist\FinanceBuddy.exe (un solo archivo, sin ventana de consola).
+rem Genera dist\FinanceBuddy.exe (carpeta con el .exe, sin ventana de consola; mejor para los antivirus que un solo archivo).
 rem Requisitos: Python 3.10+. Los componentes (requirements.txt y requirements-dev.txt) se instalan solos si faltan.
 cd /d "%~dp0"
 
 rem 1) Componentes: openpyxl y xlrd (Excel), PyInstaller (el .exe)
-python -c "import openpyxl, xlrd, PyInstaller" 2>nul
+python -c "import openpyxl, xlrd, PyInstaller, pystray" 2>nul
 if errorlevel 1 (
   echo Faltan componentes de Python: instalandolos...
   python -m pip install -r requirements.txt -r requirements-dev.txt
@@ -32,16 +32,17 @@ if not errorlevel 1 (
   taskkill /im FinanceBuddy.exe /f >nul 2>&1
   timeout /t 2 /nobreak >nul
 )
-python -m PyInstaller --noconfirm --clean --onefile --windowed --name FinanceBuddy ^
+python -m PyInstaller --noconfirm --clean --onedir --windowed --name FinanceBuddy ^
   --icon recursos\icono.ico ^
   --add-data "financebuddy\web;financebuddy\web" ^
-  --hidden-import openpyxl --hidden-import xlrd ^
-  --exclude-module tkinter --exclude-module PIL --exclude-module cryptography --exclude-module numpy ^
+  --add-data "recursos\icono.ico;recursos" ^
+  --hidden-import openpyxl --hidden-import xlrd --hidden-import pystray ^
+  --exclude-module tkinter --exclude-module cryptography --exclude-module numpy ^
   lanzar.py
 if errorlevel 1 (
   pause
   exit /b 1
 )
 echo.
-echo Listo: dist\FinanceBuddy.exe
+echo Listo: dist\FinanceBuddy\FinanceBuddy.exe (comprime la carpeta FinanceBuddy en un zip para compartirla)
 pause
