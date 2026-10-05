@@ -26,7 +26,8 @@
   });
 
   // ── tema: claro (de serie), oscuro o automático (el del sistema); se guarda en este navegador ──
-  const leerTema = () => { try { return localStorage.getItem("fb-tema") || "claro"; } catch (_) { return "claro"; } };  // claro cálido de serie
+  const temaURL = new URLSearchParams(location.search).get("tema");  // ?tema=oscuro|claro: solo para esta carga (capturas de las pruebas)
+  const leerTema = () => { if (temaURL === "oscuro" || temaURL === "claro") return temaURL; try { return localStorage.getItem("fb-tema") || "claro"; } catch (_) { return "claro"; } };  // claro de serie
   const oscuroSistema = matchMedia("(prefers-color-scheme: dark)");
   const aplicarTema = () => { const t = leerTema(); document.body.classList.toggle("theme-dark", t === "auto" ? oscuroSistema.matches : t === "oscuro"); };
   aplicarTema();
@@ -76,10 +77,29 @@
   };
   const alternarDiscreto = () => { discreto = !discreto; try { localStorage.setItem("fb-discreto", discreto ? "1" : "0"); } catch (_) {} aplicarDiscreto(); };
   document.getElementById("discreto").onclick = alternarDiscreto;
-  // Atajos de teclado (fuera de los campos de texto): D = discreto · A = apuntar un movimiento · 1…6 = secciones del menú
+  // Atajos de teclado (fuera de los campos de texto) y su ayuda (tecla ? o el botón de la barra)
+  const ATAJOS = [["?", "Ver u ocultar esta ayuda"], ["1 … 5", "Ir a una sección del menú"], ["I", "Importar un extracto"], ["A", "Apuntar un movimiento a mano"],
+    ["D", "Modo discreto: desenfocar los importes"], ["Esc", "Cerrar esta ayuda"]];
+  const alternarAtajos = () => {
+    let d = document.getElementById("atajos");
+    if (!d) {
+      d = document.body.appendChild(document.createElement("dialog")); d.id = "atajos"; d.setAttribute("aria-label", "Atajos de teclado");
+      d.innerHTML = `<h3>Atajos de teclado</h3><dl>${ATAJOS.map(([k, t]) => `<div><dt><kbd>${k}</kbd></dt><dd>${t}</dd></div>`).join("")}</dl>`
+        + `<p>También puedes soltar un Excel o CSV del banco en cualquier pantalla para importarlo.</p><button type="button" class="fb-btn sec">Cerrar</button>`;
+      d.querySelector("button").onclick = () => d.close();
+      d.addEventListener("click", (e) => { if (e.target === d) d.close(); });  // clic fuera del cuadro
+    }
+    if (d.open) d.close(); else d.showModal();
+  };
+  document.getElementById("ayuda").onclick = alternarAtajos;
+  // Los menús desplegables («Más») se cierran al pulsar fuera o al elegir una opción
+  document.addEventListener("click", (e) => { for (const m of document.querySelectorAll("details.fb-menu[open]")) if (!m.contains(e.target) || e.target.closest("a")) m.open = false; });
   document.addEventListener("keydown", (e) => {
     if (e.ctrlKey || e.metaKey || e.altKey || /^(INPUT|TEXTAREA|SELECT)$/.test((e.target || {}).tagName || "") || (e.target && e.target.isContentEditable)) return;
+    if (e.key === "?") { e.preventDefault(); alternarAtajos(); return; }
+    if ((document.getElementById("atajos") || {}).open) return;
     if (e.key === "d" || e.key === "D") { e.preventDefault(); alternarDiscreto(); return; }
+    if (e.key === "i" || e.key === "I") { e.preventDefault(); FB.ir("#importar"); return; }
     if (e.key === "a" || e.key === "A") { e.preventDefault(); FB.ir("#apuntar"); return; }
     const n = parseInt(e.key, 10);
     if (n >= 1 && n <= 6) { const a = document.querySelectorAll("#menu a")[n - 1]; if (a) { e.preventDefault(); FB.ir(a.getAttribute("href")); } }
@@ -168,7 +188,7 @@
   };
   aplicarDiscreto();
 
-  // ── menú lateral (abajo en el móvil) y barra de estado ──
+  // ── menú de la barra de arriba y barra de estado ──
   const ICO = {
     inicio: '<path d="M4 10.5 12 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5.5h-5V20H5a1 1 0 0 1-1-1z"/>',
     movimientos: '<path d="M5 7h11M5 7l3-3M5 7l3 3M19 17H8m11 0-3-3m3 3-3 3"/>',
@@ -178,19 +198,20 @@
     ajustes: '<path d="M4 7h9m4 0h3M4 17h3m4 0h9"/><circle cx="15" cy="7" r="2.2"/><circle cx="9" cy="17" r="2.2"/>',
   };
   const SECCION = { resumen: "inicio", gastos: "movimientos", prevision: "inicio", patrimonio: "inicio", objetivos: "ajustes",
-    gestionar: "ajustes", editar: "ajustes", fijos: "ajustes", revision: "ajustes", cerrar: "inicio", valores: "inversion", activo: "inversion", progreso: "inversion", renta: "inversion" };
+    gestionar: "ajustes", editar: "ajustes", fijos: "ajustes", revision: "ajustes", cerrar: "inicio", valores: "inversion", activo: "inversion", renta: "inversion" };
   function barra() {
     const DB = FB.DB; if (!DB) return;
     const fechas = (DB.registros.movimiento || []).map((m) => m.fecha).sort();
     document.getElementById("datos").textContent = fechas.length ? `Movimientos hasta el ${fechas[fechas.length - 1].split("-").reverse().join("/")}` : "";
     document.getElementById("ejemplo").hidden = !(DB.info && DB.info.ejemplo);
     const n = (DB.pendientes || []).length;
-    // [ruta, nombre, nombre corto (barra de abajo en el móvil)]
-    const items = [["inicio", "Inicio"], ["movimientos", "Movimientos", "Movs."], ["inversion", "Inversión"], ["importar", "Importar"], n ? ["revisar", "Por revisar", "Revisar"] : null, ["ajustes", "Ajustes"]].filter(Boolean);
+    // [ruta, nombre]. «Importar» no está en el menú: es el botón de la barra (y la tecla I).
+    const items = [["inicio", "Inicio"], ["movimientos", "Movimientos"], ["inversion", "Inversión"], n ? ["revisar", "Por revisar"] : null, ["ajustes", "Ajustes"]].filter(Boolean);
     const [v, t] = ruta(), PORTIPO = { movimiento: "movimientos", aportacion: "inversion", activo: "inversion" };
     const act = (v === "editar" || v === "gestionar") && PORTIPO[t] ? PORTIPO[t] : SECCION[v] || v;
     const menu = document.getElementById("menu");
-    menu.innerHTML = items.map(([k, t, c]) => `<a href="#${k}" class="internal-link${k === act ? " act" : ""}" title="${t}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">${ICO[k]}</svg><span class="lg">${t}</span><span class="ct">${c || t}</span>${k === "revisar" ? `<span class="num">${n}</span>` : ""}</a>`).join("");
+    document.querySelector("#cabecera .apuntar").classList.toggle("act", act === "importar");
+    menu.innerHTML = items.map(([k, t]) => `<a href="#${k}" class="internal-link${k === act ? " act" : ""}" title="${t}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">${ICO[k]}</svg><span>${t}</span>${k === "revisar" ? `<span class="num">${n}</span>` : ""}</a>`).join("");
   }
 
   // ── montaje de la pantalla actual ──

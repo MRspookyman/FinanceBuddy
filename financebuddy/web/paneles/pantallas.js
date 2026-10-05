@@ -805,8 +805,8 @@ function vistaApuntar() {
 function vistaCerrar() {
   titulo("Actualizar saldos", "Anota lo que tienes en cada cuenta (mejor el último día del mes): así la app comprueba que no falta nada");
   const P = patrimonio();
-  const ant = mesAnterior(hoyKey);
-  const primer = P.length ? keyDe(P[0].fecha) : hoyKey;
+  const ant = mesAnterior(hoyCal);  // los saldos se cierran por mes natural, empiece cuando empiece «tu mes»
+  const primer = P.length ? keyCal(P[0].fecha) : hoyCal;
   const pendienteAnt = ant >= primer && !cierres().some((c) => c.mes === ant);
   let fecha = pendienteAnt ? mesDT(ant).endOf("month") : hoy;
   const resumen = resumenMes(ant);
@@ -915,6 +915,20 @@ function vistaAjustes() {
   const bL = f.createEl("button", { cls: "fb-btn", text: "Guardar" });
   bL.onclick = async () => { await FB.api("/api/config", { limite_variable: iL.value }); FB.aviso("Guardado ✓"); await FB.refrescar(); };
 
+  const pM = panel(g, "Tu mes y tu colchón");
+  const fM = pM.createDiv({ cls: "fb-fila" });
+  fM.createSpan({ cls: "fb-et", text: "Tu mes empieza el día" });
+  const iM = fM.createEl("input", { cls: "mini", attr: { type: "number", min: "1", max: "28", step: "1", "aria-label": "Día en que empieza tu mes (de 1 a 28)" } }); iM.value = diaInicio;
+  pM.createDiv({ cls: "fin-note", text: diaInicio === 1 ? "1 = el mes natural. Si cobras, por ejemplo, el 28, pon 28: tu «octubre» irá del 28 de septiembre al 27 de octubre."
+    : `Ahora ${mesLbl(hoyKey).toLowerCase()} es ${mesRango(hoyKey)}. Los saldos y la inversión siguen por meses naturales.` });
+  const fC = pM.createDiv({ cls: "fb-fila" });
+  fC.createSpan({ cls: "fb-et", text: "Colchón en la cuenta corriente" });
+  const iC = fC.createEl("input", { cls: "corto", attr: { type: "number", min: "0", step: "50", placeholder: "automático", "aria-label": "Colchón en la cuenta corriente, en euros" } }); iC.value = num(cfg.colchon) || "";
+  const RP = planReparto();
+  pM.createDiv({ cls: "fin-note", text: `Lo que quieres dejar siempre en la cuenta antes de mover lo que sobra. Vacío o 0 = lo calcula la app${RP ? ` (ahora ${eur(RP.colchonAuto, 0)}: un mes de fijos y de gasto variable, más los meses que se prevén en negativo)` : ""}.` });
+  const bM = pM.createEl("button", { cls: "fb-btn", text: "Guardar" });
+  bM.onclick = async () => { await FB.api("/api/config", { dia_inicio: iM.value || 1, colchon: iC.value || 0 }); FB.aviso("Guardado ✓"); await FB.refrescar(); };
+
   apariencia(panel(g, "Apariencia"));
   const pT = panel(g, "Tú", null, "Tu nombre tal y como sale en el banco. Con él, el dinero que mueves entre cuentas a tu nombre se reconoce como traspaso y no como gasto o ingreso.");
   pT.createDiv({ cls: "fin-note", text: "Se rellena solo con el titular del primer extracto que lo traiga. Si hay más titulares (cuenta conjunta), sepáralos con «;»." });
@@ -984,7 +998,7 @@ function vistaAjustes() {
   if (tab === "general") {
   const pS = panel(root, "FinanceBuddy");
   pS.createDiv({ cls: "fin-note", text: `Versión ${DB.info.version}. La app funciona en tu ordenador: cerrar la pestaña no la cierra.` });
-  pS.createDiv({ cls: "fin-note", text: "Atajos de teclado: D = modo discreto · A = apuntar un movimiento · 1 a 6 = las secciones del menú." });
+  pS.createDiv({ cls: "fin-note", text: "Atajos de teclado: pulsa ? para verlos (D = modo discreto · I = importar · A = apuntar un movimiento · 1 a 5 = las secciones del menú)." });
   panelVersion(pS);
   const bS = pS.createDiv({ cls: "fb-fila" }).createEl("button", { cls: "fb-btn sec", text: "Cerrar FinanceBuddy" });
   bS.onclick = async () => { await FB.api("/api/salir", {}); document.body.innerHTML = "<p style='padding:40px;font-family:sans-serif'>FinanceBuddy se ha cerrado. Puedes cerrar esta pestaña.</p>"; };
@@ -1007,7 +1021,7 @@ function panelVersion(p) {
   b.onclick = async () => { b.disabled = true; const r = await FB.api("/api/actualizaciones/comprobar", { forzar: true }); if (!r.ok) FB.aviso(r.mensaje || "No se ha podido comprobar", true); await FB.refrescar(); };
 }
 // Tema (en este navegador) y color de acento (en tus datos).
-const ACENTOS = [["salvia", "#4A7052"], ["violeta", "#6A5AA8"], ["azul", "#44688A"], ["verde", "#3E7558"], ["coral", "#C9603F"], ["rosa", "#B84A6E"], ["grafito", "#3F3A34"]];
+const ACENTOS = [["salvia", "#1B7558"], ["violeta", "#5A44D4"], ["azul", "#1C5DCF"], ["verde", "#327D1A"], ["coral", "#CB4520"], ["rosa", "#C4307A"], ["grafito", "#2B3340"]];
 // Asistente Jev (TypeSafe AI), opcional: la clave se guarda solo en tu carpeta de datos y nunca vuelve a la página.
 function panelJev(padre) {
   const J = (DB.config || {}).jev || {};
@@ -1219,9 +1233,9 @@ function cambioCategoria(padre, reg, volver) {
 
 // ───────────── render ─────────────
 const TODAS = { ...VISTAS, bienvenida: vistaBienvenida, importar: vistaImportar, revisar: vistaRevisar, apuntar: vistaApuntar, cerrar: vistaCerrar,
-  valores: vistaCerrar, ajustes: vistaAjustes, gestionar: vistaGestionar, editar: vistaEditar, fijos: vistaFijos, activo: vistaActivo, revision: vistaRevision, progreso: vistaProgreso, renta: vistaRenta };
+  valores: vistaCerrar, ajustes: vistaAjustes, gestionar: vistaGestionar, editar: vistaEditar, fijos: vistaFijos, activo: vistaActivo, revision: vistaRevision, renta: vistaRenta };
 const TITULOS = { inicio: "Inicio", movimientos: "Movimientos", inversion: "Inversión",
-  bienvenida: "Bienvenida", importar: "Importar", revisar: "Por revisar", apuntar: "Apuntar", cerrar: "Cerrar el mes", valores: "Valores", ajustes: "Ajustes", gestionar: "Ajustes", editar: "Editar", fijos: "Fijos", activo: "Inversión", revision: "Revisar categorías", progreso: "Tu progreso", renta: "Para la renta" };
+  bienvenida: "Bienvenida", importar: "Importar", revisar: "Por revisar", apuntar: "Apuntar", cerrar: "Cerrar el mes", valores: "Valores", ajustes: "Ajustes", gestionar: "Ajustes", editar: "Editar", fijos: "Fijos", activo: "Inversión", revision: "Revisar categorías", renta: "Para la renta" };
 function render() {
   _movs = _movsMes = _aports = _objs = _pat = _cuentas = _recs = _activos = _cats = _cobros = undefined; _finMes = new Map(); _pos = new Map();
   root.empty();
@@ -1234,8 +1248,8 @@ render();
 if (!(input && input.exponer)) autoCuadre();
 // Para las pruebas automáticas.
 if (input && input.exponer) {
-  window.__fin = { finMes, repartoAhorro, estimacion, conciliacion, prevision, resumenInversion, fondoEmergencia, gastoVariable, tasa12, repartoObjetivo, resumenMes, subidasFijos,
+  window.__fin = { periodoKey, periodoInicio, rentabilidadPeriodo, planReparto, DateTime, finMes, repartoAhorro, estimacion, conciliacion, prevision, resumenInversion, fondoEmergencia, gastoVariable, tasa12, repartoObjetivo, resumenMes, subidasFijos,
     movimientos, aportaciones, objetivos, patrimonio, avisos, categorias, grupoDe, limiteVar, mesesHasta, mesAnterior, hoyKey,
     fechaDatos, presupuestoSemana, planReparto, cuentas, proyectar, resumenCategorias, ritmoMes, evolucionInversion, aportacionesMes, constancia, interesesBroker, saludInversion, posicion, valorInfo,
-    hitosPatrimonio, proyeccion, mesesHasta50, puntosInversion, rendimientoPuntos, comisionesInversion, tamañoCompras, fifoVentas, cobros, usaMercado, generarResumen };
+    hitosPatrimonio, mesesHasta50, tamañoCompras, fifoVentas, cobros, usaMercado, generarResumen };
 }

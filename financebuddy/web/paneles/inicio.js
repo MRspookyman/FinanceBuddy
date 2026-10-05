@@ -9,13 +9,12 @@ function saludo() {
 }
 
 // ───────────── inicio ─────────────
-// Minimalista: arriba lo que se decide (cuánto puedes gastar), luego el ritmo, a dónde va el dinero, tu patrimonio y
-// los próximos cargos. Se puede ver cualquier mes pasado (selector de mes, compartido con Movimientos).
+// Minimalista: arriba lo que se decide (cuánto puedes gastar, con el ritmo del mes al lado), debajo una franja con lo que
+// pide actuar y luego a dónde va el dinero, tu patrimonio y los próximos cargos. Se puede ver cualquier mes pasado (selector de mes, compartido con Movimientos).
 // Paneles: el usuario elige cuáles ve y en qué orden (Ajustes → Tu inicio; config.inicio / config.inicio_ocultos).
 // ancho: ocupa toda la fila · defecto:false → oculto salvo que el usuario lo active.
 const PANELES_INICIO = [
-  { id: "gasto", t: "Cuánto puedes gastar (y lo que entró y salió)", ancho: true },
-  { id: "ritmo", t: "Ritmo de gasto del mes" },
+  { id: "gasto", t: "Cuánto puedes gastar (con el ritmo del mes y lo que entró y salió)", ancho: true },
   { id: "categorias", t: "A dónde va tu dinero" },
   { id: "patrimonio", t: "Tu patrimonio (cuentas e inversión)" },
   { id: "proximos", t: "Próximos cargos (el mes que viene)" },
@@ -43,11 +42,10 @@ function vistaInicio() {
   iz.createEl("h2", { text: actual ? saludo() : mesLbl(mes) });
   const sub = iz.createDiv({ cls: "sub" });
   const fd = S.fechaDatos;
-  if (actual) sub.appendText(fd ? `Así va ${mesLbl(hoyKey).toLowerCase().split(" ")[0]} · movimientos hasta el ${fd.setLocale("es").toFormat("d 'de' LLLL")}` : "Aún no hay movimientos");
-  else sub.appendText(M.real.some((m) => !m.auto) ? "Cómo fue el mes" : "Sin movimientos importados de este mes");
+  const rango = mesRango(mes) ? ` (${mesRango(mes)})` : "";
+  if (actual) sub.appendText(fd ? `Así va ${mesLbl(hoyKey).toLowerCase().split(" ")[0]}${rango} · movimientos hasta el ${fd.setLocale("es").toFormat("d 'de' LLLL")}` : "Aún no hay movimientos");
+  else sub.appendText((M.real.some((m) => !m.auto) ? "Cómo fue el mes" : "Sin movimientos importados de este mes") + rango);
   if (actual && (!fd || S.diasSinDatos > 6)) enlace(sub, "Importar el extracto", "#importar").className += " fb-chip aviso";
-  const nPend = (DB.pendientes || []).length;
-  if (nPend) enlace(sub, `${nPend} por revisar`, "#revisar").className += " fb-chip brand";
   const der = cab.createDiv({ cls: "fb-cab-der" });
   const box = der.createDiv({ cls: "fin-mes" });
   const btn = (t, key, title, off) => { const b = box.createEl("button", { text: t }); b.title = title; if (off) b.disabled = true; else b.onclick = () => cambiarMes(key); };
@@ -59,10 +57,8 @@ function vistaInicio() {
   per.className += " fb-personalizar";
   per.title = "Elige qué ves en el inicio y en qué orden";
 
-  if (actual) { accionesRapidas(root); alertas(root); fraseReparto(root); }
   const DIBUJAR = {
     gasto: (padre) => heroGasto(padre, S, M),
-    ritmo: (padre) => tarjetaRitmo(panel(padre, "Ritmo del mes", null, "Tu gasto variable acumulado día a día, comparado con lo que sueles llevar a estas alturas del mes."), mes),
     categorias: (padre) => tarjetaCategorias(panel(padre, "A dónde va tu dinero", { text: "Ver todo", ruta: "#movimientos/categorias" }), mes),
     patrimonio: (padre) => tarjetaPatrimonio(panel(padre, "Tu patrimonio", { text: "Actualizar saldos", ruta: "#cerrar" })),
     proximos: (padre) => { if (actual) tarjetaProximos(panel(padre, "Próximos cargos", { text: "Fijos", ruta: "#gestionar/recurrente" })); },
@@ -70,35 +66,34 @@ function vistaInicio() {
     semana: (padre) => { if (actual) tarjetaSemana(panel(padre, "Esta semana", { text: `${S.lunes.toFormat("d/M")} – ${S.domingo.toFormat("d/M")}` }), S); },
     meses: (padre) => tarjetaMeses(panel(padre, "Tus últimos meses")),
   };
+  // La portada va primero y la franja de avisos justo debajo (o arriba del todo si la portada está oculta o movida).
+  const visibles = panelesInicio().filter((p) => p.visible);
+  const avisosArriba = actual && !(visibles[0] && visibles[0].id === "gasto");
+  if (avisosArriba) franjaAvisos(root);
   let fila = null;
-  for (const p of panelesInicio().filter((p) => p.visible)) {
-    if (p.ancho) { fila = null; DIBUJAR[p.id](root); continue; }
-    if (!fila || fila.children.length >= 2) fila = root.createDiv({ cls: "fin-grid dos" });
+  visibles.forEach((p, i) => {
+    if (p.ancho) { fila = null; DIBUJAR[p.id](root); if (actual && !avisosArriba && i === 0) franjaAvisos(root); return; }
+    if (!fila) fila = root.createDiv({ cls: "fin-grid fb-inicio" });
     DIBUJAR[p.id](fila);
-    if (!fila.children.length) fila.remove(), (fila = null);
-  }
+  });
 }
 
-// Una frase con lo que conviene hacer con el dinero que sobra en la cuenta corriente (planReparto): mueve el dinero y se acaba la duda.
-function fraseReparto(padre) {
-  const R = planReparto();
-  const a = R && R.acciones[0];
-  if (!a) return;
-  const el = padre.createDiv({ cls: "fb-alertas" }).createEl("div", { cls: "fb-alerta" });
-  el.createSpan({ cls: "i", text: "→" });
-  el.createSpan({ text: `${a.texto}: ${a.sub}.` });
-}
-
-// Solo lo que pide actuar (los avisos de nivel «warn»), como máximo 2.
-function alertas(padre) {
-  const A = avisos().filter((a) => a.nivel === "warn" && a.ruta !== "#revisar").slice(0, 2);
-  if (!A.length) return;
-  const box = padre.createDiv({ cls: "fb-alertas" });
-  for (const a of A) {
-    const el = box.createEl("a", { cls: "fb-alerta internal-link", href: a.ruta && a.ruta.startsWith("#") ? a.ruta : "#inicio" });
-    el.createSpan({ cls: "i", text: "!" });
-    el.createSpan({ text: a.texto });
-    el.createSpan({ cls: "fl", text: "›" });
+// Lo que pide actuar, en una sola franja: lo que toca hacer ahora (importar, anotar saldos), los avisos de nivel «warn»
+// (como máximo 2) y una frase con lo que conviene hacer con el dinero que sobra en la cuenta corriente (planReparto).
+function franjaAvisos(padre) {
+  const filas = accionesQueTocan().map((x) => ({ tipo: "toca", ic: x.ic, b: x.t, txt: x.s, ruta: x.ruta }));
+  for (const a of avisos().filter((a) => a.nivel === "warn" && a.ruta !== "#revisar").slice(0, 2)) filas.push({ tipo: "warn", ic: "!", txt: a.texto, ruta: a.ruta && a.ruta.startsWith("#") ? a.ruta : "#inicio" });
+  const R = planReparto(), r = R && R.acciones[0];
+  if (r) filas.push({ tipo: "info", ic: "→", b: r.texto, txt: r.sub });
+  if (!filas.length) return;
+  const box = padre.createDiv({ cls: "fb-franja" });
+  for (const f of filas) {
+    const el = f.ruta ? box.createEl("a", { cls: "r internal-link " + f.tipo, href: f.ruta }) : box.createDiv({ cls: "r " + f.tipo });
+    el.createSpan({ cls: "i", text: f.ic });
+    const t = el.createSpan({ cls: "t" });
+    if (f.b) t.createEl("b", { text: f.b });
+    if (f.txt) t.appendText((f.b ? " · " : "") + f.txt);
+    if (f.ruta) el.createSpan({ cls: "fl", text: "›" });
   }
 }
 
@@ -106,9 +101,9 @@ function alertas(padre) {
 // Mes en curso: «Puedes gastar». Mes pasado: cuánto gastaste frente a tu límite.
 function heroGasto(padre, S, M) {
   const actual = M.key === hoyKey;
-  const h = padre.createDiv({ cls: "fb-hero" });
-  const dm = mesDT(M.key).daysInMonth;
-  const dia = actual ? (S.fechaDatos && keyDe(S.fechaDatos) === hoyKey ? S.fechaDatos.day : hoy.day) : dm;
+  const h0 = padre.createDiv({ cls: "fb-hero" }), h = h0.createDiv({ cls: "iz" });
+  const dm = diasMes(M.key);
+  const dia = actual ? (S.fechaDatos && keyDe(S.fechaDatos) === hoyKey ? diaDeMes(S.fechaDatos) : diaDeMes(hoy)) : dm;
   const barra = (frac, etiqueta) => {
     const b = h.createDiv({ cls: "fb-progreso" });
     b.createDiv({ cls: "rel" }).style.width = `${(Math.max(0, Math.min(1, frac)) * 100).toFixed(1)}%`;
@@ -124,7 +119,7 @@ function heroGasto(padre, S, M) {
     return `${actual ? "Vas" : "Gastaste"} ${eur(Math.abs(dif), 0)} ${dif < 0 ? "por debajo" : "por encima"} de lo normal${actual ? " a estas alturas" : ""}`;
   };
   if (!(limiteVar > 0)) {
-    h.classList.add("neutro"); // sin límite, la cifra es lo gastado: no va en verde
+    h0.classList.add("neutro"); // sin límite, la cifra es lo gastado: no va en verde
     h.createDiv({ cls: "l", text: actual ? "Llevas gastado este mes" : "Gastaste" });
     h.createDiv({ cls: "v", text: eur(vari, 0) });
     if (actual) barra(dia / dm, `día ${dia} de ${dm}`);
@@ -136,8 +131,8 @@ function heroGasto(padre, S, M) {
     }
   } else if (actual) {
     const pasado = S.disponible < 0, usado = S.vari / limiteVar;
-    if (pasado) h.classList.add("pasado");
-    else if (usado >= 0.85) h.classList.add("alto"); // queda poco: ámbar, antes de pasarse
+    if (pasado) h0.classList.add("pasado");
+    else if (usado >= 0.85) h0.classList.add("alto"); // queda poco: ámbar, antes de pasarse
     h.createDiv({ cls: "l", text: pasado ? "Te has pasado este mes" : "Puedes gastar este mes" });
     h.createDiv({ cls: "v", text: eur(Math.abs(S.disponible), 0) });
     barra(usado, `${Math.round(usado * 100)} % de tu límite de ${eur(limiteVar, 0)}`);
@@ -147,7 +142,7 @@ function heroGasto(padre, S, M) {
     h.createDiv({ cls: "s", text: [frase, estado()].filter(Boolean).join(" · ") });
   } else {
     const pasado = vari > limiteVar;
-    if (pasado) h.classList.add("pasado");
+    if (pasado) h0.classList.add("pasado");
     h.createDiv({ cls: "l", text: pasado ? "Te pasaste del límite" : "Te sobró de tu límite" });
     h.createDiv({ cls: "v", text: eur(Math.abs(limiteVar - vari), 0) });
     barra(vari / limiteVar, `gastaste ${eur(vari, 0)} de ${eur(limiteVar, 0)}`);
@@ -158,7 +153,12 @@ function heroGasto(padre, S, M) {
     const g = sum(sinRev.filter((m) => m.clase === "gasto").map((m) => m.importe)), e = sum(sinRev.filter((m) => m.clase !== "gasto").map((m) => m.importe));
     enlace(h.createDiv({ cls: "pie" }), `Incluye ${[g ? `${eur(g, 0)} de gasto` : "", e ? `${eur(e, 0)} de entradas` : ""].filter(Boolean).join(" y ")} sin revisar (${sinRev.length} movimiento${sinRev.length > 1 ? "s" : ""}) →`, "#revisar");
   }
-  const r = h.createDiv({ cls: "fb-resumen" });
+  if (fechaDatos()) {  // el ritmo del mes, dentro de la portada: cómo vas frente a tu media y tu límite
+    const g = h0.createDiv({ cls: "graf" });
+    ayuda(g.createDiv({ cls: "l", text: "Ritmo del mes" }), "Tu gasto variable acumulado día a día, comparado con lo que sueles llevar a estas alturas del mes.");
+    graficoRitmo(g, R, M.key);
+  }
+  const r = h0.createDiv({ cls: "fb-resumen" });
   const dato = (l, v, cls) => { const d = r.createDiv({ cls: "d " + (cls || "") }); d.createDiv({ cls: "k", text: l }); d.createDiv({ cls: "n", text: v }); };
   dato(actual ? "Ha entrado" : "Entró", eur(M.ingresos, 0), "entra");
   dato(actual ? "Ha salido" : "Salió", eur(M.gastos, 0), "sale");
@@ -243,46 +243,27 @@ function filaCategoria(padre, c, total, onclick) {
   return el;
 }
 // Curva de gasto acumulado del mes frente a tu media y tu límite: ¿voy mejor o peor que otros meses?
-function tarjetaRitmo(p, key = hoyKey) {
-  const R = ritmoMes(key);
-  if (!fechaDatos()) { vacio(p, "Sin movimientos todavía", " Importa el extracto de tu banco."); return; }
+function graficoRitmo(p, R, key = hoyKey) {
   const actual = key === hoyKey;
-  const t = p.createDiv({ cls: "fb-total" });
-  t.createDiv({ cls: "v", text: eur(R.hoyV, 0) });
-  const cuando = actual ? `a día ${R.dia}` : "en todo el mes";
-  if (isFinite(R.mediaHoy)) {
-    const dif = R.hoyV - R.mediaHoy;
-    t.createDiv({ cls: "s", text: Math.abs(dif) < 15 ? `${cuando}, como sueles` : `${cuando} · ${eur(Math.abs(dif), 0)} ${dif < 0 ? "menos" : "más"} que tu media` });
-  } else t.createDiv({ cls: "s", text: `${cuando} · con más meses importados verás tu media` });
   const series = [];
   // El gasto, en coral (como «Salió» en toda la app); las dos referencias, en tinta neutra y con trazos distintos.
   if (R.media) series.push({ nombre: "Tu media", color: "var(--ink-3)", valores: R.media, discontinua: true });
   if (limiteVar > 0) series.push({ nombre: "Límite", color: "var(--ink)", valores: Array.from({ length: R.dm }, (_, i) => (limiteVar * (i + 1)) / R.dm), discontinua: "1.5 4" });
   series.push({ nombre: actual ? "Este mes" : mesLbl(key), color: "var(--coral)", valores: R.actual, area: true });
   const marcas = [0, 6, 13, 20, 27].filter((i) => i < R.dm);
-  lineas(p, { etiquetas: Array.from({ length: R.dm }, (_, i) => mesDT(key).set({ day: i + 1 }).setLocale("es").toFormat("cccc d")), series, marcas, alto: 170 });
+  const dias = Array.from({ length: R.dm }, (_, i) => iniMes(key).plus({ days: i }));
+  lineas(p, { etiquetas: dias.map((d) => d.setLocale("es").toFormat("cccc d")), etiquetasX: dias.map((d) => String(d.day)), series, marcas, alto: 150 });
   leyenda(p, series.map((s) => [s.nombre, s.color, s.discontinua ? "rayas" : "continua"]).reverse());
 }
 
-// Las cuatro cosas que se hacen cada semana o cada mes, a un clic y a la vista (lo que toca ahora, resaltado).
-function accionesRapidas(padre) {
+// Lo que se hace cada semana o cada mes y toca ahora (importar movimientos, anotar saldos); el resto está en el menú.
+function accionesQueTocan() {
   const P = patrimonio(), u = P[P.length - 1], fd = fechaDatos();
   const diasSaldos = u ? diasDesde(u.fecha) : null, diasMov = fd ? diasDesde(fd) : null;
-  const A = [
+  return [
     { ic: "📥", t: "Importar movimientos", s: fd ? `último movimiento: ${fd.toFormat("dd/MM")}` : "sube el extracto de tu banco", ruta: "#importar", toca: !fd || diasMov > 6 },
-    { ic: "🧾", t: "Actualizar saldos", s: u ? `anotados el ${u.fecha.toFormat("dd/MM")}` : "lo que tienes en cada cuenta", ruta: "#cerrar", toca: !u || diasSaldos > 35 || (keyDe(u.fecha) < hoyKey && (hoy.day <= 5 || hoy.day >= 25)) },
-    { ic: "📈", t: "Actualizar inversión", s: preciosActivos() ? `precios de ${(cfg.precios.ultima || "nunca").slice(0, 10).split("-").reverse().join("/")}` : "lo que vale cada activo", ruta: preciosActivos() ? "#inversion/actualizar" : "#valores" },
-    { ic: "✏️", t: "Apuntar un gasto", s: "uno a mano, al momento", ruta: "#apuntar" },
-  ];
-  const tocan = A.filter((x) => x.toca);  // solo lo que toca ahora; el resto está en el menú
-  if (!tocan.length) return;
-  const box = padre.createDiv({ cls: "fb-accesos fb-acciones" });
-  for (const x of tocan) {
-    const a = box.createEl("a", { cls: "fb-acceso internal-link" + (x.toca ? " toca" : ""), href: x.ruta });
-    setVar(a.createDiv({ cls: "fb-av", text: x.ic }), "--cc", "var(--brand)");
-    const d = a.createDiv(); d.createDiv({ cls: "t", text: x.t }); d.createDiv({ cls: "s", text: x.s });
-    if (x.toca) a.createSpan({ cls: "fb-toca", text: "toca" });
-  }
+    { ic: "🧾", t: "Actualizar saldos", s: u ? `anotados el ${u.fecha.toFormat("dd/MM")}` : "lo que tienes en cada cuenta", ruta: "#cerrar", toca: !u || diasSaldos > 35 || (keyCal(u.fecha) < hoyCal && (hoy.day <= 5 || hoy.day >= 25)) },
+  ].filter((x) => x.toca);
 }
 
 // Tu patrimonio: un total (cuentas + inversión − deudas), su evolución y una línea por grupo. El detalle, en su pantalla.
@@ -291,16 +272,19 @@ function tarjetaPatrimonio(p) {
   if (!E) { vacio(p, "Aún no hay saldos", " Anota cuánto tienes en cada cuenta."); enlace(p.createDiv({ cls: "fin-note" }), "Anotar saldos →", "#cerrar"); return; }
   const I = resumenInversion();
   const t = p.createDiv({ cls: "fb-total" });
-  t.createDiv({ cls: "v", text: eur(E.neto, 0) });
+  // El total cuenta tu inversión por lo que has metido; lo que ha ganado (o perdido) va aparte, en pequeño.
+  const gan = isFinite(I.gan) ? I.gan : 0, conGan = Math.abs(gan) >= 1;
+  t.createDiv({ cls: "v", text: eur(E.neto - gan, 0) });
   const P = patrimonio();
   const ant = [...P].reverse().find((x) => x.fecha < hoy.startOf("month").minus({ months: 2 })) || P[0];
   const dif = ant ? E.neto - ant.neto : NaN;
-  t.createDiv({ cls: "s", text: isFinite(dif) && ant.fecha < hoy.startOf("month") ? `${eurS(dif, 0)} desde ${ant.fecha.setLocale("es").toFormat("LLLL")}` : "en total, estimado hoy" });
+  if (conGan) t.createDiv({ cls: "s " + tone(gan), text: `${eurS(gan, 0)} de tu inversión` });
+  else t.createDiv({ cls: "s", text: isFinite(dif) && ant.fecha < hoy.startOf("month") ? `${eurS(dif, 0)} desde ${ant.fecha.setLocale("es").toFormat("LLLL")}` : "en total, estimado hoy" });
   const serie = [...P.map((x) => x.neto), E.neto];
   if (serie.length >= 3) miniArea(p.createDiv({ cls: "fb-spark" }), serie.slice(-12));
   const filas = [
     { l: "En tus cuentas", v: eur(E.c.Liquidez, 0), s: cuentasTipo("ahorro").length ? `día a día ${eur(E.cuentas.corriente, 0)} · ahorro ${eur(E.cuentas.ahorro || 0, 0)}` : "", ruta: "#gestionar/cuenta" },
-    I.filas.length ? { l: "Invertido", v: eur(I.total, 0), s: isFinite(I.gan) && I.aportado > 0 ? `${eurS(I.gan, 0)} (${pct(I.gan / I.aportado, true)}) desde que empezaste` : "", ruta: "#inversion", t: I.gan > 0 ? "pos" : "" } : null,
+    I.filas.length ? { l: "Invertido", v: eur(I.total - gan, 0), s: conGan ? "lo que has metido, sin la ganancia" : "", ruta: "#inversion" } : null,
     E.c["Efectivo bróker"] ? { l: "Sin invertir en el bróker", v: eur(E.c["Efectivo bróker"], 0) } : null,
     E.c.Otros ? { l: "Otros", v: eur(E.c.Otros, 0) } : null,
     E.deudas ? { l: "Deudas", v: eur(-E.deudas, 0) } : null,
@@ -312,7 +296,7 @@ function tarjetaPatrimonio(p) {
     n.appendText(`Anotaste ${eur(ult.neto, 0)} el ${ult.fecha.toFormat("dd/MM")}; desde entonces ${eurS(dAn, 0)} por los movimientos y el cambio de valor de tu inversión. `);
     enlace(n, "Anotar saldos de hoy →", "#cerrar");
   }
-  enlace(p.createDiv({ cls: "fin-note" }), "Hitos, proyección y mes a mes →", "#progreso");
+  enlace(p.createDiv({ cls: "fin-note" }), "Tus hitos →", "#inversion");
 }
 
 // Evolución en pequeño: área suave a todo lo ancho (sin ejes), con el último punto marcado.

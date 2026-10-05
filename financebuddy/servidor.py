@@ -5,7 +5,7 @@ from . import VERSION, actualizaciones, bizums, cartera, clasificar as C, detect
 from .almacen import Almacen
 
 mimetypes.add_type("font/woff2", ".woff2")
-MODULOS = ["datos", "calculos", "componentes", "graficos", "inicio", "inversion", "progreso", "renta", "precios", "exportar", "formularios", "pantallas"]
+MODULOS = ["datos", "calculos", "componentes", "graficos", "inicio", "inversion", "renta", "precios", "exportar", "formularios", "pantallas"]
 MAX_SUBIDA = 25 * 1024 * 1024
 ACENTOS = ["salvia", "violeta", "azul", "verde", "coral", "rosa", "grafito"]  # colores de acento (estilos.css: body[data-acento])
 
@@ -301,6 +301,8 @@ class App:
         if ruta == "/api/config":
             for k, v in (d or {}).items():
                 if k in ("limite_variable",): a.set_config(k, modelo.numero(v) or 0)
+                elif k == "dia_inicio": a.set_config(k, min(28, max(1, int(modelo.numero(v) or 1))))  # día en que empieza «tu mes»
+                elif k == "colchon": a.set_config(k, max(0, modelo.numero(v) or 0))  # 0 = lo calcula la app
                 elif k == "acento": a.set_config(k, v if v in ACENTOS else ACENTOS[0])
                 elif k in ("inicio", "inicio_ocultos"):  # paneles de Inicio visibles (en orden) y ocultos
                     a.set_config(k, [x for x in (v if isinstance(v, list) else []) if isinstance(x, str) and re.fullmatch(r"[a-z]{2,20}", x)][:20])

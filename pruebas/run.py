@@ -2,6 +2,7 @@
 # la página (#log). Con --tests ejecuta además las pruebas de cálculos (pruebas_calculos.js).
 #
 # Uso: python pruebas/run.py [pantalla1,pantalla2] [--tests] [--shot] [--tema=oscuro] [--ancho=N] [--alto=N] [--datos=CARPETA]
+#   --capturas: captura cada pantalla en claro y en oscuro (para repasar de un vistazo que ninguna se ha roto)
 #   --datos: usa esa carpeta de datos en lugar de crear una de ejemplo (p. ej. para ver tus datos reales)
 #   FB_NAVEGADOR: ruta de otro Chrome/Chromium (p. ej. fuera de Windows)
 import html, os, re, subprocess, sys, tempfile, time, urllib.request
@@ -12,7 +13,7 @@ SALIDA = os.path.join(tempfile.gettempdir(), "fb-pruebas")
 # Navegadores con modo sin ventana (el primero que exista)
 EDGES = [r"C:\Program Files\Google\Chrome\Application\chrome.exe", r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
          r"C:\Program Files\Microsoft\Edge\Application\msedge.exe"]
-PANTALLAS = "inicio,movimientos,inversion,importar,revisar,apuntar,cerrar,valores,ajustes,fijos,gestionar/movimiento,gestionar/cuenta,editar/movimiento/nuevo,editar/recurrente/nuevo,revision,progreso,renta,bienvenida"
+PANTALLAS = "inicio,movimientos,inversion,importar,revisar,apuntar,cerrar,valores,ajustes,fijos,gestionar/movimiento,gestionar/cuenta,editar/movimiento/nuevo,editar/recurrente/nuevo,revision,renta,bienvenida"
 HOY = "2026-09-30"
 
 def main():
@@ -35,11 +36,10 @@ def main():
         perfil = tempfile.mkdtemp()
         fallos = 0
         for i, v in enumerate(pantallas):
-            qs = "?pruebas=1" if "tests" in flags and i == 0 else ""
-            url = f"http://127.0.0.1:{puerto}/{qs}#{v}"
+            qs = "&".join((["pruebas=1"] if "tests" in flags and i == 0 else []) + (["tema=" + flags["tema"]] if "tema" in flags else []))
+            url = f"http://127.0.0.1:{puerto}/{'?' + qs if qs else ''}#{v}"
             base = [edge, "--headless", "--disable-gpu", "--no-first-run", f"--user-data-dir={perfil}", "--virtual-time-budget=6000"]
             if os.name != "nt": base.append("--no-sandbox")
-            if flags.get("tema") == "oscuro": base.append("--force-dark-mode")
             out = subprocess.run(base + ["--dump-dom", url], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120).stdout
             m = re.search(r'<div id="log">(.*?)</div>', out, re.S)
             texto = html.unescape(m.group(1)).strip() if m else "(sin log)"
@@ -47,10 +47,15 @@ def main():
             if not out.strip(): texto = "(el navegador no devolvió la página)"
             if "Error" in texto or "✕" in texto or not out.strip(): fallos += 1
             print(f"── {v} [{html.unescape(h2.group(1)) if h2 else '—'}]: {texto or 'ok'}")
+            tam = f"--window-size={flags.get('ancho', '1440' if 'capturas' in flags else '1200')},{flags.get('alto', '2600')}"
             if "shot" in flags:
                 png = os.path.join(SALIDA, f"{v.replace('/', '-')}{'-' + flags['tema'] if 'tema' in flags else ''}.png")
-                subprocess.run(base + [f"--window-size={flags.get('ancho', '1200')},{flags.get('alto', '2600')}", f"--screenshot={png}", url], capture_output=True, timeout=120)
-        if "shot" in flags: print("capturas en", SALIDA)
+                subprocess.run(base + [tam, f"--screenshot={png}", url], capture_output=True, timeout=120)
+            if "capturas" in flags:  # ?tema= fuerza el tema solo en esa carga (nucleo.js)
+                for tema in ("claro", "oscuro"):
+                    png = os.path.join(SALIDA, f"{v.replace('/', '-')}-{tema}.png")
+                    subprocess.run(base + [tam, "--hide-scrollbars", f"--screenshot={png}", f"http://127.0.0.1:{puerto}/?tema={tema}#{v}"], capture_output=True, timeout=120)
+        if "shot" in flags or "capturas" in flags: print("capturas en", SALIDA)
         return 1 if fallos else 0
     finally:
         srv.terminate()

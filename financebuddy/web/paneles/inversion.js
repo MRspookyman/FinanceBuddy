@@ -26,11 +26,16 @@ function vistaInversion() {
   const INT = interesesBroker();
   const botones = root.createDiv({ cls: "fb-filtros" });
   if (preciosActivos()) { const b = botones.createEl("button", { cls: "fb-btn", text: cfg.precios.en_marcha ? "Actualizando…" : "Actualizar precios" }); b.title = "Pone al día el precio de mercado de los activos con fuente en internet"; b.onclick = () => FB.actualizarPrecios({ boton: b }); }
-  else enlace(botones, "Activar precios automáticos", "#ajustes/precios").className = "fb-btn sec";
-  enlace(botones, "Anotar valores a mano", "#valores").className = preciosActivos() ? "fb-btn sec" : "fb-btn";
-  enlace(botones, "+ Activo", "#editar/activo/nuevo").className = "fb-btn sec";
-  enlace(botones, "Compras y ventas", "#gestionar/aportacion").className = "fb-btn sec";
-  enlace(botones, "Para la renta", "#renta").className = "fb-btn sec";
+  else enlace(botones, "Anotar valores a mano", "#valores").className = "fb-btn";
+  const mas = botones.createEl("details", { cls: "fb-menu" });
+  mas.createEl("summary", { cls: "fb-btn sec", text: "Más" });
+  const ops = mas.createDiv({ cls: "ops" });
+  for (const [t, r] of [preciosActivos() ? ["Anotar valores a mano", "#valores"] : ["Activar precios automáticos", "#ajustes/precios"],
+    ["Añadir un activo", "#editar/activo/nuevo"], ["Compras y ventas", "#gestionar/aportacion"], ["Para la renta", "#renta"]]) enlace(ops, t, r);
+  // Periodo de la ganancia y la rentabilidad: desde el inicio (TIR), el último año o este mes
+  const per = FB.estado.periodoInv || "total", PERIODOS = [["total", "Desde el inicio"], ["12", "1 año"], ["1", "Este mes"]];
+  const segP = botones.createDiv({ cls: "fb-seg mini" });
+  for (const [k, t] of PERIODOS) { const b = segP.createEl("button", { text: t, cls: per === k ? "act" : "", attr: { type: "button", "aria-pressed": String(per === k) } }); b.onclick = () => { FB.estado.periodoInv = k; FB.montar(); }; }
   if (hayCorto) {  // «Solo largo plazo»: deja fuera lo que no es inversión a largo (un colchón en un fondo monetario, una apuesta…)
     const seg = root.createDiv({ cls: "fb-chips" });
     for (const [k, t] of [[false, "Todo"], [true, "Solo largo plazo"]]) {
@@ -40,17 +45,19 @@ function vistaInversion() {
   }
 
   if (preciosActivos()) estadoPrecios(root, I);
-  panelSalud(root, saludInversion());
   const pct0 = I.aportado > 0 ? I.gan / I.aportado : NaN;
   const notaValor = [I.mercado ? `${I.mercado === I.filas.length ? "todo" : I.mercado === 1 ? "uno" : I.mercado} al precio de mercado del ${I.fechaMercado.toFormat("dd/MM")}` : "", I.estimados ? `≈ ${I.estimados === 1 ? "uno" : I.estimados} con el precio de su última compra` : "", I.sinValor ? `${I.sinValor === 1 ? "uno" : I.sinValor} por lo metido` : ""].filter(Boolean).join(" · ");
   tiles(root, [
     { l: "Vale hoy", v: eur(I.total, 0), s: notaValor || "según tus últimos valores" },
     { l: "Has metido", v: eur(I.aportadoTodo, 0), s: `${I.filas.reduce((s, f) => s + f.operaciones, 0)} compras y ventas` },
+    ...(per === "total" ? [
     isFinite(I.gan) && I.aportado > 0 ? { l: "Ganancia", v: (I.estimados ? "≈ " : "") + eurS(I.gan, 0), t: tone(I.gan), s: `${pct(pct0, true)} sobre lo metido${I.estimados ? " · estimada" : ""}${I.dividendos ? ` · con ${eur(I.dividendos, 0)} de dividendos` : ""}` } : null,
     isFinite(I.tir) ? { l: "Rentabilidad anual", v: pct(I.tir, true), t: tone(I.tir), s: I.tirCorta ? "menos de un año: orientativa" : I.tirParcial ? "de los activos con datos" : "TIR, cuenta cuándo metiste cada euro" } : null,
+    ] : tilesPeriodo(rentabilidadPeriodo(evolucionInversion(solo), Number(per)), per === "1" ? "este mes" : "1 año")),
     efectivo != null ? { l: "Sin invertir", v: eur(efectivo, 0), s: nombresBroker() } : null,
     INT.n ? { l: `Intereses ${hoy.year}`, v: eur(INT.año, 2), s: INT.comisiones ? `comisiones ${eur(INT.comisiones, 2)}` : "del dinero sin invertir" } : null,
   ]);
+  panelSalud(root, saludInversion());
 
   const g1 = root.createDiv({ cls: "fin-grid dos" });
   tarjetaEvolucion(panel(g1, "Evolución", null, "Lo que llevas metido (línea discontinua) y lo que valía al final de cada mes en que anotaste los valores, más el de hoy."), solo);
@@ -61,6 +68,51 @@ function vistaInversion() {
   const g2 = root.createDiv({ cls: "fin-grid dos" });
   tarjetaAportaciones(panel(g2, "Lo que metes cada mes"), solo);
   tarjetaSinInvertir(panel(g2, "Tu dinero sin invertir", { text: "Aportaciones periódicas", ruta: "#gestionar/recurrente" }), efectivo, INT);
+  panelHitos(root);
+}
+
+// Hitos: las cifras redondas que tu patrimonio ha ido cruzando, la barra hacia la siguiente y cuánto tardarías al ritmo actual
+// (lo que metes al mes de media el último año y tu rentabilidad, con un tope prudente del 5 %).
+const compactoEur = (v) => (v >= 1e6 ? `${nf(v / 1e6, 0, 1)} M€` : v >= 1000 ? `${nf(v / 1000, 0, 1)} k€` : `${nf(v, 0, 0)} €`);
+function panelHitos(padre) {
+  const E = estimacion();
+  if (!E) return;
+  const R = resumenInversion(), P = patrimonio(), neto = E.neto;
+  const m12 = aportacionesMes(12), i0 = m12.findIndex((x) => x.compras || x.ventas);
+  const apo = i0 < 0 ? 0 : sum(m12.map((x) => x.compras - x.ventas)) / (m12.length - i0);
+  const rent = isFinite(R.tir) && !R.tirCorta ? Math.min(0.05, Math.max(0, R.tir)) : 0.05;
+  const p = panel(padre, "Hitos", null, "Las cifras redondas que tu patrimonio ha ido cruzando. La fecha es la del primer registro de saldos que lo supera.");
+  const H = hitosPatrimonio(P.map((x) => ({ fecha: x.fecha, neto: x.neto })), neto, hoy);
+  const fila = p.createDiv({ cls: "fb-hitos" });
+  for (const h of H.logrados.filter((x) => !x.inicial).slice(-5)) {  // los que ya tenías al empezar no se celebran
+    const c = fila.createDiv({ cls: "h ok" });
+    c.createDiv({ cls: "v", text: `✓ ${compactoEur(h.valor)}` });
+    c.createDiv({ cls: "s", text: h.hoy ? "ya, según tu estimación de hoy" : h.fecha.setLocale("es").toFormat("LLL yyyy").replace(".", "") });
+  }
+  for (const h of H.proximos) {
+    const c = fila.createDiv({ cls: "h" });
+    c.createDiv({ cls: "v", text: compactoEur(h.valor) });
+    c.createDiv({ cls: "s", text: `faltan ${eur(h.falta, 0)}` });
+  }
+  if (!H.siguiente) { p.createDiv({ cls: "fin-note", text: "Has superado todos los hitos de la lista. 🎉" }); return; }
+  const previo = H.logrados.length ? H.logrados[H.logrados.length - 1].valor : 0;
+  const frac = Math.max(0, Math.min(1, (neto - previo) / (H.siguiente - previo)));
+  p.createDiv({ cls: "fin-note", text: `Próximo: ${compactoEur(H.siguiente)} · llevas el ${nf(frac * 100, 0, 0)} % del camino desde ${compactoEur(previo) || "0"}.` });
+  const b = p.createDiv({ cls: "fb-barra fina" }); b.createDiv().style.width = `${(frac * 100).toFixed(1)}%`;
+  const m = mesesHasta50(neto, apo, rent, H.siguiente);
+  if (m != null && m > 0) {
+    const cuando = hoy.plus({ months: m }).setLocale("es").toFormat("LLLL yyyy");
+    p.createDiv({ cls: "fin-note", text: `Al ritmo de ${eur(Math.max(0, apo), 0)} al mes y un ${nf(rent * 100, 0, 1)} % anual, lo alcanzarías hacia ${cuando} (${m < 24 ? `${m} meses` : `${nf(m / 12, 0, 1)} años`}). Orientativo.` });
+  } else if (m == null) p.createDiv({ cls: "fin-note", text: "A este ritmo no se llega en 50 años." });
+}
+
+// Ganancia y rentabilidad de un periodo (rentabilidadPeriodo), o por qué no se pueden calcular.
+function tilesPeriodo(R, etq) {
+  if (!R.ok) return [{ l: `Ganancia · ${etq}`, v: "—", s: R.motivo }];
+  return [
+    { l: `Ganancia · ${etq}`, v: eurS(R.gan, 0), t: tone(R.gan), s: `desde el final de ${mesLbl(R.desde).toLowerCase()}: valía ${eur(R.v0, 0)}${Math.abs(R.metido) >= 1 ? ` y has ${R.metido > 0 ? "metido" : "sacado"} ${eur(Math.abs(R.metido), 0)}` : ""}` },
+    isFinite(R.r) ? { l: `Rentabilidad · ${etq}`, v: pct(R.r, true), t: tone(R.r), s: "sobre lo que has tenido invertido en ese tiempo, sin dividendos" } : null,
+  ];
 }
 
 function tarjetaEvolucion(p, solo) {
@@ -134,29 +186,6 @@ function tablaActivos(p, I) {
   if (I.estimados) p.createDiv({ cls: "fin-note", text: "≈ estimado: participaciones × el precio de tu última compra o venta. Para el valor exacto, anota lo que vale en tu bróker (Actualizar valores)." });
   if (I.mercado) notaPrecios(p);
   if (I.sinAport) p.createDiv({ cls: "fin-note", text: "Sin «aportado antes de usar la app», la ganancia de ese activo no se puede calcular: edítalo y pon lo que habías metido (0 si empezaste con la app)." });
-}
-
-// Lo que cuestan tus fondos y ETF (gastos corrientes, TER): € al año y al mes. Un 0,2 % parece poco, pero se paga cada año.
-function panelComisiones(padre, I) {
-  const C = comisionesInversion(I.filas);
-  if (!C.lista.length) {
-    if (I.filas.some((f) => f.clase === "fondo" || f.clase === "etf")) {
-      const p = panel(padre, "Lo que pagas en comisiones", null, "Los gastos corrientes (TER) de cada fondo o ETF se descuentan del valor poco a poco, sin que veas ningún cobro.");
-      p.createDiv({ cls: "fin-note", text: "Pon el TER de tus fondos y ETF (lo ves en su ficha del bróker) y aquí verás cuánto te cuestan al año." });
-      enlace(p.createDiv({ cls: "fin-note" }), "Editar mis activos →", "#gestionar/activo");
-    }
-    return;
-  }
-  const p = panel(padre, "Lo que pagas en comisiones", { text: `${eur(C.año, 0)} al año` }, "Los gastos corrientes (TER) de cada fondo o ETF se descuentan del valor poco a poco, sin que veas ningún cobro. Es una estimación: valor de hoy × TER.");
-  p.createDiv({ cls: "fin-note", text: `Son ${eur(C.mes, 2)} al mes, un ${nf(C.media, 2, 2)} % de media sobre ${eur(C.sobre, 0)}.` });
-  plegable(p, "Ver el detalle por activo", (c) => {
-    tabla(c, [{ t: "Activo" }, { t: "TER", num: true }, { t: "Sobre", num: true, opt: true }, { t: "Al año", num: true }, { t: "Al mes", num: true, opt: true }],
-      [...C.lista.map((x) => [{ text: x.nombre, ruta: `#activo/${x.p.id}`, dot: colorActivo(x.nombre) }, `${nf(x.ter, 2, 2)} %`, eur(x.valor, 0), eur(x.año, 2), eur(x.año / 12, 2)]),
-        conFila(["Total", `${nf(C.media, 2, 2)} %`, eur(C.sobre, 0), eur(C.año, 2), eur(C.mes, 2)], "total")]);
-    const años = [10, 20, 30].map((n) => `${n} años: ${eur(C.año * n, 0)}`).join(" · ");
-    c.createDiv({ cls: "fin-note", text: `Si el valor y el TER se mantuvieran: ${años} (sin contar lo que habría crecido ese dinero).` });
-  });
-  if (C.sinTer.length) p.createDiv({ cls: "fin-note", text: `Sin TER anotado: ${C.sinTer.map((f) => f.nombre).join(", ")}.` });
 }
 
 function tarjetaAportaciones(p, solo) {

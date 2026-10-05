@@ -89,7 +89,7 @@ Detalle módulo a módulo: **`.claude/skills/financebuddy-dev/SKILL.md`**. Aquí
  navegador ──GET /api/datos──▶ servidor.py ──▶ almacen.py ──▶ SQLite (datos.db)
      │  ▲                         │  App.manejar(ruta, datos) = toda la escritura (POST /api/…)
      │  └── JSON: registros por tipo, pendientes (con sugerencias), config, info
-     └── paneles/*.js (se concatenan y comparten ámbito): datos → calculos → componentes → graficos → inicio → inversion → progreso → renta → precios → exportar → formularios → pantallas
+     └── paneles/*.js (se concatenan y comparten ámbito): datos → calculos → componentes → graficos → inicio → inversion → renta → precios → exportar → formularios → pantallas
 ```
 
 | Capa | Archivos | Idea clave |
@@ -123,6 +123,7 @@ Detalle módulo a módulo: **`.claude/skills/financebuddy-dev/SKILL.md`**. Aquí
 
 ### 2.2 Claves de `config`
 `titulares` (nombre(s) del usuario, para reconocer traspasos propios y para **no enviarlos a Jev**), `limite_variable`,
+`dia_inicio` (día en que empieza «tu mes», 1–28), `colchon` (colchón de la cuenta corriente fijado a mano; 0 = automático),
 `configurado`, `plantilla_version`, `version_esquema`, `avisos_descartados`, `saldo_extracto:<cuenta>`, `acento`, `inicio`/
 `inicio_ocultos` (paneles del Inicio), y las de Jev: `jev` (clave + opciones), `jev_uso` (consultas/tokens por mes),
 `jev_revision` (repaso de categorías), `jev_fijos` (caché de «¿cuota fija?»), `jev_enviado` (últimas 30 consultas). Precios:
@@ -144,6 +145,10 @@ categoria|auditar|hallazgo`, `config/descartar_aviso`, `carpeta`, `ejemplo`, `ab
 - `all:unset` en botones quita el foco: hay que redefinir `:focus-visible`.
 - Los avisos de nivel `info` de `avisos()` **no se muestran en ninguna parte** (solo los `warn` en el Inicio): para un
   aviso visible hay que ponerlo en la pantalla concreta.
+
+- **«Tu mes» no es siempre el mes natural** (`config.dia_inicio`): gastos, ingresos, límite, ritmo y previsión usan
+  `keyDe()`/`iniMes()`/`diasMes()`/`diaDeMes()` (`datos.js`); del día 16 en adelante el periodo lleva el nombre del mes siguiente.
+  Inversión, saldos y cierres siguen por mes natural: `keyCal()`/`hoyCal`. No usar `fecha.day` ni `daysInMonth` para el gasto del mes.
 
 ### 2.5 Modelo de dinero (resumen)
 Los saldos salen de proyectar el último registro de `patrimonio` con los movimientos posteriores, **cuenta a cuenta**. Un
@@ -184,11 +189,10 @@ Piezas relacionadas:
 
 | Ruta | Pantalla | Notas |
 |---|---|---|
-| `#inicio` | Inicio minimalista | Selector de mes; «Puedes gastar» + barra + frase de estado; Ritmo del mes; A dónde va tu dinero; Patrimonio; Próximos cargos (14 días). Paneles configurables (`PANELES_INICIO`). |
+| `#inicio` | Inicio minimalista | Selector de mes; portada «Puedes gastar» + barra + frase de estado, con el **ritmo del mes dentro** (`graficoRitmo`) y entró/salió/ahorro a la derecha; debajo, **una sola franja de avisos** (`franjaAvisos`: lo que toca hacer, lo que no cuadra y qué hacer con lo que sobra); luego A dónde va tu dinero, Patrimonio y Próximos cargos (30 días) en rejilla de hasta tres columnas. Paneles configurables (`PANELES_INICIO`). |
 | `#movimientos` (+`/lista`) | Movimientos | De primeras **por categoría**; la **lista** por día, paginada (40 por página), con búsqueda y filtros; «Por categoría» frente a tu media. En los gastos con Bizums enlazados: «te devolvieron X». |
-| `#inversion`, `#activo/ID` | Inversión y ficha de activo | Cifras, evolución, aportaciones, reparto; «Revisa tu inversión»; ficha con operaciones editables, **Cuadrar con el bróker**, **Unir**, borrar. |
+| `#inversion`, `#activo/ID` | Inversión y ficha de activo | Un botón principal y el resto en «Más»; **periodo** de la ganancia y la rentabilidad (desde el inicio / 1 año / este mes: `rentabilidadPeriodo`); cifras, «Revisa tu inversión», evolución, aportaciones, reparto; ficha con operaciones editables, **Cuadrar con el bróker**, **Unir**, borrar. |
 | `#importar` | Importar | Arrastrar archivos o carpeta `Importar\`; **vista previa** antes de guardar (`tarjetaPrevia`); plantilla de Excel; formato nuevo → mapeo de columnas. |
-| `#progreso` | Tu progreso | Hitos, «Si sigo así…» (deslizadores), esfuerzo vs mercado por mes, rentabilidad por año y peor caída, y el **comparador con indexados** (necesita precios). |
 | `#renta` | Para la renta | Ganancias realizadas por año (FIFO, traspasos que heredan coste), dividendos y comisiones, lo que no se puede calcular. |
 | `#revisar` | Por revisar | Dudas agrupadas por comercio (o por **reparto** de Bizums); filtros; aceptar sugerencias en bloque; selector de gastos candidatos para Bizums recibidos. |
 | `#revision` | Revisar tus categorías (Jev) | Hallazgos del repaso: Cambiar / Está bien / Otra categoría. |
@@ -199,9 +203,11 @@ Piezas relacionadas:
 | `#gestionar/<tipo>`, `#editar/<tipo>/<id|nuevo>` | Listas y formularios genéricos | Basados en `FORMS`. En la ficha de un movimiento: paneles de reembolsos y campo «Devuelve parte de este gasto». |
 | `#bienvenida` | Primer uso | Cuentas, límite, fijos, o «Probar con datos de ejemplo». |
 
-Diseño visual: estilo **«papel»** (cálido y editorial): fondo de papel, tarjetas crema, tinta marrón, acento salvia, títulos y
-cifras con serifa **Fraunces** (incluida en `web/fuentes`, OFL, la app sigue sin conexión). Tema claro/oscuro/automático (se
-guarda en `localStorage`) y 7 acentos. Móvil: barra inferior con seis secciones.
+Diseño visual: estilo **«pizarra»** (6 oct 2026): neutros fríos, tarjetas blancas con línea fina y sin sombras, **barra de
+navegación arriba** (Inicio, Movimientos, Inversión, Por revisar, Ajustes; «Importar» es el botón de la barra), portada en
+tinta, títulos y cifras con **Bahnschrift** (la DIN de Windows; sin fuentes incluidas). Tema claro/oscuro/automático (se guarda
+en `localStorage`) y 7 acentos. **Solo escritorio**: no hay barra inferior ni ajustes para móvil (nadie la usa desde el móvil).
+Atajos: `?` (ayuda), `I`, `A`, `D`, `1`–`5`.
 
 ---
 
@@ -209,8 +215,9 @@ guarda en `localStorage`) y 7 acentos. Móvil: barra inferior con seis secciones
 
 ```bat
 python -m unittest pruebas.test_importar pruebas.test_servidor pruebas.test_jev pruebas.test_precios pruebas.test_actualizaciones   :: 109 pruebas (sin red)
-python pruebas\run.py --tests                                        :: 18 pantallas sin errores + 70 pruebas de cálculos
+python pruebas\run.py --tests                                        :: 16 pantallas sin errores + 79 pruebas de cálculos
 python pruebas\run.py inicio,movimientos --shot [--tema=oscuro]      :: capturas en %TEMP%\fb-pruebas
+python pruebas\run.py --capturas                                     :: todas las pantallas, en claro y en oscuro
 python pruebas\evaluar_jev.py [--mostrar]                            :: precisión de Jev con TUS datos (lo ejecuta el usuario)
 python pruebas\evaluar_precios.py [ISIN|ticker…]                     :: ¿responden HOY Yahoo/Morningstar/CoinGecko? (lo ejecuta el usuario)
 build.bat                                                            :: pasa pruebas y genera dist\FinanceBuddy.exe
@@ -472,6 +479,22 @@ afinar «esfuerzo vs mercado» (hoy solo usa los valores anotados). Descartado: 
 ### 9.9 Auditoría de producto e interfaz (5 oct 2026) — aplicada en tres tandas
 Tanda 1: proyección prudente (5 % por defecto, solo sobre lo invertido, con rango), hitos sin los que ya tenías al empezar, «Importar» como botón principal (soltar un archivo en cualquier pantalla lo importa; «Apuntar» bajó a Movimientos y la tecla A), `Deshacer` tras decidir en «Por revisar» (`/api/deshacer`, foto en memoria), contraste y letra, «Ahorro del mes» como único nombre. Tanda 2: **lo por revisar del banco cuenta como «Sin clasificar»** (`datos.js: movimientos()`), lista única con «Todo el historial» y búsqueda global, Ajustes en tres pestañas. Tanda 3: primer uso empieza por el extracto (el saldo del primer extracto es el saldo inicial: `servidor._saldo_inicial`), comprobación del saldo del banco tras importar, límite sugerido, frase «qué hacer con lo que sobra» (`planReparto`) y reparto objetivo por activo (`activo.objetivo`, `repartoObjetivo`). Después: icono en la bandeja (`__main__._bandeja`, `pystray`) y distribución como carpeta (`build.bat` en `--onedir`); **el saldo de cada cuenta con extracto se iguala solo al que dice el banco** (`pantallas.js: autoCuadre` → `/api/saldo_banco`: registro de patrimonio de ese día, sin cerrar el mes ni tocar el valor de los activos; una vez por saldo distinto); «Actualizar valores» fusionado en «Actualizar saldos»; panel «Objetivos y recordatorios» en el Inicio; fijo/variable separados en «A dónde va tu dinero»; aviso de fijos que suben de precio (`subidasFijos`) y resumen del mes al cerrar (`resumenMes`); comisiones movidas a «Tu progreso»; cambio de divisa del **BCE vía Frankfurter** con respaldo en Yahoo (`precios.serie_bce`; sale solo el código de la moneda) y clave gratuita opcional de CoinGecko (`config.precios.clave_coingecko`, nunca vuelve a la página). Regla 1/9b: a los tres servicios de precios se suma Frankfurter (solo «USD»/«GBP»).
 
+### 9.10 Interfaz «pizarra» y segunda tanda (6 oct 2026)
+Rediseño completo de `estilos.css` e `index.html` (ver §4, «Diseño visual») y, después: Inicio con la portada primero, el ritmo
+dentro y una franja única de avisos; fuera las repeticiones («por revisar» junto al saludo, «Importar» como pestaña); Inversión
+con un botón principal + «Más» y **selector de periodo**; **día en que empieza tu mes** y **colchón configurable** (Ajustes →
+General → «Tu mes y tu colchón»); ayuda de atajos (`?`); `run.py --capturas`; icono nuevo (`web/icono.svg`, `recursos/icono.ico`)
+y fuera la fuente Fraunces. Se decidió **mantener los emojis** de las categorías y dejar para después lo de guardar lo
+importado con la categoría sugerida (punto 5 de abajo).
+
+### 9.11 Fuera «Tu progreso» (6 oct 2026)
+El usuario no la usaba: se eliminó la pantalla `#progreso` (`progreso.js`) con «Si sigo así…», «Tu inversión, mes a mes», rentabilidad
+por año, comisiones (TER) y el panel del comparador con indexados, junto con sus cálculos (`proyeccion`, `puntosInversion`,
+`rendimientoPuntos`, `comisionesInversion`) y sus pruebas. **Solo quedan los hitos**, al final de Inversión (`inversion.js: panelHitos`).
+El comparador sigue en el servidor (`precios.comparar`, `/api/precios/comparar`, con sus pruebas) pero sin pantalla. Además, la
+tarjeta **«Tu patrimonio»** del Inicio enseña el total **sin lo ganado con la inversión** (la inversión cuenta por lo metido) y la
+ganancia aparte, en pequeño («+1.345 € de tu inversión»).
+
 ## 10. Pendiente y backlog (por valor aproximado)
 
 **Inmediato**
@@ -487,11 +510,11 @@ Tanda 1: proyección prudente (5 % por defecto, solo sobre lo invertido, con ran
 5. **Guardar ya lo importado con la categoría sugerida** (como Copilot/Lunch Money): hoy lo dudoso no cuenta hasta revisarlo.
    Es un cambio de fondo; PR aparte.
 6. ~~Vista «Para la renta»~~ (hecho, Ola 2).
-7. ~~Rentabilidad por periodo~~ (hecho en parte: por año en «Tu progreso»; falta mes/1 año/total).
+7. ~~Rentabilidad por periodo~~ (hecho: selector desde el inicio / 1 año / este mes en Inversión).
 8. **Reparto objetivo y rebalanceo:** % ideal por activo y a dónde va la próxima aportación.
 9. ~~Dividendos~~ (hecho: registro `cobro`). Mejora posible: usar los precios mensuales para «esfuerzo vs mercado» sin anotar valores.
-10. **Fase 4 del plan original (Ajustes por secciones):** reorganizar Ajustes, **día en que empieza tu mes** (el de la
-    nómina), **colchón configurable** (hoy se calcula solo), **exportar datos a Excel**, probar una regla antes de guardarla y
+10. **Fase 4 del plan original (Ajustes por secciones):** reorganizar Ajustes, ~~día en que empieza tu mes~~ y ~~colchón
+    configurable~~ (hechos, §9.10), **exportar datos a Excel**, probar una regla antes de guardarla y
     aplicarla a lo ya importado, fusionar/ocultar categorías.
 11. **Bitcoin:** solo 12 de 21 compras tenían títulos (las antiguas no vienen en el Excel del usuario) → sin precio medio hasta
     que añada esas fechas.

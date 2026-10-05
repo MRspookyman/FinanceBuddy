@@ -92,25 +92,13 @@ const SA = F.saludInversion();
 caso("Revisa tu inversión: sin errores con los datos de ejemplo", !SA.some((x) => x.nivel === "error"), SA.map((x) => x.texto));
 caso("Valor: los activos de ejemplo tienen su valor anotado (no estimado)", RI.filas.every((f) => f.fuente === "anotado"), RI.filas.map((f) => f.fuente));
 
-// 12. Progreso: hitos, proyección, esfuerzo y mercado, comisiones (con números sencillos)
+// 12. Hitos del patrimonio y tamaño de las compras (con números sencillos)
 const DT = luxon.DateTime, d = (iso) => DT.fromISO(iso);
 const HT = F.hitosPatrimonio([{ fecha: d("2026-01-31"), neto: 8000 }, { fecha: d("2026-03-31"), neto: 12000 }], 26000, d("2026-09-30"));
 caso("Hitos: 1 k, 2,5 k y 5 k cruzados con el primer registro", HT.logrados.slice(0, 3).every((h) => h.fecha.toISODate() === "2026-01-31"), HT.logrados.map((h) => [h.valor, h.fecha.toISODate()]));
 caso("Hitos: 10 k en marzo y 25 k «hoy» (solo lo cruza la estimación)", HT.logrados[3].fecha.toISODate() === "2026-03-31" && HT.logrados[4].valor === 25000 && HT.logrados[4].hoy, HT.logrados);
 caso("Hitos: los siguientes son 50 k (faltan 24.000 €) y 100 k", HT.proximos[0].valor === 50000 && HT.proximos[0].falta === 24000 && HT.proximos[1].valor === 100000 && HT.siguiente === 50000, HT.proximos);
-const PY0 = F.proyeccion(1000, 100, 0, 1);
-caso("Proyección sin rentabilidad: 1.000 + 12 × 100 = 2.200 €, el mercado pone 0", cerca(PY0.final, 2200) && cerca(PY0.mercado, 0) && PY0.valor.length === 2, PY0);
-const rm = Math.pow(1.06, 1 / 12) - 1, ann = 5000 * Math.pow(1 + rm, 120) + 200 * (Math.pow(1 + rm, 120) - 1) / rm;
-const PY1 = F.proyeccion(5000, 200, 0.06, 10);
-caso("Proyección al 6 % durante 10 años = fórmula de la anualidad", cerca(PY1.final, ann, 0.01) && cerca(PY1.aportadoFinal, 5000 + 200 * 120) && cerca(PY1.mercado, ann - 29000, 0.01), [PY1.final, ann]);
 caso("Meses hasta una meta: 10 meses de 100 € para llegar a 1.000 €", F.mesesHasta50(0, 100, 0, 1000) === 10 && F.mesesHasta50(2000, 0, 0, 1000) === 0 && F.mesesHasta50(0, 0, 0, 1000) === null, F.mesesHasta50(0, 100, 0, 1000));
-const PI = F.puntosInversion([{ fecha: d("2026-01-15"), valores: { A: 1000 } }, { fecha: d("2026-02-20"), valores: { A: 1100, B: 60 } }], [{ fecha: d("2026-02-05"), importe: 100 }], 0, d("2026-02-25"));
-caso("Esfuerzo y mercado: febrero 1.160 € = 1.000 + 100 aportados + 60 del mercado", PI.length === 2 && cerca(PI[1].aport, 100) && cerca(PI[1].mercado, 60) && cerca(PI[1].r, 0.06, 1e-9), PI);
-const RP = F.rendimientoPuntos([{ key: "2025-11", valor: 1 }, { key: "2025-12", valor: 1, r: 0.10 }, { key: "2026-01", valor: 1, r: -0.20 }, { key: "2026-02", valor: 1, r: 0.05 }]);
-caso("Rentabilidad encadenada: 1,10 × 0,80 × 1,05 y peor caída −20 %", cerca(RP.indice, 100 * 1.1 * 0.8 * 1.05, 1e-9) && cerca(RP.peor.caida, -0.2, 1e-9) && RP.peor.desde === "2025-12" && RP.peor.hasta === "2026-01", RP);
-caso("Rentabilidad por año: 2025 +10 % (1 mes) y 2026 −16 % (2 meses)", cerca(RP.años[0].r, 0.10, 1e-9) && cerca(RP.años[1].r, 0.8 * 1.05 - 1, 1e-9) && RP.años[1].meses === 2, RP.años);
-const CM = F.comisionesInversion([{ nombre: "A", ter: 0.2, valor: 10000, clase: "fondo", p: {} }, { nombre: "B", ter: null, valor: 500, clase: "fondo", p: {} }]);
-caso("Comisiones: 0,2 % de 10.000 € = 20 € al año, 1,67 al mes; B sin TER", cerca(CM.año, 20) && cerca(CM.mes, 20 / 12, 1e-9) && CM.sinTer.length === 1 && CM.lista.length === 1, CM);
 const TC = F.tamañoCompras([100, 100, 200, 200, 300, 300]);
 caso("Tamaño de compras: 100 pequeña, 200 habitual, 400 grande; con menos de 6, nada", TC.de(100) === "pequeña" && TC.de(200) === "habitual" && TC.de(400) === "grande" && F.tamañoCompras([1, 2, 3]) === null, TC && [TC.p33, TC.p67]);
 const RIs = F.resumenInversion(true);
@@ -159,5 +147,21 @@ caso("Reparto objetivo: dentro de la banda de 5 puntos no hay que hacer nada", R
 const RESMES = F.resumenMes("2026-08");
 caso("Resumen del mes: frases de entradas y salidas, lo que más pesó y la inversión", RESMES.length >= 3 && /Entraron 1\.850/.test(RESMES[0]) && /Metiste/.test(RESMES[RESMES.length - 1]), JSON.stringify(RESMES));
 caso("Fijos que suben de precio: sin subidas en los datos de ejemplo", F.subidasFijos().length === 0, JSON.stringify(F.subidasFijos()));
+
+// Día en que empieza tu mes: a qué «mes» pertenece una fecha y cuándo empieza cada uno.
+const dt = (s) => F.DateTime.fromISO(s);
+caso("Mes natural (día 1): la fecha cae en su mes", F.periodoKey(dt("2026-09-28"), 1) === "2026-09" && F.periodoInicio("2026-09", 1).toISODate() === "2026-09-01");
+caso("Cobro el 28: del 28 de septiembre en adelante ya es octubre", F.periodoKey(dt("2026-09-28"), 28) === "2026-10" && F.periodoKey(dt("2026-09-27"), 28) === "2026-09" && F.periodoKey(dt("2026-10-27"), 28) === "2026-10");
+caso("Cobro el 28: octubre empieza el 28 de septiembre y enero, el 28 de diciembre", F.periodoInicio("2026-10", 28).toISODate() === "2026-09-28" && F.periodoKey(dt("2026-12-30"), 28) === "2027-01" && F.periodoInicio("2027-01", 28).toISODate() === "2026-12-28");
+caso("Cobro el 5: hasta el 4 sigue siendo el mes anterior", F.periodoKey(dt("2026-10-04"), 5) === "2026-09" && F.periodoKey(dt("2026-10-05"), 5) === "2026-10" && F.periodoInicio("2026-10", 5).toISODate() === "2026-10-05" && F.periodoKey(dt("2027-01-03"), 5) === "2026-12");
+// Rentabilidad de un periodo: ganancia = cambio de valor − lo metido; sin valor de partida no se calcula.
+const EVP = { keys: ["2026-06", "2026-07", "2026-08", "2026-09"], aportado: [1000, 1200, 1400, 1600], valor: [1100, null, 1500, 1750] };
+const RP1 = F.rentabilidadPeriodo(EVP, 1), RP3 = F.rentabilidadPeriodo(EVP, 3);
+caso("Rentabilidad del mes: 1.750 − 1.500 − 200 metidos = 50 € sobre 1.600 €", RP1.ok && cerca(RP1.gan, 50) && cerca(RP1.r, 50 / 1600, 1e-9), JSON.stringify(RP1));
+caso("Rentabilidad de 3 meses: 1.750 − 1.100 − 600 = 50 €", RP3.ok && cerca(RP3.gan, 50) && RP3.desde === "2026-06", JSON.stringify(RP3));
+caso("Rentabilidad: sin valor de partida o sin tanto historial, no se calcula", !F.rentabilidadPeriodo(EVP, 2).ok && !F.rentabilidadPeriodo(EVP, 12).ok && !F.rentabilidadPeriodo(null, 1).ok);
+// Colchón: sin fijarlo a mano es el calculado.
+const PLANC = F.planReparto();
+caso("Colchón automático si no se fija a mano", !PLANC || (!PLANC.manual && PLANC.colchon === PLANC.colchonAuto), JSON.stringify(PLANC && [PLANC.colchon, PLANC.colchonAuto]));
 
 return casos;

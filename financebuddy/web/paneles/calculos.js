@@ -214,7 +214,7 @@ function evolucionInversion(soloLargo = false) {
   const inicios = [...APr.map((x) => x.fecha), ...A.filter((a) => a.aportadoIni > 0 && a.fechaIni).map((a) => a.fechaIni)];
   if (!inicios.length) return null;
   const n = Math.max(2, Math.min(36, Math.round(hoy.diff(DateTime.min(...inicios).startOf("month"), "months").months) + 1));
-  const keys = mesesHasta(hoyKey, n);
+  const keys = mesesHasta(hoyCal, n);
   const P = patrimonio();
   const aportado = keys.map((k) => {
     const fin = mesDT(k).endOf("month");
@@ -230,29 +230,42 @@ function evolucionInversion(soloLargo = false) {
     return part > 1e-9 ? part * precio : null;
   };
   const valor = keys.map((k) => {
-    if (k === hoyKey) return sum(A.map(valorHoy));
-    const r = [...P].reverse().find((x) => keyDe(x.fecha) === k && Object.keys(x.valores || {}).some((v) => nombres.has(v)));
+    if (k === hoyCal) return sum(A.map(valorHoy));
+    const r = [...P].reverse().find((x) => keyCal(x.fecha) === k && Object.keys(x.valores || {}).some((v) => nombres.has(v)));
     const porActivo = A.map((a) => (r && r.valores && hasNum(r.valores[a.nombre]) ? num(r.valores[a.nombre]) : valorMercado(a, k)));
     return porActivo.every((v) => v != null) ? sum(porActivo) : (r ? sum(Object.entries(r.valores).filter(([v]) => nombres.has(v)).map(([, v]) => num(v))) : null);
   });
   const i0 = Math.max(0, Math.min(aportado.findIndex((v) => v > 0), keys.length - 2));  // sin meses vacíos delante
   return { keys: keys.slice(i0), aportado: aportado.slice(i0), valor: valor.slice(i0) };
 }
+// Ganancia y rentabilidad de la cartera en los últimos `meses` meses naturales, a partir de la evolución mensual
+// ({ keys, aportado, valor } de evolucionInversion): ganancia = lo que ha cambiado el valor − lo metido en ese tiempo;
+// rentabilidad = ganancia / (valor de partida + la mitad de lo metido) (Dietz simple; no cuenta dividendos).
+// Sin valor de partida (ni anotado ni por precios) no se puede calcular: devuelve el motivo.
+function rentabilidadPeriodo(ev, meses) {
+  if (!ev || ev.keys.length < 2) return { ok: false, motivo: "aún no hay historial de tu inversión" };
+  const n = ev.keys.length - 1, i = n - meses;
+  if (i < 0) return { ok: false, motivo: "tu inversión aún no lleva tanto tiempo" };
+  const v0 = ev.valor[i], v1 = ev.valor[n];
+  if (v0 == null || v1 == null) return { ok: false, motivo: `falta el valor de ${mesLbl(ev.keys[i]).toLowerCase()}: anota los valores de fin de mes o activa los precios` };
+  const metido = ev.aportado[n] - ev.aportado[i], gan = v1 - v0 - metido, base = v0 + metido / 2;
+  return { ok: true, desde: ev.keys[i], v0, v1, metido, gan, r: base > 0 ? gan / base : NaN };
+}
 // Compras (y ventas) de cada mes: lo que has metido en tu inversión. Los traspasos entre fondos (vender uno para comprar
 // otro) no son dinero nuevo: no cuentan.
 const sinTraspasos = () => aportacionesReales().filter((x) => !x.p.traspaso);
 function aportacionesMes(n = 12, soloLargo = false) {
-  const keys = mesesHasta(hoyKey, n);
+  const keys = mesesHasta(hoyCal, n);
   const largos = soloLargo ? new Set(activos().filter((a) => a.largo).map((a) => a.nombre)) : null;
   const APr = sinTraspasos().filter((x) => !largos || largos.has(x.activo));
-  return keys.map((k) => ({ key: k, compras: sum(APr.filter((x) => keyDe(x.fecha) === k && x.importe > 0).map((x) => x.importe)),
-    ventas: -sum(APr.filter((x) => keyDe(x.fecha) === k && x.importe < 0).map((x) => x.importe)) }));
+  return keys.map((k) => ({ key: k, compras: sum(APr.filter((x) => keyCal(x.fecha) === k && x.importe > 0).map((x) => x.importe)),
+    ventas: -sum(APr.filter((x) => keyCal(x.fecha) === k && x.importe < 0).map((x) => x.importe)) }));
 }
 // Meses seguidos con alguna compra, contando hacia atrás desde este mes (o el anterior, si este aún no toca).
 function constancia() {
   const APr = sinTraspasos().filter((x) => x.importe > 0);
-  const con = new Set(APr.map((x) => keyDe(x.fecha)));
-  let k = con.has(hoyKey) ? hoyKey : mesAnterior(hoyKey), n = 0;
+  const con = new Set(APr.map((x) => keyCal(x.fecha)));
+  let k = con.has(hoyCal) ? hoyCal : mesAnterior(hoyCal), n = 0;
   while (con.has(k)) { n++; k = mesAnterior(k); }
   return n;
 }
@@ -346,7 +359,7 @@ function fondoEmergencia() {
     liq = E.cuentas.ahorro ?? E.c.Liquidez;
     fuente = E.cuentas.ahorro != null ? "cuenta de ahorro" : "liquidez";
   } else {
-    const r = [...P].reverse().find((x) => x.fecha <= mesDT(mes).endOf("month"));
+    const r = [...P].reverse().find((x) => x.fecha <= finDeMes(mes));
     if (!r) return { sinRegistro: true };
     liq = r.cuentas.ahorro ?? r.c.Liquidez;
     fuente = `${r.cuentas.ahorro != null ? "cuenta de ahorro" : "liquidez"} · registro ${r.fecha.toFormat("dd/MM/yy")}`;
@@ -367,7 +380,7 @@ const gastoVariable = (M) => sum(M.real.filter((m) => m.gasto && grupoDe(m.categ
 // Las compras de inversión (`compras`) se muestran aparte: se pagan con el efectivo del bróker, no con la corriente.
 function repartoAhorro(key) {
   const M = finMes(key);
-  const d0 = mesDT(key), d1 = d0.plus({ months: 1 });
+  const d0 = iniMes(key), d1 = iniMes(mesSiguiente(key));
   const enMes = (f) => f >= d0 && f < d1 && f <= finHoy;
   const ms = M.real;
   const imp = (f) => sum(ms.filter(f).map((m) => m.importe));
@@ -388,8 +401,8 @@ function fechaDatos() {
 function presupuestoSemana() {
   const fd = fechaDatos();
   const enMes = fd && keyDe(fd) === hoyKey;
-  const M = finMes(hoyKey), vari = gastoVariable(M), dm = hoy.daysInMonth;
-  const restantes = dm - (enMes ? fd.day : 0); // días del mes sin datos todavía
+  const M = finMes(hoyKey), vari = gastoVariable(M), dm = diasMes(hoyKey);
+  const restantes = dm - (enMes ? diaDeMes(fd) : 0); // días del mes sin datos todavía
   const disponible = limiteVar - vari;
   const ref = enMes ? fd : hoy;
   const lunes = ref.startOf("week"), domingo = lunes.plus({ days: 6 }).endOf("day");
@@ -421,17 +434,17 @@ function resumenCategorias(key) {
 }
 // Ritmo del gasto variable del mes en curso: acumulado día a día frente a la media de los meses de referencia.
 function ritmoMes(key = hoyKey) {
-  const dm = mesDT(key).daysInMonth, fd = fechaDatos();
-  const dia = key !== hoyKey ? dm : fd && keyDe(fd) === hoyKey ? fd.day : hoy.day;
+  const dm = diasMes(key), fd = fechaDatos();
+  const dia = key !== hoyKey ? dm : fd && keyDe(fd) === hoyKey ? diaDeMes(fd) : diaDeMes(hoy);
   const acumulado = (key, hasta) => {
-    const d0 = mesDT(key), por = new Array(d0.daysInMonth).fill(0);
-    for (const m of finMes(key).real) if (m.gasto && grupoDe(m.categoria) !== "fijo") por[m.fecha.day - 1] += m.gasto;
+    const por = new Array(diasMes(key)).fill(0);
+    for (const m of finMes(key).real) if (m.gasto && grupoDe(m.categoria) !== "fijo") por[diaDeMes(m.fecha) - 1] += m.gasto;
     let a = 0;
     return Array.from({ length: hasta }, (_, i) => (a += por[Math.min(i, por.length - 1)] || 0));
   };
   const actual = acumulado(key, dm).map((v, i) => (i < dia ? v : null));
   const refs = mesesReferencia(key);
-  const med = refs.length ? Array.from({ length: dm }, (_, i) => media(refs.map((k) => { const a = acumulado(k, dm); return a[Math.min(i, mesDT(k).daysInMonth - 1)]; }))) : null;
+  const med = refs.length ? Array.from({ length: dm }, (_, i) => media(refs.map((k) => { const a = acumulado(k, dm); return a[Math.min(i, diasMes(k) - 1)]; }))) : null;
   return { dm, dia, actual, media: med, nMeses: refs.length, hoyV: actual[dia - 1] || 0, mediaHoy: med ? med[dia - 1] : NaN };
 }
 
@@ -450,7 +463,9 @@ function planReparto() {
   const F = prevision();
   // Sin ingresos fijos la previsión solo ve gastos: no se reserva colchón por un déficit que no es real.
   const deficit = !hayIngresosFijos() ? 0 : -sum(F.filas.filter((f) => f.key !== hoyKey).slice(0, 6).filter((f) => f.neto < 0).map((f) => f.neto));
-  const colchon = base + Math.round(deficit / 50) * 50;
+  // El colchón se puede fijar a mano (Ajustes → config.colchon); si no, se calcula.
+  const colchonAuto = base + Math.round(deficit / 50) * 50, manual = num(cfg.colchon) > 0;
+  const colchon = manual ? num(cfg.colchon) : colchonAuto;
   const corriente = E.cuentas.corriente;
   let sobra = corriente - colchon;
   const acciones = [];
@@ -470,7 +485,7 @@ function planReparto() {
   }
   // Próxima acción prevista (cuando no toca mover nada ahora): avisar con tiempo del traspaso al bróker.
   const futuro = F.agota ? { mes: F.agota.key, importe: Math.ceil(F.agota.apoBanco / 10) * 10 } : null;
-  return { corriente, colchon, base, deficit, sobra: corriente - colchon, acciones, futuro };
+  return { corriente, colchon, colchonAuto, manual, base, deficit, sobra: corriente - colchon, acciones, futuro };
 }
 
 // ───────────── previsión de caja ─────────────
@@ -496,7 +511,7 @@ function prevision(n = 12) {
     const fijos = sum(pend.map((m) => m.gasto));
     const apo = sum(aportaciones().filter((a) => a.previsto && keyDe(a.fecha) === key).map((a) => a.importe));
     // Mes en curso: lo que falta hasta la estimación, sin pasar de la parte proporcional a los días que quedan.
-    const variable = key === hoyKey ? Math.min(Math.max(0, varEst - varMes), varEst * (hoy.daysInMonth - hoy.day) / hoy.daysInMonth) : varEst;
+    const variable = key === hoyKey ? Math.min(Math.max(0, varEst - varMes), varEst * (diasMes(hoyKey) - diaDeMes(hoy)) / diasMes(hoyKey)) : varEst;
     const tr = sum(pend.filter(esABroker).map((m) => m.importe)) + sum(pend.filter(esAOtra).map((m) => m.importe)) - sum(pend.filter(esDeOtra).map((m) => m.importe));
     const pago = pagarAportacion(broker + sum(pend.filter(esABroker).map((m) => m.importe)), apo);
     broker = pago.broker;
@@ -553,8 +568,8 @@ function avisos() {
   if (desc.length) add("warn", `No cuadra entre el ${K.desde.toFormat("dd/MM")} y el ${K.hasta.toFormat("dd/MM")}: ${desc.map((f) => `${f.nombre} ${eurS(f.dif)}`).join(", ")} · falta o sobra algún movimiento`, "#cerrar");
   const P = patrimonio();
   // Los cierres se piden desde que se usa la app (primer registro de patrimonio), no desde el historial importado.
-  const primerMes = P.length ? keyDe(P[0].fecha) : null;
-  const ant = mesAnterior(hoyKey);
+  const primerMes = P.length ? keyCal(P[0].fecha) : null;
+  const ant = mesAnterior(hoyCal);
   if (primerMes && ant >= primerMes && !cierres().some((c) => c.mes === ant)) add("warn", `${mesLbl(ant)} sin cerrar · anota tus saldos del último día del mes`, "#cerrar");
   if (!P.length) add("warn", "Aún no hay saldos registrados · se anotan al cerrar el mes", "#cerrar");
   else { const d = diasDesde(P[P.length - 1].fecha); if (d > 40) add("warn", `Último registro de saldos hace ${d} días`, "#cerrar"); }
@@ -575,7 +590,7 @@ function avisos() {
     add(meses <= 1 ? "warn" : "info", `El dinero sin invertir de ${nombresBroker()} se acaba en ${mesLbl(F.agota.key).toLowerCase()}: ese mes faltan ${eur(F.agota.apoBanco, 0)} para las aportaciones · pasa dinero desde el banco antes`, "#inicio");
   }
   // Ritmo del gasto variable del mes en curso (desde el día 7, mientras no se haya pasado ya: eso lo dice la barra).
-  const Mh = finMes(hoyKey), vari = gastoVariable(Mh), d = hoy.day, dm = hoy.daysInMonth;
+  const Mh = finMes(hoyKey), vari = gastoVariable(Mh), d = diaDeMes(hoy), dm = diasMes(hoyKey);
   if (limiteVar > 0 && d >= 7 && d < dm && vari <= limiteVar) {
     const proy = (vari / d) * dm;
     if (proy > limiteVar * 1.05) add("warn", `A este ritmo acabarás ${mesLbl(hoyKey).toLowerCase()} con ${eur(proy, 0)} de gasto variable (límite ${eur(limiteVar, 0)}; llevas ${eur(vari, 0)})`, "#movimientos");
@@ -604,7 +619,7 @@ function avisos() {
   return out;
 }
 
-// ───────────── progreso: hitos, proyección, esfuerzo y mercado, comisiones ─────────────
+// ───────────── hitos del patrimonio, reparto objetivo y tamaño de las compras ─────────────
 // Funciones puras (reciben los datos) para poder probarlas con números sencillos.
 const HITOS = [1000, 2500, 5000, 10000, 25000, 50000, 100000, 250000, 500000, 1000000];
 // Hitos del patrimonio: los ya cruzados (con la fecha del primer registro que los supera; si solo los cruza la estimación de
@@ -628,19 +643,6 @@ function repartoObjetivo(filas, banda = 5) {
   const debajo = lista.filter((x) => x.dif < -banda).sort((a, b) => a.dif - b.dif)[0] || null;
   return { lista, proxima: debajo, dentro: !lista.some((x) => Math.abs(x.dif) > banda) };
 }
-// Proyección con aportación mensual constante y rentabilidad anual constante (capitalización mensual, aportación a fin de mes).
-// → por año (0..años): valor, aportado acumulado (incluye lo que ya tienes) y, con ellos, lo que pone el mercado.
-function proyeccion(inicial, apoMes, rentAnual, años) {
-  const rm = Math.pow(1 + rentAnual, 1 / 12) - 1;
-  let v = inicial;
-  const valor = [inicial], aportado = [inicial];
-  for (let m = 1; m <= años * 12; m++) {
-    v = v * (1 + rm) + apoMes;
-    if (m % 12 === 0) { valor.push(v); aportado.push(inicial + apoMes * m); }
-  }
-  const fin = valor[valor.length - 1], ap = aportado[aportado.length - 1];
-  return { valor, aportado, final: fin, aportadoFinal: ap, mercado: fin - ap };
-}
 // Meses que tardarías en llegar a `meta` con esos supuestos (null si no llega en 50 años).
 function mesesHasta50(inicial, apoMes, rentAnual, meta) {
   if (inicial >= meta) return 0;
@@ -648,49 +650,6 @@ function mesesHasta50(inicial, apoMes, rentAnual, meta) {
   let v = inicial;
   for (let m = 1; m <= 600; m++) { v = v * (1 + rm) + apoMes; if (v >= meta) return m; }
   return null;
-}
-// Puntos mensuales del valor de la inversión (suma de los valores anotados en cada registro de patrimonio; el del último
-// registro de cada mes) y lo que se aportó entre un punto y el siguiente. hoyValor: lo que vale hoy (estimado).
-// → [{ key, valor, aport, mercado, r }]: `mercado` = lo que subió o bajó sin que tú pusieras dinero; `r` = rentabilidad del
-// periodo (TWR: (valor − aportado) / valor anterior − 1). El primer punto no tiene aport/mercado/r.
-function puntosInversion(registros, aportes, hoyValor, hoyF) {
-  const porMes = new Map();
-  for (const r of registros) {
-    const v = sum(Object.values(r.valores || {}).map(num));
-    if (v > 0) porMes.set(keyDe(r.fecha), { key: keyDe(r.fecha), fecha: r.fecha.endOf("month"), valor: v });
-  }
-  const hk = keyDe(hoyF);
-  if (hoyValor > 0 && !porMes.has(hk)) porMes.set(hk, { key: hk, fecha: hoyF.endOf("day"), valor: hoyValor });
-  const pts = [...porMes.values()].sort((a, b) => a.key.localeCompare(b.key));
-  return pts.map((p, i) => {
-    if (!i) return { key: p.key, valor: p.valor };
-    const ant = pts[i - 1];
-    const aport = sum(aportes.filter((x) => x.fecha > ant.fecha && x.fecha <= p.fecha).map((x) => x.importe));
-    return { key: p.key, valor: p.valor, aport, mercado: p.valor - ant.valor - aport, r: ant.valor > 0 ? (p.valor - aport) / ant.valor - 1 : NaN };
-  });
-}
-// De esos puntos: rentabilidad de cada año natural (encadenada, sin el efecto de cuándo metiste el dinero) y la peor caída
-// (el mayor descenso desde un máximo del índice, que no se mueve cuando aportas).
-function rendimientoPuntos(pts) {
-  let idx = 100, pico = 100, picoKey = pts[0] ? pts[0].key : null, peor = null;
-  const porAño = new Map();
-  for (const p of pts) {
-    if (p.r == null || !isFinite(p.r)) continue;
-    idx *= 1 + p.r;
-    const a = p.key.slice(0, 4), t = porAño.get(a) || { f: 1, meses: 0 };
-    t.f *= 1 + p.r; t.meses++; porAño.set(a, t);
-    if (idx > pico) { pico = idx; picoKey = p.key; }
-    const caida = idx / pico - 1;
-    if (!peor || caida < peor.caida) peor = { caida, desde: picoKey, hasta: p.key };
-  }
-  return { indice: idx, años: [...porAño].map(([año, t]) => ({ año, r: t.f - 1, meses: t.meses })), peor: peor && peor.caida < -0.0001 ? peor : null };
-}
-// Gastos corrientes (TER) de la cartera: € al año y al mes de cada activo que tiene TER.
-function comisionesInversion(filas) {
-  const con = filas.filter((f) => f.ter != null && f.valor > 0);
-  const lista = con.map((f) => ({ nombre: f.nombre, ter: f.ter, valor: f.valor, año: (f.valor * f.ter) / 100, p: f.p })).sort((a, b) => b.año - a.año);
-  const sobre = sum(lista.map((x) => x.valor)), año = sum(lista.map((x) => x.año));
-  return { lista, sobre, año, mes: año / 12, media: sobre > 0 ? (100 * año) / sobre : NaN, sinTer: filas.filter((f) => f.ter == null && f.valor > 0 && f.clase !== "cripto") };
 }
 // Tamaño de una compra frente a las que ya has hecho en ese activo (tercios): pequeña · habitual · grande. Con menos de 6, nada.
 function tamañoCompras(importes) {

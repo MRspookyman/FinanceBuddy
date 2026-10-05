@@ -25,16 +25,16 @@ const accion = (padre, texto, fn, title) => {
 const CAT_ICONO = { "Sin clasificar": "❔", Vivienda: "🏠", Suministros: "💡", Seguros: "🛡️", Suscripciones: "📺", Supermercado: "🛒", "Comer fuera": "🍽️", Ocio: "🎉",
   Transporte: "🚌", Coche: "🚗", Salud: "💊", Compras: "🛍️", Hogar: "🛋️", Viajes: "✈️", "Formación": "📚", Regalos: "🎁", "Cuidado personal": "💇",
   Mascotas: "🐾", Efectivo: "💶", Comisiones: "🏦", Otros: "📦", "Nómina": "💼", "Otros ingresos": "💰", Apuestas: "🎲", Videojuegos: "🎮", Deporte: "🏀" };
-// Pastel (salvia, arena, terracota, lavanda, cielo, rosa, oliva, agua, melocotón, piedra): legibles en claro y oscuro.
-const PALETA = ["#8FB095", "#DDBB84", "#D98C6E", "#B3A0D6", "#8DB2C8", "#DDA0A0", "#B0B27A", "#83B7AA", "#E8A978", "#A89D92"];
+// Tonos medios y vivos (verde, ámbar, teja, violeta, azul, magenta, oliva, turquesa, naranja, gris): legibles en claro y oscuro.
+const PALETA = ["#2F9E7A", "#E0A526", "#DD5F36", "#7558DD", "#2B82C6", "#CE457C", "#8A9A2E", "#1FA3A3", "#F08A3C", "#7B8794"];
 const hashTxt = (s) => [...String(s)].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7);
 // El icono y el color se pueden elegir en cada categoría (Ajustes → Categorías); si no, los de serie.
 const catReg = (n) => categorias().find((c) => c.nombre === n);
 // Colores de serie de las categorías de la plantilla (como en el diseño); las nuevas, uno estable de la paleta.
-const CAT_COLOR = { Vivienda: "#8FB095", Supermercado: "#DDBB84", "Comer fuera": "#D98C6E", Coche: "#B3A0D6", Suministros: "#8DB2C8",
-  Suscripciones: "#DDA0A0", Seguros: "#A7B8C9", Ocio: "#E8A978", Transporte: "#83B7AA", Salud: "#E3A6B4", Compras: "#B0B27A", Hogar: "#C9B08E",
-  Viajes: "#7FB0D0", "Formación": "#A9A2D8", Regalos: "#E39AA7", "Cuidado personal": "#D5A5C9", Mascotas: "#C2A07E", Efectivo: "#9DBB8C",
-  Comisiones: "#B5A99B", Apuestas: "#CF8F8F", Otros: "#B8ADA0", "Nómina": "#7FAE8A", Intereses: "#9CC0A0", "Otros ingresos": "#A8C49A" };
+const CAT_COLOR = { Vivienda: "#2F9E7A", Supermercado: "#E0A526", "Comer fuera": "#DD5F36", Coche: "#7558DD", Suministros: "#2B82C6",
+  Suscripciones: "#CE457C", Seguros: "#5C7FA8", Ocio: "#F08A3C", Transporte: "#1FA3A3", Salud: "#E0559A", Compras: "#8A9A2E", Hogar: "#B5854A",
+  Viajes: "#3D9BE0", "Formación": "#6C6FD9", Regalos: "#E0486A", "Cuidado personal": "#C45BB8", Mascotas: "#A8743C", Efectivo: "#5FA343",
+  Comisiones: "#7B8794", Apuestas: "#C24A4A", Otros: "#8C95A1", "Nómina": "#1F8F5F", Intereses: "#46A86B", "Otros ingresos": "#6DB04A" };
 const catColor = (n) => ((catReg(n) || {}).p || {}).color || CAT_COLOR[n] || PALETA[hashTxt(n) % (PALETA.length - 1)];
 const catIcono = (n) => ((catReg(n) || {}).p || {}).icono || CAT_ICONO[n] || "🏷️";
 const ICONO_CLASE = { transferencia: "🔁", ingreso: "💰", reembolso: "↩️" };

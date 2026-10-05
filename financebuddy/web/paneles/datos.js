@@ -5,6 +5,7 @@ const { DateTime } = luxon;
 const vista = (input && input.vista) || "resumen";
 const params = (input && input.params) || [];
 const DB = FB.DB;
+const cfg = DB.config || {};
 
 // ───────────── utilidades ─────────────
 const num = (x) => {
@@ -47,11 +48,25 @@ const mesLbl = (key) => cap(mesDT(key).setLocale("es").toFormat("LLLL yyyy"));
 const mesCorto = (key) => cap(mesDT(key).setLocale("es").toFormat("LLL").replace(".", ""));
 const mesesHasta = (key, n) => Array.from({ length: n }, (_, i) => mesDT(key).minus({ months: n - 1 - i }).toFormat("yyyy-MM"));
 const mesesDesde = (key, n) => Array.from({ length: n }, (_, i) => mesDT(key).plus({ months: i }).toFormat("yyyy-MM"));
-const keyDe = (d) => d.toFormat("yyyy-MM");
+const mesSiguiente = (key) => mesDT(key).plus({ months: 1 }).toFormat("yyyy-MM");
+const keyCal = (d) => d.toFormat("yyyy-MM");  // mes natural: inversión, saldos y cierres, y enlazar un fijo con su cargo
+// Día en que empieza tu mes (Ajustes → config.dia_inicio, de 1 a 28). Con 1 es el mes natural. Con otro día, el «mes» de gastos e
+// ingresos va de un día de cobro al siguiente: del 16 en adelante lleva el nombre del mes siguiente (la nómina del 28 de
+// septiembre paga octubre); hasta el 15, el del mes en que empieza (del 5 de octubre al 4 de noviembre es «octubre»).
+const periodoKey = (d, D) => keyCal(!(D > 1) ? d : D > 15 ? (d.day >= D ? d.startOf("month").plus({ months: 1 }) : d) : (d.day >= D ? d : d.startOf("month").minus({ months: 1 })));
+const periodoInicio = (key, D) => (D > 15 ? mesDT(key).minus({ months: 1 }) : mesDT(key)).set({ day: D > 1 ? D : 1 });
+const diaInicio = Math.min(28, Math.max(1, Math.round(num(cfg.dia_inicio)) || 1));
+const keyDe = (d) => periodoKey(d, diaInicio);
+const iniMes = (key) => periodoInicio(key, diaInicio);
+const finDeMes = (key) => iniMes(mesSiguiente(key)).minus({ days: 1 }).endOf("day");
+const diasMes = (key) => Math.round(iniMes(mesSiguiente(key)).diff(iniMes(key), "days").days);
+const diaDeMes = (d) => Math.floor(d.startOf("day").diff(iniMes(keyDe(d)), "days").days) + 1;  // 1 = primer día de su mes
+const diaCorto = (d) => d.setLocale("es").toFormat("d LLL").replace(".", "");
+const mesRango = (key) => (diaInicio === 1 ? "" : `${diaCorto(iniMes(key))} – ${diaCorto(finDeMes(key))}`);  // «28 sep – 27 oct»
 // «Hoy» se puede fijar al arrancar (--hoy) para las pruebas.
 const hoy = (DB.info && DB.info.hoy ? DateTime.fromISO(DB.info.hoy) : DateTime.now()).startOf("day");
 const finHoy = hoy.endOf("day");
-const hoyKey = hoy.toFormat("yyyy-MM");
+const hoyKey = keyDe(hoy), hoyCal = keyCal(hoy);
 const mesAnterior = (key) => mesDT(key).minus({ months: 1 }).toFormat("yyyy-MM");
 const diasDesde = (d) => Math.floor(hoy.diff(d.startOf("day"), "days").days);
 const fechaCorta = (iso) => (iso ? String(iso).slice(0, 10).split("-").reverse().join("/") : "");
@@ -81,7 +96,6 @@ if (filtroCat) guardarEstado({ filtroCat: null });
 let busqueda = "";
 
 // ───────────── registros ─────────────
-const cfg = DB.config || {};
 // Cada registro lleva `file` (nombre y enlace para editarlo), como las notas de la versión anterior.
 const registros = (tipo) => (DB.registros[tipo] || []).map((r) => ({ ...r, file: { name: r.nombre || r.concepto || r.patron || r.mes || r.fecha || tipo, path: `#editar/${tipo}/${r.id}` } }));
 
@@ -106,7 +120,7 @@ const recurrentes = () => (_recs ??= registros("recurrente").filter((p) => p.act
   meses: listaMeses(p.meses), activoInv: txt(p.activo_inversion), cuenta: txt(p.cuenta),
 })));
 // Horizonte de los recurrentes: 12 meses por delante del mes visible o de hoy (lo necesita la previsión de caja).
-const horizonte = () => DateTime.max(hoy, mesDT(mes)).startOf("month").plus({ months: 12 });
+const horizonte = () => DateTime.max(hoy, mesDT(mes)).startOf("month").plus({ months: diaInicio > 1 ? 13 : 12 });
 // Fechas en que toca un recurrente (desde `desde` hasta el horizonte; `meses` limita a esos meses del año).
 function ocurrencias(r) {
   const out = [];
@@ -140,10 +154,10 @@ const movimientos = () => {
       concepto: txt(f.concepto) || txt(f.texto) || "Sin clasificar", recurrente: "", destino: "", origen: "", cuenta: txt(q.cuenta) || principal(), auto: false, pendiente: true });
   }
   const virtuales = [];
-  const vinculados = new Set(reales.filter((m) => m.recurrente).map((m) => `${m.recurrente}|${keyDe(m.fecha)}`));
+  const vinculados = new Set(reales.filter((m) => m.recurrente).map((m) => `${m.recurrente}|${keyCal(m.fecha)}`));
   for (const r of recurrentes().filter((r) => r.clase !== "aportacion")) {
     for (const fecha of ocurrencias(r)) {
-      if (vinculados.has(`${r.nombre}|${keyDe(fecha)}`)) continue;
+      if (vinculados.has(`${r.nombre}|${keyCal(fecha)}`)) continue;
       virtuales.push({ p: r.p, fecha, importe: r.importe, clase: r.clase, categoria: r.categoria, concepto: r.nombre, recurrente: r.nombre, cuenta: r.cuenta || principal(), auto: true });
     }
   }
@@ -231,10 +245,10 @@ const aportaciones = () => {
     p, fecha: toDate(p.fecha), activo: txt(p.activo), importe: num(p.importe), recurrente: txt(p.recurrente), cuenta: txt(p.cuenta), auto: false,
   })).filter((a) => a.fecha);
   const virtuales = [];
-  const vinculadas = new Set(reales.filter((a) => a.recurrente).map((a) => `${a.recurrente}|${keyDe(a.fecha)}`));
+  const vinculadas = new Set(reales.filter((a) => a.recurrente).map((a) => `${a.recurrente}|${keyCal(a.fecha)}`));
   for (const r of recurrentes().filter((r) => r.clase === "aportacion" && r.activoInv)) {
     for (const fecha of ocurrencias(r)) {
-      if (vinculadas.has(`${r.nombre}|${keyDe(fecha)}`)) continue;
+      if (vinculadas.has(`${r.nombre}|${keyCal(fecha)}`)) continue;
       virtuales.push({ p: r.p, fecha, activo: r.activoInv, importe: r.importe, recurrente: r.nombre, cuenta: r.cuenta, auto: true });
     }
   }
