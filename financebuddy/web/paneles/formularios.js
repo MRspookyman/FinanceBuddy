@@ -87,6 +87,7 @@ const FORMS = {
       { k: "codigo_precio", l: "Código para consultar el precio", ph: "p. ej. IWDA.AS · 0P0000YXQE · bitcoin", si: (d) => d.fuente_precio, ayuda: "Solo este código sale de tu ordenador." },
       { k: "moneda", l: "Moneda del precio", t: "opc", opc: MONEDAS_PRECIO, si: (d) => d.fuente_precio, defecto: () => "EUR", ayuda: "Si no es el euro, se pasa a euros con el cambio de cada día." },
       { k: "largo_plazo", l: "Inversión a largo plazo", t: "bool", ayuda: "Desmárcalo para lo que no es inversión a largo plazo (un colchón en un fondo monetario, una apuesta…): el botón «Solo largo plazo» de Inversión lo deja fuera de las cifras." },
+      { k: "objetivo", l: "Peso que quieres que tenga (%, opcional)", t: "num", ayuda: "El porcentaje de tu inversión que querrías en este activo. Con él, Inversión te dice a dónde llevar tu próxima aportación para acercarte (sin vender nada)." },
       { k: "ter", l: "Gastos corrientes (% al año, opcional)", t: "num", ayuda: "El TER del fondo o ETF (p. ej. 0,06). Con él verás cuánto te cuesta al año." },
       { k: "estado", l: "Estado", t: "opc", opc: [["activo", "Lo tengo"], ["vendido", "Vendido"]] }],
     fila: (r) => [r.nombre, r.clase, r.valor != null ? eur(r.valor, 0) : "—", r.fecha_valor ? `a ${fechaCorta(r.fecha_valor)}` : ""], cols: ["Nombre", "Tipo", "Valor", ""] },

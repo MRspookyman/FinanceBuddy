@@ -36,6 +36,24 @@ class TestFlujo(unittest.TestCase):
         # Repetir la vista previa con lo ya importado: todo «ya estaba»
         self.assertEqual(self.api("/api/importar/descartar", {"archivo": r["archivo"]})["ok"], False)  # ya está en Procesados
 
+    def test_primer_extracto_da_el_saldo_inicial_y_se_puede_deshacer(self):
+        self.api("/api/guardar", {"tipo": "cuenta", "datos": {"nombre": "Nómina", "tipo": "corriente", "extracto": True}})
+        ruta = os.path.join(self.dir, "x.xlsx"); excel_santander(ruta, FILAS)
+        with open(ruta, "rb") as fh: b64 = base64.b64encode(fh.read()).decode()
+        r = self.api("/api/importar/subir", {"nombre": "movimientos.xlsx", "tipo": "banco", "contenido": b64, "previa": False})
+        r = self.api("/api/importar/reintentar", {"archivo": r["archivo"], "tipo": "banco", "cuenta": "Nómina", "perfil": r["perfil"]})
+        self.assertTrue(r["ok"], r)
+        pat = self.app.alm.todos("patrimonio")
+        self.assertEqual(len(pat), 1); self.assertEqual(pat[0]["saldos"]["Nómina"], self.app.alm.config("saldo_extracto:Nómina")["saldo"])
+        # Deshacer la última decisión de «Por revisar»
+        p = self.app.alm.todos("pendiente")[0]
+        antes = len(self.app.alm.todos("movimiento"))
+        self.api("/api/resolver", {"id": p["id"], "accion": "ignorar"})
+        self.assertEqual(len(self.app.alm.todos("pendiente")), 2)
+        self.assertTrue(self.api("/api/deshacer")["ok"])
+        self.assertEqual((len(self.app.alm.todos("pendiente")), len(self.app.alm.todos("movimiento"))), (3, antes))
+        self.assertFalse(self.api("/api/deshacer")["ok"])
+
     def test_descartar_un_archivo_subido(self):
         self.api("/api/bienvenida", {"cuentas": [{"nombre": "Nómina", "tipo": "corriente", "saldo": 1000}]})
         ruta = os.path.join(self.dir, "x.xlsx"); excel_santander(ruta, FILAS)

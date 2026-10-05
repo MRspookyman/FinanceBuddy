@@ -31,7 +31,7 @@ CAMPOS = {
     # cripto; la moneda, la del precio (se convierte a euros).
     "activo": {"nombre": "texto*", "clase": ("fondo", "etf", "accion", "cripto", "materia", "pension", "bono", "inmueble", "otro"), "cuenta": "texto", "valor": "num",
                "fecha_valor": "fecha", "aportado_inicial": "num", "fecha_inicio": "fecha", "estado": ("activo", "vendido"),
-               "patrones": "lista", "isin": "texto", "ter": "num+",
+               "patrones": "lista", "isin": "texto", "ter": "num+", "objetivo": "num+",
                "largo_plazo": "bool",
                "fuente_precio": ("", "morningstar", "yahoo", "coingecko"), "codigo_precio": "texto", "moneda": "texto"},  # largo_plazo: es inversión a largo plazo (vale sí si falta); el interruptor «solo largo plazo» deja fuera lo demás
     # importe: + compra, − venta · participaciones: las compradas (+) o vendidas (−), si el extracto las dice («… @ 2»).

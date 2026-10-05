@@ -11,6 +11,18 @@ function vistaBienvenida() {
   pe.appendText("¿Prefieres verla antes con datos inventados? ");
   accion(pe, "Probar con datos de ejemplo", async () => { const r = await FB.api("/api/ejemplo", { activar: true }); if (r.ok) { await FB.recargar(); FB.ir("#inicio"); } else FB.aviso(r.mensaje, true); });
 
+  const arch = root.createDiv({ cls: "fin-panel fb-primero" });
+  arch.createEl("h3", { text: "Empieza por tu extracto" });
+  arch.createDiv({ cls: "fin-note", text: "Descarga de tu banco el Excel o CSV de movimientos y arrástralo aquí. La app reconoce la cuenta, toma el saldo del propio extracto, clasifica lo que sabe y te pregunta solo lo que no. Después te propone tus fijos y un límite de gasto." });
+  const zonaB = arch.createDiv({ cls: "fb-zona", text: "Arrastra aquí el Excel o CSV, o pulsa para elegirlo" });
+  zonaB.onclick = () => FB.ir("#importar");
+  zonaB.addEventListener("dragover", (e) => { e.preventDefault(); zonaB.classList.add("sobre"); });
+  zonaB.addEventListener("dragleave", () => zonaB.classList.remove("sobre"));
+  zonaB.addEventListener("drop", (e) => { e.preventDefault(); FB.soltados = [...e.dataTransfer.files]; FB.ir("#importar"); });
+  const manual = plegable(root, "Prefiero empezar a mano (cuentas, límite y fijos)", (c) => manualBienvenida(c), {});
+}
+// El alta a mano de siempre (sin extracto): cuentas con su saldo, límite, fijos y fondo de emergencia.
+function manualBienvenida(root) {
   const cs = [{ nombre: "Cuenta corriente", tipo: "corriente", extracto: true, saldo: "" }, { nombre: "Ahorro", tipo: "ahorro", extracto: false, saldo: "" }];
   const p1 = panel(root, "1 · Tus cuentas y cuánto tienes hoy en cada una");
   p1.createDiv({ cls: "fin-note", text: "Pon el saldo actual de cada cuenta. Si tienes un bróker (MyInvestor, Trade Republic, Indexa…), añade su cuenta de efectivo como «Bróker»." });
@@ -176,6 +188,7 @@ function resultadoImport(padre, r) {
   if (r.ok && r.previa) { tarjetaPrevia(card, r); return; }
   if (r.ok) {
     mensaje(card, r.mensaje || "Importado", "ok");
+    cuadreExtracto(card, r);
     if (r.dudas) enlace(card, `Revisar ${r.dudas} movimiento${r.dudas > 1 ? "s" : ""} →`, "#revisar");
     if (r.tipo === "banco" && r.nuevas) enlace(card, "Detectar tus ingresos y gastos fijos →", "#fijos");
     if (r.jev_hallazgos) enlace(card, "✨ Revisar tus categorías →", "#revision");
@@ -207,6 +220,19 @@ function resultadoImport(padre, r) {
   }
   if (r.necesita === "perfil") { configurarFormato(card, r); return; }
   mensaje(card, r.mensaje || "No se ha podido importar", "err");
+}
+// Tras importar: ¿el saldo que dice el banco coincide con el que calcula la app?
+function cuadreExtracto(card, r) {
+  const ext = r.tipo === "banco" ? cfg[`saldo_extracto:${r.cuenta}`] : null;
+  if (!ext) return;
+  const f = DateTime.fromISO(ext.fecha), P = patrimonio();
+  const u = [...P].reverse().find((x) => x.fecha < f.startOf("day")) || P[0];
+  const est = u ? proyectar(u, f.endOf("day")).cuentas.saldos[r.cuenta] : null;
+  if (est == null) return;
+  const dif = ext.saldo - est, n = card.createDiv({ cls: "fin-note" });
+  if (Math.abs(dif) < 0.01) { n.setText(`✓ El saldo del banco (${eur(ext.saldo)}) coincide con el de la app: no falta ningún movimiento.`); return; }
+  n.appendText(`El banco dice ${eur(ext.saldo)} y la app calcula ${eur(est)} (${eurS(dif, 2)}). Suele ser un movimiento que falta o uno repetido; `);
+  enlace(n, "anota el saldo del banco →", "#cerrar");
 }
 const reemplazar = async (viejo, nuevo) => { guardarImport(resultadosImport.map((x) => (x === viejo ? nuevo : x))); await FB.refrescar(); };
 // Formato nuevo: el usuario dice qué columna es cada cosa (se guarda como «formato» y se reconoce solo la próxima vez).
@@ -1199,7 +1225,7 @@ const TITULOS = { inicio: "Inicio", movimientos: "Movimientos", inversion: "Inve
 function render() {
   _movs = _movsMes = _aports = _objs = _pat = _cuentas = _recs = _activos = _cats = _cobros = undefined; _finMes = new Map(); _pos = new Map();
   root.empty();
-  const sinConfigurar = !cuentas().length && !["bienvenida", "ajustes", "gestionar", "editar"].includes(vista);
+  const sinConfigurar = !cuentas().length && !["bienvenida", "ajustes", "gestionar", "editar", "importar"].includes(vista);
   (sinConfigurar ? vistaBienvenida : TODAS[vista] || vistaInicio)();
   etiquetar(root);
   document.title = "FinanceBuddy · " + (TITULOS[sinConfigurar ? "bienvenida" : vista] || "Inicio");
@@ -1207,7 +1233,7 @@ function render() {
 render();
 // Para las pruebas automáticas.
 if (input && input.exponer) {
-  window.__fin = { finMes, repartoAhorro, estimacion, conciliacion, prevision, resumenInversion, fondoEmergencia, gastoVariable, tasa12,
+  window.__fin = { finMes, repartoAhorro, estimacion, conciliacion, prevision, resumenInversion, fondoEmergencia, gastoVariable, tasa12, repartoObjetivo,
     movimientos, aportaciones, objetivos, patrimonio, avisos, categorias, grupoDe, limiteVar, mesesHasta, mesAnterior, hoyKey,
     fechaDatos, presupuestoSemana, planReparto, cuentas, proyectar, resumenCategorias, ritmoMes, evolucionInversion, aportacionesMes, constancia, interesesBroker, saludInversion, posicion, valorInfo,
     hitosPatrimonio, proyeccion, mesesHasta50, puntosInversion, rendimientoPuntos, comisionesInversion, tamañoCompras, fifoVentas, cobros, usaMercado, generarResumen };

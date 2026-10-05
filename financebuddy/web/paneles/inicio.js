@@ -58,7 +58,7 @@ function vistaInicio() {
   per.className += " fb-personalizar";
   per.title = "Elige qué ves en el inicio y en qué orden";
 
-  if (actual) { accionesRapidas(root); alertas(root); }
+  if (actual) { accionesRapidas(root); alertas(root); fraseReparto(root); }
   const DIBUJAR = {
     gasto: (padre) => heroGasto(padre, S, M),
     ritmo: (padre) => tarjetaRitmo(panel(padre, "Ritmo del mes", null, "Tu gasto variable acumulado día a día, comparado con lo que sueles llevar a estas alturas del mes."), mes),
@@ -75,6 +75,16 @@ function vistaInicio() {
     DIBUJAR[p.id](fila);
     if (!fila.children.length) fila.remove(), (fila = null);
   }
+}
+
+// Una frase con lo que conviene hacer con el dinero que sobra en la cuenta corriente (planReparto): mueve el dinero y se acaba la duda.
+function fraseReparto(padre) {
+  const R = planReparto();
+  const a = R && R.acciones[0];
+  if (!a) return;
+  const el = padre.createDiv({ cls: "fb-alertas" }).createEl("div", { cls: "fb-alerta" });
+  el.createSpan({ cls: "i", text: "→" });
+  el.createSpan({ text: `${a.texto}: ${a.sub}.` });
 }
 
 // Solo lo que pide actuar (los avisos de nivel «warn»), como máximo 2.
@@ -117,7 +127,7 @@ function heroGasto(padre, S, M) {
     h.createDiv({ cls: "v", text: eur(vari, 0) });
     if (actual) barra(dia / dm, `día ${dia} de ${dm}`);
     h.createDiv({ cls: "s", text: estado() || "en gasto variable: comer fuera, compras, ocio…" });
-    if (actual) enlace(h.createDiv({ cls: "pills" }), "Ponte un límite al mes para saber cuánto te queda →", "#ajustes").className += " pill fb-hero-link";
+    if (actual) enlace(h.createDiv({ cls: "pills" }), `Ponte un límite al mes para saber cuánto te queda${limiteSugerido() ? ` (tu media: ${eur(limiteSugerido(), 0)})` : ""} →`, "#ajustes").className += " pill fb-hero-link";
   } else if (actual) {
     const pasado = S.disponible < 0, usado = S.vari / limiteVar;
     if (pasado) h.classList.add("pasado");
@@ -138,7 +148,10 @@ function heroGasto(padre, S, M) {
     const e = estado(); if (e) h.createDiv({ cls: "s", text: e });
   }
   const sinRev = M.real.filter((m) => m.pendiente);
-  if (sinRev.length) enlace(h.createDiv({ cls: "pie" }), `Incluye ${eur(sum(sinRev.map((m) => (m.clase === "gasto" ? m.importe : -m.importe))), 0)} de ${sinRev.length} movimiento${sinRev.length > 1 ? "s" : ""} sin revisar →`, "#revisar");
+  if (sinRev.length) {
+    const g = sum(sinRev.filter((m) => m.clase === "gasto").map((m) => m.importe)), e = sum(sinRev.filter((m) => m.clase !== "gasto").map((m) => m.importe));
+    enlace(h.createDiv({ cls: "pie" }), `Incluye ${[g ? `${eur(g, 0)} de gasto` : "", e ? `${eur(e, 0)} de entradas` : ""].filter(Boolean).join(" y ")} sin revisar (${sinRev.length} movimiento${sinRev.length > 1 ? "s" : ""}) →`, "#revisar");
+  }
   const r = h.createDiv({ cls: "fb-resumen" });
   const dato = (l, v, cls) => { const d = r.createDiv({ cls: "d " + (cls || "") }); d.createDiv({ cls: "k", text: l }); d.createDiv({ cls: "n", text: v }); };
   dato(actual ? "Ha entrado" : "Entró", eur(M.ingresos, 0), "entra");
@@ -146,6 +159,11 @@ function heroGasto(padre, S, M) {
   dato("Ahorro del mes", eurS(M.ahorro, 0), M.ahorro < 0 ? "neg" : "");
 }
 
+// Media de gasto variable de los últimos meses completos con movimientos, redondeada a 50 €
+function limiteSugerido() {
+  const K = mesesHasta(mesAnterior(hoyKey), 3).filter((k) => finMes(k).real.some((m) => !m.auto));
+  return K.length ? Math.round(sum(K.map((k) => gastoVariable(finMes(k)))) / K.length / 50) * 50 : 0;
+}
 function tarjetaSemana(p, S) {
   if (!S.fechaDatos) { vacio(p, "Sin movimientos todavía", " Importa el extracto de tu banco."); return; }
   const variable = movimientos().filter((m) => !m.previsto && m.gasto && grupoDe(m.categoria) !== "fijo");

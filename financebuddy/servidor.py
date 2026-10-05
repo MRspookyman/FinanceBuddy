@@ -110,7 +110,9 @@ class App:
                     if r.get("ok"): r["previa"] = self._informe_previa(ids, r)
                 return {**r, "archivo": nombre}
             r = IM.importar_archivo(self.alm, self.carpeta, ruta, tipo, cuenta, perfil)
-            if r.get("ok") and r.get("tipo") == "banco": bizums.enlazar(self.alm)
+            if r.get("ok") and r.get("tipo") == "banco":
+                bizums.enlazar(self.alm)
+                self._saldo_inicial(r.get("cuenta"))
             c, fallo = jev.config(self.alm), None
             if r.get("ok") and r.get("dudas") and c["activo"] and c["al_importar"]:  # el asistente Jev propone qué es lo que queda por revisar
                 if r.get("tipo") == "banco":
@@ -130,6 +132,12 @@ class App:
             return {"ok": False, "necesita": "cuenta", **e.info}
         except Exception as e:
             return {"ok": False, "archivo": nombre, "mensaje": f"{nombre}: {e}"}
+
+    def _saldo_inicial(self, cuenta):
+        """Primer uso: si aún no hay ningún saldo anotado, el del extracto (lo que dice el banco) es el punto de partida."""
+        ext = self.alm.config(f"saldo_extracto:{cuenta}") if cuenta else None
+        if ext and not self.alm.todos("patrimonio"):
+            self.alm.guardar("patrimonio", {"fecha": ext["fecha"], "saldos": {cuenta: ext["saldo"]}, "nota": "Saldo del primer extracto"})
 
     def subir(self, d):
         nombre = os.path.basename(str(d.get("nombre") or "archivo.csv"))

@@ -579,6 +579,16 @@ function hitosPatrimonio(puntos, actual, hoyF) {
   const faltan = HITOS.filter((h) => h > (actual || 0));
   return { logrados, proximos: faltan.slice(0, 2).map((h) => ({ valor: h, falta: h - (actual || 0) })), siguiente: faltan[0] || null };
 }
+// Reparto objetivo: de los activos con `objetivo` (% deseado), cuánto se alejan de él y a cuál llevar la próxima aportación
+// (el más por debajo; solo si pasa de la banda de 5 puntos: dentro de ella no hay que hacer nada). Sin vender nada.
+function repartoObjetivo(filas, banda = 5) {
+  const total = sum(filas.map((f) => f.valor));
+  const conObj = filas.filter((f) => f.valor > 0 && hasNum(f.p.objetivo) && num(f.p.objetivo) > 0);
+  if (!(total > 0) || !conObj.length) return null;
+  const lista = conObj.map((f) => ({ f, objetivo: num(f.p.objetivo), actual: (100 * f.valor) / total })).map((x) => ({ ...x, dif: x.actual - x.objetivo }));
+  const debajo = lista.filter((x) => x.dif < -banda).sort((a, b) => a.dif - b.dif)[0] || null;
+  return { lista, proxima: debajo, dentro: !lista.some((x) => Math.abs(x.dif) > banda) };
+}
 // Proyección con aportación mensual constante y rentabilidad anual constante (capitalización mensual, aportación a fin de mes).
 // → por año (0..años): valor, aportado acumulado (incluye lo que ya tienes) y, con ellos, lo que pone el mercado.
 function proyeccion(inicial, apoMes, rentAnual, años) {

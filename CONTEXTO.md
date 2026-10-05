@@ -469,6 +469,9 @@ afinar «esfuerzo vs mercado» (hoy solo usa los valores anotados). Descartado: 
 
 ---
 
+### 9.9 Auditoría de producto e interfaz (5 oct 2026) — aplicada en tres tandas
+Tanda 1: proyección prudente (5 % por defecto, solo sobre lo invertido, con rango), hitos sin los que ya tenías al empezar, «Importar» como botón principal (soltar un archivo en cualquier pantalla lo importa; «Apuntar» bajó a Movimientos y la tecla A), `Deshacer` tras decidir en «Por revisar» (`/api/deshacer`, foto en memoria), contraste y letra, «Ahorro del mes» como único nombre. Tanda 2: **lo por revisar del banco cuenta como «Sin clasificar»** (`datos.js: movimientos()`), lista única con «Todo el historial» y búsqueda global, Ajustes en tres pestañas. Tanda 3: primer uso empieza por el extracto (el saldo del primer extracto es el saldo inicial: `servidor._saldo_inicial`), comprobación del saldo del banco tras importar, límite sugerido, frase «qué hacer con lo que sobra» (`planReparto`) y reparto objetivo por activo (`activo.objetivo`, `repartoObjetivo`). **No hecho:** icono en la bandeja / apagado automático y distribución en carpeta (pendiente de decidir).
+
 ## 10. Pendiente y backlog (por valor aproximado)
 
 **Inmediato**

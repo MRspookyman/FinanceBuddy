@@ -98,6 +98,11 @@ function tarjetaReparto(p, I) {
     const b = el.querySelector(".n").createDiv({ cls: "fb-barra fina reparto" });
     const d = b.createDiv(); d.style.width = `${((100 * f.valor) / total).toFixed(1)}%`; d.style.background = colorActivo(f.nombre);
   }
+  const RO = repartoObjetivo(filas);
+  if (RO) {
+    p.createDiv({ cls: "fin-note", text: "Objetivo: " + RO.lista.map((x) => `${x.f.nombre} ${nf(x.actual, 0, 0)} % (quieres ${nf(x.objetivo, 0, 0)} %)`).join(" · ") });
+    p.createDiv({ cls: "fin-note", text: RO.proxima ? `Tu próxima aportación, a «${RO.proxima.f.nombre}»: está ${nf(-RO.proxima.dif, 0, 0)} puntos por debajo de su objetivo. No hace falta vender nada.` : "Todo está a menos de 5 puntos de tu objetivo: sigue aportando como hasta ahora." });
+  }
   const top = tipos[0];
   if (top && top[1] / total >= 0.6 && tipos.length > 1) p.createDiv({ cls: "fin-note", text: `El ${pct(top[1] / total)} está en ${(TIPO_ACTIVO[top[0]] || top[0]).toLowerCase()}.` });
 }
