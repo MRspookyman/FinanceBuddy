@@ -320,6 +320,10 @@ class App:
                 if k in ("limite_variable",): a.set_config(k, modelo.numero(v) or 0)
                 elif k == "dia_inicio": a.set_config(k, min(28, max(1, int(modelo.numero(v) or 1))))  # día en que empieza «tu mes»
                 elif k == "colchon": a.set_config(k, max(0, modelo.numero(v) or 0))  # 0 = lo calcula la app
+                elif k == "por_pagina":  # registros por página de las listas largas (10 a 200; 40 si no es un número)
+                    try: n = int(modelo.numero(v) or 40)
+                    except ValueError: n = 40
+                    a.set_config(k, min(200, max(10, n)))
                 elif k == "guardar_sugeridos": a.set_config(k, v in (True, 1, "1", "true", "on"))  # guardar ya lo dudoso con categoría sugerida
                 elif k == "sugeridos_umbral": a.set_config(k, C.umbral_valido(v))
                 elif k == "acento": a.set_config(k, v if v in ACENTOS else ACENTOS[0])

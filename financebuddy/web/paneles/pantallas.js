@@ -957,8 +957,12 @@ function vistaAjustes() {
   const iC = fC.createEl("input", { cls: "corto", attr: { type: "number", min: "0", step: "50", placeholder: "automático", "aria-label": "Colchón en la cuenta corriente, en euros" } }); iC.value = num(cfg.colchon) || "";
   const RP = planReparto();
   pM.createDiv({ cls: "fin-note", text: `Lo que quieres dejar siempre en la cuenta antes de mover lo que sobra. Vacío o 0 = lo calcula la app${RP ? ` (ahora ${eur(RP.colchonAuto, 0)}: un mes de fijos y de gasto variable, más los meses que se prevén en negativo)` : ""}.` });
+  const fP = pM.createDiv({ cls: "fb-fila" });
+  fP.createSpan({ cls: "fb-et", text: "Registros por página" });
+  const iP = fP.createEl("input", { cls: "mini", attr: { type: "number", min: "10", max: "200", step: "5", "aria-label": "Registros por página en las listas largas (de 10 a 200)" } }); iP.value = porPagina();
+  pM.createDiv({ cls: "fin-note", text: "Cuántas filas se ven de una vez en Movimientos, Gestionar, Renta y las operaciones de cada activo (de 10 a 200). Las listas de «Por revisar» llevan su propio tamaño porque cada fila es una ficha." });
   const bM = pM.createEl("button", { cls: "fb-btn", text: "Guardar" });
-  bM.onclick = async () => { await FB.api("/api/config", { dia_inicio: iM.value || 1, colchon: iC.value || 0 }); FB.aviso("Guardado ✓"); await FB.refrescar(); };
+  bM.onclick = async () => { await FB.api("/api/config", { dia_inicio: iM.value || 1, colchon: iC.value || 0, por_pagina: iP.value || 40 }); FB.aviso("Guardado ✓"); await FB.refrescar(); };
 
   const pS = panel(g, "Importar", null, "Cuando un movimiento no está claro pero tu historial sugiere una categoría con confianza (mismo comercio u otro muy parecido), se guarda ya con esa categoría y cuenta en tu mes; queda marcado «por confirmar» en Por revisar. Apagado, todo lo dudoso espera en Por revisar hasta que lo decidas.");
   const lS = pS.createEl("label", { cls: "fb-fila" });

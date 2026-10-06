@@ -193,6 +193,11 @@ class TestFlujo(unittest.TestCase):
         self.api("/api/config", {"acento": "url(x)"})
         self.assertEqual(self.app.datos()["config"]["acento"], "salvia")
 
+    def test_registros_por_pagina_acotado(self):
+        for dado, esperado in ((25, 25), (5, 10), (500, 200), ("abc", 40)):
+            self.api("/api/config", {"por_pagina": dado})
+            self.assertEqual(self.app.datos()["config"]["por_pagina"], esperado)
+
     def test_subida_rechaza_otros_formatos(self):
         r = self.api("/api/importar/subir", {"nombre": "virus.exe", "contenido": ""})
         self.assertFalse(r["ok"])

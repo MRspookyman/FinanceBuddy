@@ -250,7 +250,9 @@ function cifra(padre, l, v, s, h) {
 
 // Paginación de cualquier lista. `clave` guarda la página en FB.estado (sobrevive a refrescar, no a cambiar de pantalla).
 // Uso: const pg = paginacion(items, "ops", redibujar); …dibujar pg.parte…; pg.pie(padre). Pasa a la primera página con pg.reiniciar().
-function paginacion(items, clave, redibujar, por = 40) {
+// Registros por página: el ajuste «Registros por página» (10 a 200; 40 si no se ha tocado).
+const porPagina = () => { const n = Math.round(Number((((FB.DB || {}).config) || {}).por_pagina)); return n >= 10 ? Math.min(200, n) : 40; };
+function paginacion(items, clave, redibujar, por = porPagina()) {
   const k = "pag_" + clave, paginas = Math.max(1, Math.ceil(items.length / por));
   const pag = Math.min(Math.max(0, FB.estado[k] || 0), paginas - 1);
   return {

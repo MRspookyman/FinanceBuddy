@@ -384,7 +384,7 @@ function vistaMovimientos() {
   const total = root.createDiv({ cls: "fin-note" });
   const lista = root.createDiv({ cls: "fin-panel" });
   const pie = root.createDiv({ cls: "fb-pagina" });
-  const POR_PAGINA = 40;
+  const POR_PAGINA = porPagina();
   const pintarChips = () => {
     chips.innerHTML = "";
     for (const c of [null, ...cats]) {
