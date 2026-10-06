@@ -551,6 +551,15 @@ fija en 10 días; (4) la tolerancia del 2 % es holgada en importes grandes; (5) 
 (6) `enlazar` es O(Bizums × gastos); (7) pocas pruebas directas de `enlazar`/`previos`.
 **Arreglado:** (1) `movimiento.sin_gasto`: al quitar a mano el gasto de un Bizum (`/api/guardar`) se marca y `bizums.enlazar` ya no lo vuelve a enlazar; elegir otro gasto lo desmarca. (2) `bizums.repartos` agrupa con ±1 día, como `candidatos`. Pruebas: `pruebas/test_bizums.py` y una en `test_servidor.py`.
 
+### 9.14 Archivos grandes partidos (6 oct 2026)
+Sin cambiar ni una línea de código: solo se cortó por los marcadores de sección. `pantallas.js` → `bienvenida`, `importar`, `revisar`, `fijos`
+(fijos detectados + revisión de categorías), `cierre` (apuntar + cerrar el mes), `ajustes`, `gestionar` y `pantallas` (solo `render`);
+`calculos.js` → `calculos`, `calculos_saldos` (saldos, fondo, presupuesto, ahorro, por categoría, plan, previsión) y `calculos_avisos`
+(avisos, hitos, plusvalías); `estilos.css` → `estilos` (base y armazón), `inicio`, `componentes` y `pantallas` (cuatro hojas enlazadas en
+ese orden desde `index.html`). **El orden importa:** los módulos JS se concatenan en el orden de `servidor.MODULOS` y comparten ámbito
+(un solo `new Function`), y las hojas CSS dependen del orden de las `<link>`. Se comprobó que la unión de los trozos es idéntica al archivo
+original. Al añadir un archivo, ponlo en `MODULOS` en su sitio.
+
 ## 10. Pendiente y backlog (por valor aproximado)
 
 **Inmediato**

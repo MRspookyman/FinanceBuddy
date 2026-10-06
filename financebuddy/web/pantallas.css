@@ -1,0 +1,177 @@
+/* ── por revisar: grupos por comercio con categorías a un clic ── */
+.fb-pista{margin:-6px 0 14px}
+.fb-grupos{display:flex;flex-direction:column;gap:10px;margin-bottom:var(--g)}
+.fb-grupo{padding:14px 18px;border-radius:var(--r);background:var(--surface);border:1px solid var(--line);transition:opacity .2s,transform .2s}
+.fb-grupo.fuera{opacity:0;transform:translateX(24px)}
+.fb-grupo .cab{display:flex;align-items:center;gap:12px}
+.fb-grupo .cab .n{flex:1;min-width:0}
+.fb-grupo .cab .t{font-weight:700}
+.fb-grupo .cab .s{font-size:.8em;color:var(--ink-2)}
+.fb-grupo .cab .v{font-weight:750;font-variant-numeric:tabular-nums;white-space:nowrap}
+.fb-grupo .cab .v.pos{color:var(--fin-up)}
+.fb-grupo .ext,.fb-cand .ext{margin:8px 0 0;font-size:.8em;color:var(--ink-3);font-family:"Cascadia Mono",ui-monospace,Consolas,monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fb-grupo .duda{margin-top:4px;font-size:.84em;color:var(--ink-2)}
+.fb-grupo .fin-more{margin:10px 0 0;border:none;background:none}
+.fb-grupo .fin-more>summary{padding:4px 0;font-size:.82em;color:var(--ink-3);font-weight:600}
+.fb-grupo .fin-more-body{padding:4px 0 0}
+.fb-cats{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
+.fb-cats>a{align-self:center;font-size:.85em;color:var(--ink-2);margin-left:4px}
+.fin .fb-cats button{all:unset;cursor:pointer;display:inline-flex;align-items:center;gap:6px;padding:6px 11px;border-radius:8px;font-size:.86em;font-weight:620;color:var(--ink);background:var(--surface);border:1px solid var(--line);transition:background .12s,border-color .12s,transform 120ms var(--ease-out)}
+.fin .fb-cats button:hover{border-color:var(--brand);background:var(--brand-soft)}
+.fin .fb-cats button.sug{color:var(--brand);background:var(--brand-soft);border-color:color-mix(in srgb,var(--brand) 40%,transparent)}
+.fin .fb-cats button.act{color:var(--on-brand);background:var(--brand);border-color:var(--brand)}
+.fin .fb-cats button.desc{color:var(--ink-3);background:none;border-color:transparent}
+.fin .fb-cats button.desc:hover{color:var(--fin-down);border-color:transparent;background:none}
+.fin .fb-cats button[disabled]{opacity:.5;cursor:progress}
+.fin .fb-cats select.otra{height:34px;font-size:.86em;color:var(--ink-2)}
+/* Consejo de categoría nueva: discreto (texto con subrayado), el formulario solo se abre al pulsar */
+.fb-nuevacat{margin-top:10px}
+.fin .fb-nuevacat button.abrir{all:unset;cursor:pointer;font-size:.86em;font-weight:620;color:var(--brand);text-decoration:underline;text-underline-offset:3px;border-radius:4px;transition:color 140ms var(--ease-out)}
+.fin .fb-nuevacat button.abrir:hover{color:var(--ink)}
+.fin .fb-nuevacat button.abrir:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+.fb-nuevacat .mot{font-size:.82em;color:var(--ink-2);margin-top:2px}
+.fb-nuevacat .form{margin-top:8px;padding:10px 12px;border-radius:8px;background:var(--surface-2)}
+.fb-nuevacat .form[hidden]{display:none}
+.fb-opciones{margin-top:12px}
+.fb-cands{display:flex;flex-direction:column;gap:6px;margin-top:12px}.fb-cands .et{font-size:.82em;font-weight:650;color:var(--ink-2)}
+.fin .fb-cands button.fb-cand{all:unset;box-sizing:border-box;cursor:pointer;display:block;padding:9px 13px;border-radius:8px;background:var(--surface-2);border:1px solid transparent;transition:background .12s,border-color .12s,transform 120ms var(--ease-out)}
+.fin .fb-cands button.fb-cand:hover{border-color:var(--brand)}
+.fb-cand.jev{background:var(--brand-soft);border-color:color-mix(in srgb,var(--brand) 40%,transparent)}
+.fb-cand .t{display:flex;justify-content:space-between;gap:10px;font-weight:650;font-size:.9em}.fb-cand .v{font-variant-numeric:tabular-nums;white-space:nowrap}
+.fb-cand .s{font-size:.8em;color:var(--ink-2);margin-top:2px}.fb-cand .ext{margin:3px 0 0;font-size:.8em}
+@keyframes fb-entra{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.fb-previa{animation:fb-entra 200ms var(--ease-out) both}
+.fb-enviado{padding:9px 0;border-top:1px solid var(--line)}.fb-enviado .c{font-size:.8em;color:var(--ink-3)}
+.fb-enviado .e{white-space:pre-wrap;font-size:.82em;margin:3px 0}.fb-enviado .q{font-size:.8em;color:var(--ink-2)}
+.fb-lista-jev{margin:4px 0 12px;padding-left:20px;font-size:.88em;color:var(--ink-2)} .fb-lista-jev li{margin:2px 0}
+.fb-hecho{display:grid;justify-items:center;gap:6px;padding:48px 20px;text-align:center;border-radius:var(--r);background:var(--surface);border:1px solid var(--line);color:var(--ink-2)}
+.fb-hecho .i{display:grid;place-items:center;width:52px;height:52px;border-radius:12px;font-size:24px;color:var(--on-brand);background:var(--brand);margin-bottom:6px}
+.fb-hecho b{font-size:1.3em;color:var(--ink)}
+/* filtros y aceptar sugerencias en bloque */
+.fb-filtro-rev{margin:0 0 12px}
+.fb-bloque-sug{align-items:center;gap:12px;margin:0 0 12px}
+.fb-sug-l .r{display:grid;grid-template-columns:22px minmax(0,1.3fr) auto minmax(0,1fr);gap:4px 12px;align-items:center;padding:9px 0;border-top:1px solid var(--line);cursor:pointer}
+.fb-sug-l .r:first-child{border-top:0}
+.fb-sug-l .n{min-width:0}.fb-sug-l .t{font-weight:650;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fb-sug-l .s{font-size:.8em;color:var(--ink-2)}
+.fb-sug-l .v{font-weight:700;font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}.fb-sug-l .v.pos{color:var(--fin-up)}
+.fb-sug-l .pr{font-size:.88em;font-weight:600;color:var(--ink-2)}
+.fb-sug2{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:4px 12px;align-items:center;padding:9px 0;border-top:1px solid var(--line)}
+.fb-sug2:first-child{border-top:0}
+.fb-sug2 .n{min-width:0}
+.fb-sug2 .t{font-weight:650;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fb-sug2 .s{font-size:.78em;color:var(--ink-2)}
+
+/* ── ajustes: apariencia, orden del inicio, selectores de icono y color ── */
+.fb-colores{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.fb-colores button{all:unset;cursor:pointer;width:24px;height:24px;border-radius:6px;box-shadow:inset 0 0 0 1px rgba(0,0,0,.1);transition:transform .1s}
+.fb-colores button:hover{transform:scale(1.12)}
+.fb-colores button.act{box-shadow:0 0 0 2px var(--surface),0 0 0 4px var(--ink)}
+.fb-colores button.auto{width:auto;height:24px;padding:0 10px;font-size:.8em;font-weight:650;color:var(--ink-2);background:var(--surface-2)}
+.fb-colores input[type=color]{width:30px;height:30px;padding:0;border:none;background:none;cursor:pointer}
+.fb-picker{display:flex;flex-direction:column;gap:8px;min-width:0}
+.fb-emojis{display:flex;flex-wrap:wrap;gap:4px}
+.fb-emojis button{all:unset;cursor:pointer;display:grid;place-items:center;width:32px;height:32px;border-radius:8px;font-size:17px}
+.fb-emojis button:hover{background:var(--surface-2)}
+.fb-emojis button.act{background:var(--brand-soft);box-shadow:inset 0 0 0 1.5px var(--brand)}
+.fb-orden{display:flex;flex-direction:column}
+.fb-orden .r{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--line)}
+.fb-orden .r:last-child{border-bottom:none}
+.fb-orden .r label{flex:1;display:flex;align-items:center;gap:10px;font-size:.92em;font-weight:600;cursor:pointer}
+.fb-orden .r.off label{color:var(--ink-3);font-weight:500}
+.fb-orden .r button{all:unset;cursor:pointer;display:grid;place-items:center;width:30px;height:30px;border-radius:8px;color:var(--ink-2)}
+.fb-orden .r button:hover{background:var(--surface-2);color:var(--ink)}
+.fb-orden .r button[disabled]{opacity:.25;cursor:default}
+.fin-panel.resalta{box-shadow:0 0 0 2px var(--brand)}
+
+/* ── «A dónde va tu dinero»: barras (nombre · barra · importe y diferencia con tu media) ── */
+.fb-pildoras{display:flex;flex-direction:column;gap:11px;margin-top:8px}
+.fin a.fb-pildora{display:grid;grid-template-columns:minmax(96px,32%) minmax(0,1fr) auto;align-items:center;gap:12px;padding:2px 0;color:inherit;text-decoration:none}
+.fb-pildora .n{display:block;min-width:0;font-size:.93em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fb-pildora .n .ic{display:inline-block;width:18px;margin-right:8px;text-align:center}
+.fb-pildora .pista{position:relative;height:10px;min-width:0;border-radius:3px;background:var(--surface-2)}
+.fb-pildora .barra{position:relative;height:100%;border-radius:3px;background:var(--cc);transition:filter .15s,width .5s}
+.fb-pildora .barra.pasado{box-shadow:0 0 0 2px var(--rose)}
+.fb-pildora .tope{position:absolute;left:0;top:-4px;bottom:-4px;border-right:2px solid var(--ink);pointer-events:none}
+.fb-pildora .val{text-align:right;font-size:.9em;font-weight:650;white-space:nowrap;font-variant-numeric:tabular-nums;min-width:64px}
+.fb-pildora .val .dif{font-size:.8em;font-weight:560}
+.fb-pildora .val .dif.sube{color:var(--fin-down)} .fb-pildora .val .dif.baja{color:var(--fin-up)}
+.fin a.fb-pildora:hover .barra{filter:brightness(.92)}
+.fin a.fb-pildora:hover .n{color:var(--brand)}
+
+/* ── inversión: salud de la cartera, ficha de activo, progreso y precios ── */
+.fb-salud-l .r{display:grid;grid-template-columns:22px 1fr auto auto;gap:10px;align-items:center;padding:10px 0;border-top:1px solid var(--line)}
+.fb-salud-l .r:first-child{border-top:0;padding-top:2px}
+.fb-salud-l .ic{width:22px;height:22px;border-radius:6px;display:grid;place-items:center;font-size:.8em;font-weight:800;color:var(--surface);background:var(--ink-3)}
+.fb-salud-l .r.error .ic{background:var(--rose)} .fb-salud-l .r.aviso .ic{background:var(--amber)}
+.fb-salud-l .t{font-size:.9em;line-height:1.4}
+.fb-salud-l button.x{all:unset;cursor:pointer;color:var(--ink-3);padding:4px 7px;border-radius:6px;font-size:.85em}
+.fb-salud-l button.x:hover,.fb-salud-l button.x:focus-visible{color:var(--ink);background:var(--surface-2)}
+.fb-cuadrar input{flex:1 1 180px;max-width:240px}
+.fb-hitos{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+.fb-hitos .h{min-width:104px;padding:10px 14px;border-radius:8px;border:1px dashed color-mix(in srgb,var(--ink-3) 45%,var(--line))}
+.fb-hitos .h.ok{background:color-mix(in srgb,var(--mint) 10%,var(--surface));border:1px solid color-mix(in srgb,var(--mint) 45%,transparent)}
+.fb-hitos .v{font-size:1.2em;font-weight:650}.fb-hitos .s{font-size:.8em;color:var(--ink-2);margin-top:2px}
+.fb-buscador{grid-column:1/-1;margin:6px 0 12px;padding:12px 14px;border-radius:var(--r-s);background:var(--surface-2);border:1px solid var(--line)}
+.fb-buscador .et{margin-top:0}.fb-buscador .fb-fila{margin:6px 0}.fb-buscador input{flex:1;min-width:0}
+.fb-candidato{display:grid;gap:4px;padding:10px 12px;margin-top:8px;border-radius:8px;background:var(--surface);border:1px solid var(--line)}
+.fb-candidato .c b{font-weight:650}.fb-candidato .s{font-size:.8em;color:var(--ink-2)}.fb-candidato button{justify-self:start;margin-top:2px}
+.fb-estado-precios{margin:0 0 14px;padding:10px 14px;border-radius:8px;background:var(--surface-2);border-left:3px solid var(--ink-3);font-size:.86em}
+.fb-estado-precios .t{font-weight:650}.fb-estado-precios .s{color:var(--ink-2);margin-top:3px}
+
+/* ── foco visible con teclado (los botones usan all:unset, que quita el contorno) ── */
+button:focus-visible,a:focus-visible,summary:focus-visible,[tabindex]:focus-visible,label:focus-within>input[type=checkbox]{outline:2px solid var(--brand)!important;outline-offset:2px}
+.fin button.fin-link{all:unset;cursor:pointer;color:var(--brand);font-weight:650;border-bottom:1px solid currentColor}
+
+.fin-note+.fb-stats{margin-top:10px}
+/* Sin movimiento para quien lo pide en el sistema */
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}}
+/* Pantalla táctil: objetivos de al menos 44 px (con ratón se queda la densidad de escritorio) */
+@media (pointer:coarse){
+ .fb-btn,.fb-chips button,.fb-seg a,.fb-seg button,.fb-cats button,.fin .fin-mes button,#menu a,#cabecera .pie button,#cabecera .pie a,.fb-cand,.fin .fb-cands button.fb-cand,.fb-salud-l button.x,.fb-colores button{min-height:44px;min-width:44px;align-items:center;justify-content:center}
+ .fb-btn,.fb-seg a,.fb-seg button{display:inline-flex}
+}
+/* ── Más vida (sutil): hover suave, entrada de pantalla, barras, check del aviso, subrayado del menú y gráficos ── */
+#menu a,#menu a svg,.fin-ayuda,.fin .fin-link,.fin a.internal-link,.fb-saludo .fb-personalizar,a.fb-chip,.fb-hero .pill,.fin .fin-vermas{transition:color 140ms var(--ease-out),border-color 140ms var(--ease-out)}
+#ayuda,#tema,#discreto,a.fb-alerta,.fin .fb-franja a.r,a.fb-item,.fb-item.click,.fin .fb-menu .ops a,.fin .fin-table tbody tr td{transition:background-color 140ms var(--ease-out),color 140ms var(--ease-out)}
+.fb-btn.sec{transition:transform .08s,filter .12s,box-shadow 140ms var(--ease-out)}
+/* Al cambiar de pantalla: el Inicio entra en cascada y el resto con un fundido; las barras crecen */
+@keyframes fb-fundido{from{opacity:0}to{opacity:1}}
+@keyframes fb-crece-x{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+@keyframes fb-crece-y{from{transform:scaleY(0)}to{transform:scaleY(1)}}
+#app[data-entra]:not([data-vista=inicio]) .fin-page{animation:fb-fundido 150ms ease-out backwards}
+#app[data-entra][data-vista=inicio] .fin-page>.fin>*{animation:fb-entra 250ms var(--ease-out) backwards}
+#app[data-entra][data-vista=inicio] .fin-page>.fin>:nth-child(2){animation-delay:40ms}
+#app[data-entra][data-vista=inicio] .fin-page>.fin>:nth-child(3){animation-delay:80ms}
+#app[data-entra][data-vista=inicio] .fin-page>.fin>:nth-child(4){animation-delay:120ms}
+#app[data-entra][data-vista=inicio] .fin-page>.fin>:nth-child(5){animation-delay:160ms}
+#app[data-entra][data-vista=inicio] .fin-page>.fin>:nth-child(6){animation-delay:200ms}
+#app[data-entra][data-vista=inicio] .fin-page>.fin>:nth-child(n+7){animation-delay:240ms}
+#app[data-entra] .fb-progreso .rel,#app[data-entra] .fb-pildora .barra{transform-origin:left;animation:fb-crece-x 500ms var(--ease-out) 120ms backwards}
+#app[data-entra] .fb-semana .b{transform-origin:bottom;animation:fb-crece-y 500ms var(--ease-out) 120ms backwards}
+/* Check del aviso al guardar */
+@keyframes fb-check{to{stroke-dashoffset:0}}
+#aviso .ck{width:16px;height:16px;margin-right:8px;vertical-align:-3px;fill:none;stroke:var(--brand-hi);stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round}
+#aviso.on .ck path{stroke-dasharray:24;stroke-dashoffset:24;animation:fb-check 320ms var(--ease-out) 120ms forwards}
+/* Gráficos: columnas y tooltip */
+.fin-chart .col .band{transition:fill 120ms var(--ease-out)}
+.fin-chart .col .xh,.fin-chart .col .hd{transition:opacity 120ms var(--ease-out)}
+.fin-tip{transform:translateY(4px);transition:opacity 120ms var(--ease-out),transform 120ms var(--ease-out)}
+.fin-tip.on{transform:none}
+/* ── Fase 4: probar una regla, ordenar categorías y secciones de Ajustes ── */
+.fb-prueba{margin-top:18px;padding-top:14px;border-top:1px solid var(--line)}
+.fb-prueba-t{font-weight:700;font-size:.92em;margin-bottom:8px}
+.fb-prueba-res{margin-top:8px}
+.fb-prueba-n{font-size:.92em;margin-bottom:6px}
+.fb-prueba-lista{list-style:none;margin:6px 0 10px;padding:0;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--surface)}
+.fb-prueba-lista li{display:grid;grid-template-columns:62px minmax(0,1fr) auto minmax(0,150px);gap:10px;align-items:baseline;padding:6px 10px;font-size:.86em;border-top:1px solid var(--line)}
+.fb-prueba-lista li:first-child{border-top:0}
+.fb-prueba-lista .f{color:var(--ink-2)}
+.fb-prueba-lista .x{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fb-prueba-lista .i{font-variant-numeric:tabular-nums;text-align:right}
+.fb-prueba-lista .c{color:var(--ink-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fb-prueba-lista.fb-resumen li{display:block}
+.fb-sec{margin:18px 0 8px;font-size:.78em;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-2)}
+.fb-sec:first-of-type{margin-top:4px}
+.fin-more-body h4{margin:16px 0 4px;font-size:.95em}
+.fin-more-body h4:first-child{margin-top:4px}
