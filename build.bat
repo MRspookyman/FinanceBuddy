@@ -17,10 +17,32 @@ if errorlevel 1 (
 )
 
 rem 2) Pruebas (si fallan, se muestra el detalle y no se genera el .exe)
-python -m unittest pruebas.test_importar pruebas.test_servidor pruebas.test_jev pruebas.test_precios pruebas.test_actualizaciones
+rem    Todas las de Python: cualquier archivo pruebas\test_*.py entra solo, sin tener que apuntarlo aqui.
+python -m unittest discover -s pruebas -p "test_*.py" -t .
 if errorlevel 1 (
   echo.
   echo Las pruebas fallan: no se genera el .exe. Arriba tienes el detalle de cada error.
+  pause
+  exit /b 1
+)
+
+rem    Y las del navegador: que cada pantalla se dibuje sin errores, los calculos y los flujos con clics.
+rem    Si no hay Chrome ni Edge con que probar (codigo 3), se avisa y se sigue.
+python pruebas\run.py --tests
+if errorlevel 3 (
+  echo AVISO: sin navegador no se han podido probar las pantallas.
+) else if errorlevel 1 (
+  echo.
+  echo Alguna pantalla da error: no se genera el .exe.
+  pause
+  exit /b 1
+)
+python pruebas\run.py --flujos
+if errorlevel 3 (
+  echo AVISO: sin navegador no se han podido probar los flujos.
+) else if errorlevel 1 (
+  echo.
+  echo Algun flujo de la app falla: no se genera el .exe.
   pause
   exit /b 1
 )

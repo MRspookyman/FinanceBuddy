@@ -220,7 +220,8 @@
   }
 
   // ── movimiento: se omite con «reducir movimiento» del sistema y en las pruebas ──
-  const SIN_MOVIMIENTO = () => matchMedia("(prefers-reduced-motion: reduce)").matches || new URLSearchParams(location.search).has("pruebas");
+  // ?quieto=1: sin animaciones (capturas de pantalla, donde las cifras saldrían a medio contar)
+  const SIN_MOVIMIENTO = () => matchMedia("(prefers-reduced-motion: reduce)").matches || new URLSearchParams(location.search).has("pruebas") || new URLSearchParams(location.search).has("quieto");
   // Los importes en euros y los porcentajes de la pantalla que se ve suben contando hasta su valor (500 ms); el texto final es siempre el original
   function contarCifras(raiz) {
     const agrupar = (n, d) => { const [e, f] = Math.abs(n).toFixed(d).split("."); return e.replace(/\B(?=(\d{3})+(?!\d))/g, ".") + (f ? "," + f : ""); };
@@ -304,6 +305,18 @@
           const fallos = casos.filter((c) => !c.ok);
           log(`TESTS ${casos.length - fallos.length}/${casos.length}` + fallos.map((c) => `\n  ✕ ${c.nombre}: ${c.detalle}`).join(""));
         } catch (e) { log("Error en las pruebas: " + (e.stack || e)); }
+      }
+    }
+    // Flujos con clics (pruebas/pruebas_flujos.js): hacen lo que haría el usuario y comprueban el resultado
+    if (params.has("flujos")) {
+      const src = await fetch("/flujos.js").then((r) => (r.ok ? r.text() : null));
+      if (!src) log("Error: no se han podido cargar los flujos.");
+      else {
+        try {
+          const casos = await new Function("FB", src)(FB);
+          const fallos = casos.filter((c) => !c.ok);
+          log(`FLUJOS ${casos.length - fallos.length}/${casos.length}` + fallos.map((c) => `\n  ✕ ${c.nombre}: ${c.detalle}`).join(""));
+        } catch (e) { log("Error en los flujos: " + (e.stack || e)); }
       }
     }
   })();

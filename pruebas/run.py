@@ -1,10 +1,12 @@
 # Abre cada pantalla en Edge sin ventana (headless) contra un servidor con datos de ejemplo y muestra los errores de
 # la página (#log). Con --tests ejecuta además las pruebas de cálculos (pruebas_calculos.js).
 #
-# Uso: python pruebas/run.py [pantalla1,pantalla2] [--tests] [--shot] [--tema=oscuro] [--ancho=N] [--alto=N] [--datos=CARPETA]
+# Uso: python pruebas/run.py [pantalla1,pantalla2] [--tests] [--flujos] [--shot] [--tema=oscuro] [--ancho=N] [--alto=N] [--datos=CARPETA]
+#   --flujos: en vez de recorrer pantallas, hace los flujos con clics de pruebas_flujos.js (apuntar, resolver dudas, borrar…)
 #   --capturas: captura cada pantalla en claro y en oscuro (para repasar de un vistazo que ninguna se ha roto)
 #   --datos: usa esa carpeta de datos en lugar de crear una de ejemplo (p. ej. para ver tus datos reales)
 #   FB_NAVEGADOR: ruta de otro Chrome/Chromium (p. ej. fuera de Windows)
+# Códigos de salida: 0 bien · 1 algo falla · 3 no hay navegador con el que probar (build.bat lo avisa y sigue).
 import html, os, re, subprocess, sys, tempfile, time, urllib.request
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
@@ -19,9 +21,11 @@ HOY = "2026-09-30"
 def main():
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     flags = dict(a[2:].split("=", 1) if "=" in a else (a[2:], "1") for a in sys.argv[1:] if a.startswith("--"))
-    pantallas = (args[0] if args else PANTALLAS).split(",")
+    pantallas = ["inicio"] if "flujos" in flags else (args[0] if args else PANTALLAS).split(",")
     edge = next((e for e in [os.environ.get("FB_NAVEGADOR", "")] + EDGES if e and os.path.exists(e)), None)
-    if not edge: sys.exit("No encuentro Chrome ni Edge (o indica otro con la variable FB_NAVEGADOR).")
+    if not edge:
+        print("No encuentro Chrome ni Edge (o indica otro con la variable FB_NAVEGADOR): me salto las pruebas de pantalla.")
+        return 3
     os.makedirs(SALIDA, exist_ok=True)
     puerto = int(flags.get("puerto", 8799))
     cmd = [sys.executable, "-m", "financebuddy", "--sin-navegador", "--puerto", str(puerto), "--hoy", flags.get("hoy", HOY), "--pruebas"]
@@ -36,9 +40,10 @@ def main():
         perfil = tempfile.mkdtemp()
         fallos = 0
         for i, v in enumerate(pantallas):
-            qs = "&".join((["pruebas=1"] if "tests" in flags and i == 0 else []) + (["tema=" + flags["tema"]] if "tema" in flags else []))
+            qs = "&".join((["pruebas=1"] if ("tests" in flags or "flujos" in flags) and i == 0 else []) + (["flujos=1"] if "flujos" in flags else [])
+                          + (["tema=" + flags["tema"]] if "tema" in flags else []))
             url = f"http://127.0.0.1:{puerto}/{'?' + qs if qs else ''}#{v}"
-            base = [edge, "--headless", "--disable-gpu", "--no-first-run", f"--user-data-dir={perfil}", "--virtual-time-budget=6000"]
+            base = [edge, "--headless", "--disable-gpu", "--no-first-run", f"--user-data-dir={perfil}", f"--virtual-time-budget={60000 if 'flujos' in flags else 6000}"]
             if os.name != "nt": base.append("--no-sandbox")
             out = subprocess.run(base + ["--dump-dom", url], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120).stdout
             m = re.search(r'<div id="log">(.*?)</div>', out, re.S)
@@ -48,13 +53,14 @@ def main():
             if "Error" in texto or "✕" in texto or not out.strip(): fallos += 1
             print(f"── {v} [{html.unescape(h2.group(1)) if h2 else '—'}]: {texto or 'ok'}")
             tam = f"--window-size={flags.get('ancho', '1440' if 'capturas' in flags else '1200')},{flags.get('alto', '2600')}"
+            # quieto=1: sin animaciones, o las cifras salen a medio contar en la foto
             if "shot" in flags:
                 png = os.path.join(SALIDA, f"{v.replace('/', '-')}{'-' + flags['tema'] if 'tema' in flags else ''}.png")
-                subprocess.run(base + [tam, f"--screenshot={png}", url], capture_output=True, timeout=120)
+                subprocess.run(base + [tam, f"--screenshot={png}", f"http://127.0.0.1:{puerto}/?quieto=1{'&tema=' + flags['tema'] if 'tema' in flags else ''}#{v}"], capture_output=True, timeout=120)
             if "capturas" in flags:  # ?tema= fuerza el tema solo en esa carga (nucleo.js)
                 for tema in ("claro", "oscuro"):
                     png = os.path.join(SALIDA, f"{v.replace('/', '-')}-{tema}.png")
-                    subprocess.run(base + [tam, "--hide-scrollbars", f"--screenshot={png}", f"http://127.0.0.1:{puerto}/?tema={tema}#{v}"], capture_output=True, timeout=120)
+                    subprocess.run(base + [tam, "--hide-scrollbars", f"--screenshot={png}", f"http://127.0.0.1:{puerto}/?quieto=1&tema={tema}#{v}"], capture_output=True, timeout=120)
         if "shot" in flags or "capturas" in flags: print("capturas en", SALIDA)
         return 1 if fallos else 0
     finally:

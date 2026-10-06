@@ -37,7 +37,7 @@ def main():
     ok.append(probar("Yahoo · AAPL (acción en USD)", lambda: serie("yahoo", "AAPL", completa=True)))
     ok.append(probar("Yahoo · USDEUR=X (cambio de moneda)", lambda: serie("yahoo", "USDEUR=X", completa=True)))
     ok.append(probar("Yahoo · GC=F (oro)", lambda: serie("yahoo", "GC=F", completa=True)))
-    ok.append(probar("Morningstar · 0P0000YXQE (fondo)", lambda: serie("morningstar", "0P0000YXQE", completa=True)))
+    ok.append(probar("Morningstar · 0P0001CLDM (fondo Fidelity S&P 500 Index)", lambda: serie("morningstar", "0P0001CLDM", completa=True)))
     ok.append(probar("CoinGecko · bitcoin", lambda: serie("coingecko", "bitcoin", completa=True)))
     consultas = sys.argv[1:] or ["IE00B4L5Y983", "apple", "bitcoin", "oro"]
     print("\nBuscador (lo que hace «Buscar el precio»):")
