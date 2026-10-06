@@ -4,19 +4,20 @@ let resultadosImport = FB.estado.imp || [];
 const guardarImport = (lista) => { resultadosImport = FB.estado.imp = lista; };
 function vistaImportar() {
   titulo("Importar", "Los movimientos de tu banco y de tu bróker");
-  const g = rejilla();
-  const pS = panel(g, "Sube un archivo");
-  const tipoSel = pS.createDiv({ cls: "fb-fila" });
+  // El camino principal (soltar un archivo) va solo y arriba; la carpeta y la plantilla, debajo y en dos columnas: antes
+  // las tres tarjetas pesaban igual y el único botón relleno de la pantalla era el del camino secundario.
+  const pS = panel(root, "Sube el extracto");
+  const tipoSel = pS.createDiv({ cls: "fb-fila", attr: { role: "radiogroup", "aria-label": "Qué archivo subes" } });
   let tipo = "";
-  const radios = [["", "Detectar solo"], ["banco", "Extracto del banco"], ["inversion", "Movimientos del bróker"]].map(([v, t]) => {
+  tipoSel.createSpan({ cls: "fb-et", text: "Qué archivo es" });
+  const radios = [["", "Que lo detecte la app"], ["banco", "Extracto del banco"], ["inversion", "Movimientos del bróker"]].map(([v, t]) => {
     const l = tipoSel.createEl("label"); const r = l.createEl("input", { attr: { type: "radio", name: "tipoimp" } }); r.checked = v === tipo; r.onchange = () => (tipo = v); l.appendText(t); return r;
   });
   const fp = pS.createDiv({ cls: "fb-fila" });
   const lp = fp.createEl("label"); const cp = lp.createEl("input", { attr: { type: "checkbox" } }); cp.checked = quierePrevia(); cp.onchange = () => guardarPrevia(cp.checked);
   lp.appendText("Ver antes de importar (no se guarda nada hasta que lo confirmes)");
-  const zona = pS.createDiv({ cls: "fb-zona", text: "Arrastra aquí el Excel o CSV, o pulsa para elegirlo" });
   const inp = pS.createEl("input", { attr: { type: "file", accept: ".xlsx,.xls,.csv,.txt", multiple: "" } }); inp.style.display = "none";
-  zona.onclick = () => inp.click();
+  const zona = zonaSoltar(pS, "Arrastra aquí el Excel o CSV, o pulsa para elegirlo", () => inp.click(), (files) => subir(files));
   const subir = async (files) => {
     for (const f of files) {
       zona.textContent = `Importando ${f.name}…`;
@@ -28,16 +29,15 @@ function vistaImportar() {
   };
   inp.onchange = () => subir([...inp.files]);
   if (FB.soltados) { const f = FB.soltados; FB.soltados = null; subir(f); }  // archivo soltado en otra pantalla
-  zona.addEventListener("dragover", (e) => { e.preventDefault(); zona.classList.add("sobre"); });
-  zona.addEventListener("dragleave", () => zona.classList.remove("sobre"));
-  zona.addEventListener("drop", (e) => { e.preventDefault(); zona.classList.remove("sobre"); subir([...e.dataTransfer.files]); });
 
+  const g = rejilla();
   const pC = panel(g, "O déjalo en la carpeta Importar");
   pC.createDiv({ cls: "fin-note", text: "Guarda los extractos en «Importar\\Banco» o «Importar\\Inversión» (dentro de tu carpeta de datos) y pulsa el botón. Los archivos importados pasan a «Procesados»." });
   const arch = (DB.info || {}).archivos || [];
   if (arch.length) filasDato(pC, arch.map((a) => ({ l: a.nombre, s: a.tipo === "banco" ? "banco" : a.tipo === "inversion" ? "bróker" : "se detectará el tipo", v: "" })));
   const fb = pC.createDiv({ cls: "fb-fila" });
-  const bI = fb.createEl("button", { cls: "fb-btn", text: arch.length ? `Importar ${arch.length} archivo${arch.length > 1 ? "s" : ""}` : "Importar la carpeta" });
+  // Relleno solo si hay archivos esperando: entonces sí es lo que toca hacer. Vacío, es un camino más entre otros.
+  const bI = fb.createEl("button", { cls: arch.length ? "fb-btn" : "fb-btn sec", text: arch.length ? `Importar ${arch.length} archivo${arch.length > 1 ? "s" : ""}` : "Importar la carpeta" });
   bI.onclick = async () => { bI.disabled = true; bI.textContent = "Importando…"; const r = await FB.api("/api/importar/carpeta", { previa: quierePrevia() }); guardarImport([...(r.resultados || [r]), ...resultadosImport]); await FB.refrescar(); };
   const bA = fb.createEl("button", { cls: "fb-btn sec", text: "Abrir la carpeta" });
   bA.onclick = () => FB.api("/api/abrir_carpeta", {});

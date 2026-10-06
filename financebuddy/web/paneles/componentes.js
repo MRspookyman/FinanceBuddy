@@ -1,11 +1,15 @@
 // ═════════════ componentes de interfaz ═════════════
 // Colores: paleta validada para daltonismo (claro/oscuro), definida en view.css.
 const SERIES = ["var(--fin-s1)", "var(--fin-s2)", "var(--fin-s3)", "var(--fin-s4)", "var(--fin-s5)", "var(--fin-s6)", "var(--fin-s7)"];
-const COMP = { Liquidez: SERIES[0], "Efectivo bróker": SERIES[6], "Inversión": SERIES[1], Cripto: SERIES[2], Otros: SERIES[5] };
+// En un reparto (tus activos, la composición del patrimonio) no se usan ni el verde ni el coral: en esas mismas pantallas
+// significan ganancia/pérdida y gasto, y una porción verde se lee como «esta es la que va ganando». Orden pensado para que
+// dos colores seguidos se distingan también con daltonismo (azul, magenta, ámbar, violeta, oliva, turquesa).
+const SERIES_REPARTO = ["var(--fin-s5)", "var(--fin-s6)", "var(--fin-s3)", "var(--fin-s4)", "var(--fin-s7)", "var(--fin-s8)"];
+const COMP = { Liquidez: SERIES_REPARTO[0], "Efectivo bróker": SERIES_REPARTO[5], "Inversión": SERIES_REPARTO[3], Cripto: SERIES_REPARTO[2], Otros: SERIES_REPARTO[4] };
 const colorActivo = (nombre) => {
   const orden = activos().map((a) => a.nombre).sort((a, b) => a.localeCompare(b, "es"));
   const i = orden.indexOf(nombre);
-  return i < 0 ? "var(--ink-3)" : SERIES[i % SERIES.length]; // activos vendidos: gris
+  return i < 0 ? "var(--ink-3)" : SERIES_REPARTO[i % SERIES_REPARTO.length]; // activos vendidos: gris
 };
 const GOOD = "var(--fin-good)", BAD = "var(--fin-bad)", WARN = "var(--fin-warn)";
 const polar = (v) => (v >= 0 ? GOOD : BAD);
@@ -56,6 +60,16 @@ function item(padre, it) {
   if (it.s) n.createDiv({ cls: "s", text: it.s });
   if (it.v != null) { const v = el.createDiv({ cls: "v" + (it.pos ? " pos" : "") }); v.appendText(it.v); if (it.vs) v.createEl("small", { text: it.vs }); }
   return el;
+}
+// Zona para soltar el Excel o el CSV del banco. Es un <button> de verdad: se llega con el tabulador y se abre con Enter o
+// Espacio (era un <div> con onclick y el <input type=file> va oculto: sin ratón no había forma de importar nada).
+function zonaSoltar(padre, texto, pulsar, soltar) {
+  const z = padre.createEl("button", { cls: "fb-zona", text: texto, attr: { type: "button" } });
+  z.onclick = pulsar;
+  z.addEventListener("dragover", (e) => { e.preventDefault(); z.classList.add("sobre"); });
+  z.addEventListener("dragleave", () => z.classList.remove("sobre"));
+  z.addEventListener("drop", (e) => { e.preventDefault(); z.classList.remove("sobre"); soltar([...e.dataTransfer.files]); });
+  return z;
 }
 function cabecera(titulo, conMes, subt) {
   const h = root.createDiv({ cls: "fin-head" });

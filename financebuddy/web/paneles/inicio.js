@@ -97,6 +97,13 @@ function franjaAvisos(padre) {
   }
 }
 
+// La cifra grande de la portada. El sufijo va pegado al número, no solo en el rótulo pequeño de arriba: «72 €» significaba
+// lo que te queda o lo que te has pasado según un rótulo en versalitas, y de un vistazo las dos cosas se ven igual.
+function cifraHero(padre, valor, sufijo) {
+  const v = padre.createDiv({ cls: "v", text: eur(valor, 0) });
+  if (sufijo) v.createEl("small", { text: " " + sufijo });
+  return v;
+}
 // La portada: una cifra grande que ayuda a decidir, una barra, una frase de estado y, en pequeño, entró · salió · te queda.
 // Mes en curso: «Puedes gastar». Mes pasado: cuánto gastaste frente a tu límite.
 function heroGasto(padre, S, M) {
@@ -121,7 +128,7 @@ function heroGasto(padre, S, M) {
   if (!(limiteVar > 0)) {
     h0.classList.add("neutro"); // sin límite, la cifra es lo gastado: no va en verde
     h.createDiv({ cls: "l", text: actual ? "Llevas gastado este mes" : "Gastaste" });
-    h.createDiv({ cls: "v", text: eur(vari, 0) });
+    cifraHero(h, vari);
     if (actual) barra(dia / dm, `día ${dia} de ${dm}`);
     h.createDiv({ cls: "s", text: estado() || "en gasto variable: comer fuera, compras, ocio…" });
     if (actual) {
@@ -134,7 +141,7 @@ function heroGasto(padre, S, M) {
     if (pasado) h0.classList.add("pasado");
     else if (usado >= 0.85) h0.classList.add("alto"); // queda poco: ámbar, antes de pasarse
     h.createDiv({ cls: "l", text: pasado ? "Te has pasado este mes" : "Puedes gastar este mes" });
-    h.createDiv({ cls: "v", text: eur(Math.abs(S.disponible), 0) });
+    cifraHero(h, Math.abs(S.disponible), pasado && "de más");
     barra(usado, `${Math.round(usado * 100)} % de tu límite de ${eur(limiteVar, 0)}`);
     const frase = pasado ? "Frena el gasto variable hasta fin de mes"
       : S.disponible < 5 ? "Has llegado a tu límite"
@@ -144,14 +151,15 @@ function heroGasto(padre, S, M) {
     const pasado = vari > limiteVar;
     if (pasado) h0.classList.add("pasado");
     h.createDiv({ cls: "l", text: pasado ? "Te pasaste del límite" : "Te sobró de tu límite" });
-    h.createDiv({ cls: "v", text: eur(Math.abs(limiteVar - vari), 0) });
+    cifraHero(h, Math.abs(limiteVar - vari), pasado ? "de más" : "de sobra");
     barra(vari / limiteVar, `gastaste ${eur(vari, 0)} de ${eur(limiteVar, 0)}`);
     const e = estado(); if (e) h.createDiv({ cls: "s", text: e });
   }
   const sinRev = M.real.filter((m) => m.pendiente);
   if (sinRev.length) {
     const g = sum(sinRev.filter((m) => m.clase === "gasto").map((m) => m.importe)), e = sum(sinRev.filter((m) => m.clase !== "gasto").map((m) => m.importe));
-    enlace(h.createDiv({ cls: "pie" }), `Incluye ${[g ? `${eur(g, 0)} de gasto` : "", e ? `${eur(e, 0)} de entradas` : ""].filter(Boolean).join(" y ")} sin revisar (${sinRev.length} movimiento${sinRev.length > 1 ? "s" : ""}) →`, "#revisar");
+    // «de este mes»: la insignia del menú cuenta todo lo que hay por revisar y aquí solo lo del mes que se ve
+    enlace(h.createDiv({ cls: "pie" }), `Incluye ${[g ? `${eur(g, 0)} de gasto` : "", e ? `${eur(e, 0)} de entradas` : ""].filter(Boolean).join(" y ")} sin revisar (${sinRev.length} movimiento${sinRev.length > 1 ? "s" : ""} de ${actual ? "este" : "ese"} mes) →`, "#revisar");
   }
   if (fechaDatos()) {  // el ritmo del mes, dentro de la portada: cómo vas frente a tu media y tu límite
     const g = h0.createDiv({ cls: "graf" });
@@ -227,13 +235,15 @@ function tarjetaCategorias(p, key) {
   if (fijos.length) enlace(p.createDiv({ cls: "fin-note" }), `Además, ${eur(sum(fijos.map((c) => c.valor)), 0)} de gastos fijos (${fijos.map((c) => c.nombre.toLowerCase()).join(", ")}) →`, "#movimientos/categorias");
   if (resto.length) enlace(p.createDiv({ cls: "fin-note" }), `y ${resto.length} categoría${resto.length > 1 ? "s" : ""} más (${eur(sum(resto.map((c) => c.valor)), 0)}) →`, "#movimientos/categorias");
 }
-// Una categoría (vista «Por categoría»): nombre, % del total y diferencia con la media; barra si tiene presupuesto.
+// Una categoría (vista «Por categoría»): nombre, cuánto es de su panel y diferencia con la media; barra si tiene presupuesto.
+// `total` es la suma del panel en el que va la fila (la cifra que se ve en su cabecera), no el gasto entero del mes: el
+// 21 % de Supermercado bajo «Gasto variable 672 €» se leía como 21 % de 672 cuando era 21 % de los 1.485 € que salieron.
 function filaCategoria(padre, c, total, onclick) {
   const el = item(padre, { av: { cat: c.nombre, sm: true }, t: c.nombre, v: eur(c.valor, 0), onclick });
   const s = el.querySelector(".n").createDiv({ cls: "s" });
   const dif = difMedia(c);
   if (dif != null) s.createSpan({ cls: "fb-var " + (dif > 0 ? "sube" : "baja"), text: textoDif(dif) });
-  s.appendText([c.grupo === "fijo" ? "fijo" : total > 0 ? pct(c.valor / total) : "", isFinite(c.media) && c.media >= 1 ? `media ${eur(c.media, 0)}` : ""].filter(Boolean).join(" · "));
+  s.appendText([total > 0 ? pct(c.valor / total) : "", isFinite(c.media) && c.media >= 1 ? `media ${eur(c.media, 0)}` : ""].filter(Boolean).join(" · "));
   if (c.presupuesto > 0) {
     const f = c.valor / c.presupuesto;
     const b = el.querySelector(".n").createDiv({ cls: "fb-barra fina " + (f > 1 ? "pasado" : f >= 0.9 ? "alto" : "") });
@@ -442,7 +452,6 @@ function vistaMovimientos() {
 // Gasto del mes por categoría (variable y fijo) frente a tu media y tu presupuesto; ingresos por categoría.
 function vistaPorCategoria(M) {
   const C = resumenCategorias(mes);
-  const total = sum(C.map((c) => c.valor));
   const abrirCat = (n) => () => { filtroCat = n; guardarEstado({ filtroCat: n }); FB.ir("#movimientos/lista"); };
   if (!C.length) { vacio(root, "Sin gastos este mes", " Importa el extracto de tu banco o cambia de mes."); return; }
   const refs = mesesReferencia(mes);
@@ -450,9 +459,10 @@ function vistaPorCategoria(M) {
   for (const [grupo, tit] of [["variable", "Gasto variable"], ["fijo", "Gastos fijos"]]) {
     const cs = C.filter((c) => (c.grupo === "fijo") === (grupo === "fijo"));
     if (!cs.length) continue;
-    const p = panel(g, tit, { text: eur(sum(cs.map((c) => c.valor)), 0) });
+    const suma = sum(cs.map((c) => c.valor));  // el % de cada fila es sobre esta cifra, que es la que se ve en la cabecera
+    const p = panel(g, tit, { text: eur(suma, 0) });
     const l = p.createDiv({ cls: "fb-lista" });
-    for (const c of cs) filaCategoria(l, c, total, abrirCat(c.nombre));
+    for (const c of cs) filaCategoria(l, c, suma, abrirCat(c.nombre));
   }
   const ing = new Map();
   for (const m of M.real.filter((m) => m.clase === "ingreso")) ing.set(m.categoria, (ing.get(m.categoria) || 0) + m.importe);

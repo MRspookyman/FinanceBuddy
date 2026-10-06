@@ -127,7 +127,7 @@ a.fb-btn,.fin a.fb-btn.internal-link,.fin a.fb-btn.internal-link:hover{color:var
 .fb-form textarea{grid-column:1/-1}
 .fb-msg{white-space:pre-line;padding:12px 16px;border-radius:8px;margin:10px 0;font-size:.9em;background:var(--surface-2);border-left:3px solid var(--ink-3)}
 .fb-msg.ok{background:color-mix(in srgb,var(--mint) 11%,var(--surface));border-left-color:var(--mint)} .fb-msg.err{background:color-mix(in srgb,var(--rose) 10%,var(--surface));border-left-color:var(--rose)}
-.fb-zona{display:grid;place-items:center;gap:8px;min-height:180px;margin:10px 0;padding:24px;border-radius:var(--r);border:1.5px dashed color-mix(in srgb,var(--ink-3) 60%,var(--line));color:var(--ink-2);text-align:center;cursor:pointer;font-size:.95em;background:var(--surface)}
+.fb-zona{display:grid;place-items:center;gap:8px;width:100%;font:inherit;min-height:180px;margin:10px 0;padding:24px;border-radius:var(--r);border:1.5px dashed color-mix(in srgb,var(--ink-3) 60%,var(--line));color:var(--ink-2);text-align:center;cursor:pointer;font-size:.95em;background:var(--surface)}
 .fb-zona::before{content:"↑";display:grid;place-items:center;width:42px;height:42px;border-radius:10px;font-size:20px;font-weight:700;color:var(--bg);background:var(--ink)}
 .fb-zona:hover,.fb-zona.sobre{border-color:var(--brand);color:var(--ink);background:var(--brand-soft)}
 .fb-zona{transition:background-color 150ms var(--ease-out),border-color 150ms var(--ease-out),color 150ms var(--ease-out)}

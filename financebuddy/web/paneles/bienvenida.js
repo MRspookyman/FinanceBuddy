@@ -14,11 +14,8 @@ function vistaBienvenida() {
   const arch = root.createDiv({ cls: "fin-panel fb-primero" });
   arch.createEl("h3", { text: "Empieza por tu extracto" });
   arch.createDiv({ cls: "fin-note", text: "Descarga de tu banco el Excel o CSV de movimientos y arrástralo aquí. La app reconoce la cuenta, toma el saldo del propio extracto, clasifica lo que sabe y te pregunta solo lo que no. Después te propone tus fijos y un límite de gasto." });
-  const zonaB = arch.createDiv({ cls: "fb-zona", text: "Arrastra aquí el Excel o CSV, o pulsa para elegirlo" });
-  zonaB.onclick = () => FB.ir("#importar");
-  zonaB.addEventListener("dragover", (e) => { e.preventDefault(); zonaB.classList.add("sobre"); });
-  zonaB.addEventListener("dragleave", () => zonaB.classList.remove("sobre"));
-  zonaB.addEventListener("drop", (e) => { e.preventDefault(); FB.soltados = [...e.dataTransfer.files]; FB.ir("#importar"); });
+  zonaSoltar(arch, "Arrastra aquí el Excel o CSV, o pulsa para elegirlo", () => FB.ir("#importar"),
+    (files) => { FB.soltados = files; FB.ir("#importar"); });
   const manual = plegable(root, "Prefiero empezar a mano (cuentas, límite y fijos)", (c) => manualBienvenida(c), {});
 }
 // El alta a mano de siempre (sin extracto): cuentas con su saldo, límite, fijos y fondo de emergencia.

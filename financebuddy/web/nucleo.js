@@ -192,6 +192,7 @@
   // ── menú de la barra de arriba y barra de estado ──
   const ICO = {
     inicio: '<path d="M4 10.5 12 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5.5h-5V20H5a1 1 0 0 1-1-1z"/>',
+    bienvenida: '<path d="M4 10.5 12 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5.5h-5V20H5a1 1 0 0 1-1-1z"/>',
     movimientos: '<path d="M5 7h11M5 7l3-3M5 7l3 3M19 17H8m11 0-3-3m3 3-3 3"/>',
     importar: '<path d="M12 4v11m0 0-4-4m4 4 4-4M5 19h14"/>',
     inversion: '<path d="M4 19h16M6 15l4-4 3 3 5-6"/><path d="M15 8h3v3"/>',
@@ -206,10 +207,15 @@
     document.getElementById("datos").textContent = fechas.length ? `Movimientos hasta el ${fechas[fechas.length - 1].split("-").reverse().join("/")}` : "";
     document.getElementById("ejemplo").hidden = !(DB.info && DB.info.ejemplo);
     const n = (DB.pendientes || []).length;
+    // Sin cuentas no hay nada que enseñar: todas esas pantallas acaban en la Bienvenida (pantallas.js), así que el menú
+    // llevaba a sitios que no cambiaban nada. Hasta la primera cuenta, solo «Primeros pasos» y «Ajustes».
+    const sinCuentas = !((DB.registros || {}).cuenta || []).length;
     // [ruta, nombre]. «Importar» no está en el menú: es el botón de la barra (y la tecla I).
-    const items = [["inicio", "Inicio"], ["movimientos", "Movimientos"], ["inversion", "Inversión"], n ? ["revisar", "Por revisar"] : null, ["ajustes", "Ajustes"]].filter(Boolean);
+    const items = sinCuentas ? [["bienvenida", "Primeros pasos"], ["ajustes", "Ajustes"]]
+      : [["inicio", "Inicio"], ["movimientos", "Movimientos"], ["inversion", "Inversión"], n ? ["revisar", "Por revisar"] : null, ["ajustes", "Ajustes"]].filter(Boolean);
     const [v, t] = ruta(), PORTIPO = { movimiento: "movimientos", aportacion: "inversion", activo: "inversion" };
-    const act = (v === "editar" || v === "gestionar") && PORTIPO[t] ? PORTIPO[t] : SECCION[v] || v;
+    let act = (v === "editar" || v === "gestionar") && PORTIPO[t] ? PORTIPO[t] : SECCION[v] || v;
+    if (sinCuentas && act !== "ajustes" && act !== "importar") act = "bienvenida";  // todo eso enseña la Bienvenida
     const menu = document.getElementById("menu");
     document.querySelector("#cabecera .apuntar").classList.toggle("act", act === "importar");
     menu.innerHTML = items.map(([k, t]) => `<a href="#${k}" class="internal-link${k === act ? " act" : ""}" title="${t}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">${ICO[k]}</svg><span>${t}</span>${k === "revisar" ? `<span class="num">${n}</span>` : ""}</a>`).join("");

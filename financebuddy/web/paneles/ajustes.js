@@ -1,4 +1,20 @@
 // ───────────── ajustes ─────────────
+// Una sola forma de guardar: todo lo de Ajustes se guarda al cambiarlo y lo dice con el mismo aviso. Antes convivían cinco
+// maneras en la misma pantalla (botón propio, botón compartido por tres campos, al marcar la casilla, al pulsar un color y
+// al reordenar), y no había forma de saber si lo que acababas de escribir estaba guardado.
+// La pantalla se vuelve a dibujar al guardar, así que se devuelve el foco a donde estuviera: si has pasado al campo
+// siguiente con el tabulador (el evento `change` salta justo antes), te quedas en él.
+async function guardarAjuste(ruta, datos) {
+  const r = await FB.api(ruta, datos);
+  if (!r.ok) { FB.aviso(r.mensaje || "No se ha podido guardar", true); return false; }
+  FB.aviso("Guardado ✓");
+  const k = (document.activeElement && document.activeElement.dataset || {}).fb || "";
+  await FB.refrescar();
+  if (k) { const e = document.querySelector(`#app [data-fb="${k}"]`); if (e) e.focus(); }
+  return true;
+}
+// Campo que se guarda solo al cambiarlo (y al salir de él): `clave` es con lo que se recupera el foco tras redibujar.
+const alCambiar = (el, clave, datos) => { el.dataset.fb = clave; el.onchange = () => guardarAjuste("/api/config", datos()); return el; };
 function vistaAjustes() {
   titulo("Ajustes", "");
   if ((DB.info || {}).ejemplo) {
@@ -11,50 +27,51 @@ function vistaAjustes() {
   const seg = root.createDiv({ cls: "fb-seg" });
   for (const [k, t] of [["general", "General"], ["integraciones", "Asistente y precios"], ["datos", "Tus datos y copias"]]) { const l = enlace(seg, t, "#ajustes/" + k); l.className += k === tab ? " act" : ""; }
   const cnt = (t) => (DB.registros[t] || []).length;
+  if (tab === "general") root.createDiv({ cls: "fin-note", text: "Todo lo de aquí se guarda solo: en cuanto cambias algo te lo confirma abajo." });
   const g = tab === "general" ? rejilla() : null;
   if (tab === "general") {
   const pL = panel(g, "Tu límite de gasto variable");
   pL.createDiv({ cls: "fin-note", text: "Al mes, sin contar gastos fijos. 0 = sin límite." });
   const f = pL.createDiv({ cls: "fb-fila" });
-  const iL = f.createEl("input", { cls: "corto", attr: { type: "number", step: "10" } }); iL.value = limiteVar || "";
-  const bL = f.createEl("button", { cls: "fb-btn", text: "Guardar" });
-  bL.onclick = async () => { await FB.api("/api/config", { limite_variable: iL.value }); FB.aviso("Guardado ✓"); await FB.refrescar(); };
+  const iL = f.createEl("input", { cls: "corto", attr: { type: "number", step: "10", "aria-label": "Tu límite de gasto variable al mes, en euros" } }); iL.value = limiteVar || "";
+  alCambiar(iL, "limite", () => ({ limite_variable: iL.value }));
 
   const pM = panel(g, "Tu mes y tu colchón");
   const fM = pM.createDiv({ cls: "fb-fila" });
   fM.createSpan({ cls: "fb-et", text: "Tu mes empieza el día" });
   const iM = fM.createEl("input", { cls: "mini", attr: { type: "number", min: "1", max: "28", step: "1", "aria-label": "Día en que empieza tu mes (de 1 a 28)" } }); iM.value = diaInicio;
+  alCambiar(iM, "mes", () => ({ dia_inicio: iM.value || 1 }));
   pM.createDiv({ cls: "fin-note", text: diaInicio === 1 ? "1 = el mes natural. Si cobras, por ejemplo, el 28, pon 28: tu «octubre» irá del 28 de septiembre al 27 de octubre."
     : `Ahora ${mesLbl(hoyKey).toLowerCase()} es ${mesRango(hoyKey)}. Los saldos y la inversión siguen por meses naturales.` });
   const fC = pM.createDiv({ cls: "fb-fila" });
   fC.createSpan({ cls: "fb-et", text: "Colchón en la cuenta corriente" });
   const iC = fC.createEl("input", { cls: "corto", attr: { type: "number", min: "0", step: "50", placeholder: "automático", "aria-label": "Colchón en la cuenta corriente, en euros" } }); iC.value = num(cfg.colchon) || "";
+  alCambiar(iC, "colchon", () => ({ colchon: iC.value || 0 }));
   const RP = planReparto();
   pM.createDiv({ cls: "fin-note", text: `Lo que quieres dejar siempre en la cuenta antes de mover lo que sobra. Vacío o 0 = lo calcula la app${RP ? ` (ahora ${eur(RP.colchonAuto, 0)}: un mes de fijos y de gasto variable, más los meses que se prevén en negativo)` : ""}.` });
   const fP = pM.createDiv({ cls: "fb-fila" });
   fP.createSpan({ cls: "fb-et", text: "Registros por página" });
   const iP = fP.createEl("input", { cls: "mini", attr: { type: "number", min: "10", max: "200", step: "5", "aria-label": "Registros por página en las listas largas (de 10 a 200)" } }); iP.value = porPagina();
+  alCambiar(iP, "pagina", () => ({ por_pagina: iP.value || 40 }));
   pM.createDiv({ cls: "fin-note", text: "Cuántas filas se ven de una vez en Movimientos, Gestionar, Renta y las operaciones de cada activo (de 10 a 200). Las listas de «Por revisar» llevan su propio tamaño porque cada fila es una ficha." });
-  const bM = pM.createEl("button", { cls: "fb-btn", text: "Guardar" });
-  bM.onclick = async () => { await FB.api("/api/config", { dia_inicio: iM.value || 1, colchon: iC.value || 0, por_pagina: iP.value || 40 }); FB.aviso("Guardado ✓"); await FB.refrescar(); };
 
   const pS = panel(g, "Importar", null, "Cuando un movimiento no está claro pero tu historial sugiere una categoría con confianza (mismo comercio u otro muy parecido), se guarda ya con esa categoría y cuenta en tu mes; queda marcado «por confirmar» en Por revisar. Apagado, todo lo dudoso espera en Por revisar hasta que lo decidas.");
   const lS = pS.createEl("label", { cls: "fb-fila" });
   const cS = lS.createEl("input", { attr: { type: "checkbox" } }); cS.checked = cfg.guardar_sugeridos !== false;
   lS.appendText("Guardar ya lo importado con la categoría sugerida (por confirmar)");
-  cS.onchange = async () => { await FB.api("/api/config", { guardar_sugeridos: cS.checked }); FB.aviso("Guardado ✓"); await FB.refrescar(); };
+  cS.onchange = () => guardarAjuste("/api/config", { guardar_sugeridos: cS.checked });
 
   apariencia(panel(g, "Apariencia"));
   const pT = panel(g, "Tú", null, "Tu nombre tal y como sale en el banco. Con él, el dinero que mueves entre cuentas a tu nombre se reconoce como traspaso y no como gasto o ingreso.");
   pT.createDiv({ cls: "fin-note", text: "Se rellena solo con el titular del primer extracto que lo traiga. Si hay más titulares (cuenta conjunta), sepáralos con «;»." });
   const fT = pT.createDiv({ cls: "fb-fila" });
-  const iT = fT.createEl("input", { attr: { type: "text", placeholder: "p. ej. GARCÍA LÓPEZ ANA" } }); iT.value = (cfg.titulares || []).join("; ");
-  const bT = fT.createEl("button", { cls: "fb-btn", text: "Guardar" });
-  bT.onclick = async () => { await FB.api("/api/titulares", { titulares: iT.value.split(";") }); FB.aviso("Guardado ✓"); await FB.refrescar(); };
+  const iT = fT.createEl("input", { attr: { type: "text", placeholder: "p. ej. GARCÍA LÓPEZ ANA", "aria-label": "Tu nombre tal y como sale en el banco" } }); iT.value = (cfg.titulares || []).join("; ");
+  iT.dataset.fb = "titulares";
+  iT.onchange = () => guardarAjuste("/api/titulares", { titulares: iT.value.split(";") });
   }
   if (tab === "integraciones") { panelJev(root); panelPrecios(root); }
   if (tab === "general") {
-  const pI = panel(root, "Tu inicio", null, "Elige qué ves en la pantalla de inicio y en qué orden. Se guarda al momento.");
+  const pI = panel(root, "Tu inicio", null, "Elige qué ves en la pantalla de inicio y en qué orden.");
   pI.id = "tu-inicio";
   personalizarInicio(pI);
   if (params[0] === "inicio") setTimeout(() => { pI.scrollIntoView({ block: "start" }); pI.classList.add("resalta"); }, 30);
@@ -92,6 +109,7 @@ function vistaAjustes() {
   ]);
 
   panelCompartir(root);
+  panelDeshacer(root);
   const pC = panel(root, "Carpeta de datos y copias de seguridad");
   pC.createDiv({ cls: "fin-note", text: `Tus datos están en ${DB.info.carpeta} (archivo datos.db). Cada día que abres la app se guarda una copia en la carpeta Copias (las 30 últimas).` });
   const fc = pC.createDiv({ cls: "fb-fila" });
@@ -140,6 +158,22 @@ function vistaAjustes() {
   const bS = pS.createDiv({ cls: "fb-fila" }).createEl("button", { cls: "fb-btn sec", text: "Cerrar FinanceBuddy" });
   bS.onclick = async () => { await FB.api("/api/salir", {}); document.body.innerHTML = "<p style='padding:40px;font-family:sans-serif'>FinanceBuddy se ha cerrado. Puedes cerrar esta pestaña.</p>"; };
   }
+}
+
+// «Deshacer lo último»: el aviso de abajo con «Deshacer» dura segundos; la foto de antes sigue en el servidor hasta que
+// se cambia de carpeta o se cierra la app, así que también se puede deshacer desde aquí sin prisa.
+function panelDeshacer(padre) {
+  const que = (DB.info || {}).deshacer;
+  if (!que) return;
+  const p = panel(padre, "Deshacer lo último");
+  p.createDiv({ cls: "fin-note", text: `Lo último que se puede deshacer: ${que}. Vuelve a dejar tus datos como estaban justo antes; lo que hayas hecho después se mantiene.` });
+  const b = p.createDiv({ cls: "fb-fila" }).createEl("button", { cls: "fb-btn sec", text: "Deshacer" });
+  b.onclick = async () => {
+    b.disabled = true;
+    const r = await FB.api("/api/deshacer", {});
+    FB.aviso(r.mensaje || "Hecho", !r.ok);
+    await FB.refrescar();
+  };
 }
 
 // Aviso de versión nueva (opcional, apagado de serie): una consulta pública a GitHub como mucho al día; no descarga ni instala nada.
@@ -220,24 +254,25 @@ function apariencia(p) {
   f1.createSpan({ cls: "fb-et", text: "Tema" });
   const seg = f1.createDiv({ cls: "fb-seg mini" });
   for (const [k, t] of [["claro", "Claro"], ["oscuro", "Oscuro"], ["auto", "Automático"]]) {
-    const b = seg.createEl("button", { text: t, cls: FB.tema() === k ? "act" : "" });
-    b.onclick = () => { FB.tema(k); render(); };
+    const b = seg.createEl("button", { text: t, cls: FB.tema() === k ? "act" : "", attr: { type: "button", "aria-pressed": String(FB.tema() === k) } });
+    b.onclick = () => { FB.tema(k); render(); };  // el tema es de este navegador (no va a tus datos) y se ve al momento: sin aviso
   }
   const f2 = p.createDiv({ cls: "fb-fila" });
   f2.createSpan({ cls: "fb-et", text: "Color" });
   const g = f2.createDiv({ cls: "fb-colores" });
   const actual = cfg.acento || "salvia";
   for (const [k, col] of ACENTOS) {
-    const b = g.createEl("button", { cls: k === actual ? "act" : "", attr: { type: "button", title: cap(k), "aria-label": cap(k) } });
+    const b = g.createEl("button", { cls: k === actual ? "act" : "", attr: { type: "button", title: cap(k), "aria-label": cap(k), "aria-pressed": String(k === actual) } });
     b.style.background = col;
-    b.onclick = async () => { document.body.dataset.acento = k; await FB.api("/api/config", { acento: k }); await FB.refrescar(); };
+    b.onclick = () => { document.body.dataset.acento = k; guardarAjuste("/api/config", { acento: k }); };
   }
   p.createDiv({ cls: "fin-note", text: "Los colores e iconos de cada categoría se cambian en Tus datos → Categorías." });
 }
 function personalizarInicio(p) {
   const lista = panelesInicio();
   const guardar = async () => {
-    await FB.api("/api/config", { inicio: lista.filter((x) => x.visible).map((x) => x.id), inicio_ocultos: lista.filter((x) => !x.visible).map((x) => x.id) });
+    const r = await FB.api("/api/config", { inicio: lista.filter((x) => x.visible).map((x) => x.id), inicio_ocultos: lista.filter((x) => !x.visible).map((x) => x.id) });
+    FB.aviso(r.ok ? "Guardado ✓" : r.mensaje || "No se ha podido guardar", !r.ok);
     await FB.recargar();
   };
   const box = p.createDiv({ cls: "fb-orden" });

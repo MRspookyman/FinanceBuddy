@@ -30,7 +30,7 @@
   aviso al borrar algo en uso, columnas de bancos nuevos reconocidas solas y flujos con clics.
 - **Internet:** los precios **sí se han probado ya contra los servicios reales** desde el PC del usuario (6 oct 2026, §9.15):
   Yahoo, Morningstar, CoinGecko y Frankfurter responden. **Jev sigue sin probarse con la API real.**
-- **Tests:** 175 de Python (`unittest`), 84 de cálculos, 20 pantallas sin errores y **8 flujos con clics**. Siempre en verde al
+- **Tests:** 175 de Python (`unittest`), 84 de cálculos, 20 pantallas sin errores y **10 flujos con clics**. Siempre en verde al
   cerrar cada tarea; `build.bat` los pasa todos.
 
 ---
@@ -221,7 +221,7 @@ Atajos: `?` (ayuda), `I`, `A`, `D`, `1`–`5`.
 ```bat
 python -m unittest discover -s pruebas -p "test_*.py" -t .           :: 175 pruebas de Python (sin red). Un test_*.py nuevo entra solo
 python pruebas\run.py --tests                                        :: 20 pantallas sin errores + 84 pruebas de cálculos
-python pruebas\run.py --flujos                                       :: 8 flujos con clics de verdad (pruebas_flujos.js)
+python pruebas\run.py --flujos                                       :: 10 flujos con clics de verdad (pruebas_flujos.js)
 python pruebas\run.py inicio,movimientos --shot [--tema=oscuro]      :: capturas en %TEMP%\fb-pruebas (sin animaciones: ?quieto=1)
 python pruebas\run.py --capturas                                     :: todas las pantallas, en claro y en oscuro
 python pruebas\evaluar_jev.py [--mostrar]                            :: precisión de Jev con TUS datos (lo ejecuta el usuario)
@@ -602,13 +602,68 @@ Estudio con medidas, no solo lectura: suite completa en verde, servicios de prec
    que falte (antes era la única ayuda y hacía falta tener el asistente activado).
 7. **`build.bat` ya no deja pruebas fuera:** `unittest discover` (cualquier `test_*.py` entra solo) + pantallas + flujos. Si no
    hay navegador, `run.py` devuelve **3** y el build avisa y sigue.
-8. **Flujos con clics** (`pruebas/pruebas_flujos.js`, `run.py --flujos`, `?flujos=1`): 8 recorridos que hacen lo que haría el
+8. **Flujos con clics** (`pruebas/pruebas_flujos.js`, `run.py --flujos`, `?flujos=1`): 10 recorridos que hacen lo que haría el
    usuario y comprueban el resultado contra el servidor de verdad.
 9. **Capturas sin cifras a medio contar:** `?quieto=1` apaga las animaciones y `run.py` lo usa en `--shot` y `--capturas`.
 10. Versión de la app a **1.1.0** (antes 1.0.0 desde el primer día).
 
 **No se ha tocado** (y por qué): el rendimiento (sobra), la estructura del código (densa pero coherente y con pruebas) y el
 repositorio público (no hay `gh` en este entorno: lo tiene que hacer el usuario en github.com).
+
+### 9.16 Auditoría de usabilidad (6 oct 2026)
+
+Sobre la app en marcha con datos de ejemplo (`run.py --capturas`: 20 pantallas en claro y oscuro), no solo leyendo código.
+Contrastes calculados sobre los tokens de `estilos.css`, no a ojo.
+
+| # | Gravedad | Hallazgo | Resultado |
+|---|---|---|---|
+| 1 | Alta | La zona de arrastre era un `<div>` con `onclick` y el `<input type=file>` oculto: **con el teclado no había forma de importar** | Arreglado |
+| 2 | Alta | El primer día el menú enseñaba Inicio, Movimientos e Inversión, y las tres acababan en la Bienvenida sin decir nada | Arreglado |
+| 3 | Alta | «Deshacer» solo existía en el aviso flotante (9 s); la foto seguía en el servidor pero sin forma de llegar a ella | Arreglado |
+| 4 | Media | El % de cada categoría era sobre el gasto total del mes, pero se enseñaba bajo «Gasto variable 672 €» (Supermercado 313 € salía como 21 %, que es de 1.485 €; de su panel es el 46,6 %) | Arreglado |
+| 5 | Media | El verde y el coral se usaban a la vez como colores de serie y con significado: en Inversión el verde era «ganancia» **y** «Bitcoin» | Arreglado |
+| 6 | Media | En Importar, el único botón relleno es «Importar la carpeta» (camino secundario); el grupo de radios no tiene rótulo y «Detectar solo» se lee como «solo detectar» | Arreglado |
+| 7 | Media | «Por revisar» mezcla movimientos y grupos: subtítulo «6 movimientos», chip «Todo · 4» (grupos), insignia 6 | Arreglado |
+| 8 | Media | Ajustes tiene cinco formas distintas de guardar en una pantalla (botón propio, botón compartido, al marcar, al pulsar, al reordenar) | Arreglado |
+| 9 | Media | La cifra grande del Inicio cambia de significado («Te has pasado 72 €» / «Puedes gastar 72 €») y solo lo dice el rótulo pequeño | Arreglado |
+| 10 | Leve | Jerga contra la regla 3: «TIR» y «25 k€» en Inversión | Pendiente |
+| 11 | Leve | Blanco sobre `--amber` (#B87A00) da 3,65:1 en la insignia `.fin-ico` de aviso (regla 5 pide 4,5:1) | Pendiente |
+| 12 | Leve | No hay `<h1>` (las pantallas empiezan en `h2`); los datos de los gráficos solo están en el tooltip de ratón; `accion()` crea `<a href="#">` para acciones; botones de tema y color sin `aria-pressed`; `prompt()`/`confirm()` nativos; atajos de una tecla que no se pueden apagar; «Cerrar FinanceBuddy» sin confirmar | Pendiente |
+
+**Lo arreglado (1-9):**
+1. `zonaSoltar()` en `componentes.js`: la zona es un `<button>` (Enter y Espacio salen gratis, y coge el anillo de foco global).
+   La usan Importar y Bienvenida. `.fb-zona` lleva `width:100%;font:inherit` para verse igual que antes.
+2. `nucleo.js barra()`: sin cuentas, el menú es solo «Primeros pasos» y «Ajustes» (el botón Importar de la barra se queda,
+   porque esa pantalla sí funciona sin cuentas) y el subrayado marca «Primeros pasos» estando en `#inicio`.
+3. `App.deshacer_que` junto a la foto, puesto en los cinco sitios que la guardan; sale en `info.deshacer`. Panel «Deshacer lo
+   último» en Ajustes → Tus datos y copias y una línea con «Deshacer» arriba de «Por revisar». En una tanda en bloque dice
+   «Varias decisiones de "Por revisar"», que es lo que de verdad se deshace.
+4. `filaCategoria()` recibe la suma de **su panel** (la cifra de la cabecera), no el gasto del mes, y los fijos también
+   enseñan su %, que antes decían solo «fijo» y no se podían comparar. Ahora cada panel suma 100 %.
+5. `SERIES_REPARTO` (azul, magenta, ámbar, violeta, oliva, turquesa; nuevo token `--fin-s8`): los repartos (activos y
+   composición del patrimonio) ya no usan el verde ni el coral. En Inversión el verde queda solo para ganancia/pérdida.
+6. Importar: «Sube el extracto» va solo y a todo lo ancho; la carpeta y la plantilla, debajo y en dos columnas con botones
+   de contorno. El botón de la carpeta solo va relleno **si hay archivos esperando** (entonces sí es lo que toca hacer). El
+   grupo de radios lleva rótulo visible («Qué archivo es») y `role="radiogroup"`, y «Detectar solo» pasa a «Que lo detecte la app».
+9. La cifra de la portada lleva el sufijo **pegado al número** (`cifraHero()`): «72 € **de más**» al pasarse del límite y
+   «… **de sobra**» en un mes que ya acabó. Antes la diferencia entre lo que te queda y lo que te has pasado estaba solo en
+   un rótulo pequeño en versalitas encima, y de un vistazo las dos cosas se veían igual. Flujo de pruebas nuevo (10 en
+   total): comprueba el sufijo contra la clase `.pasado`, este mes y el anterior.
+8. Ajustes (pestaña General) **se guarda solo**: `guardarAjuste()` manda el cambio, avisa con «Guardado ✓» y, como la
+   pantalla se vuelve a dibujar, devuelve el foco a donde estuviera (si has saltado al campo siguiente con el tabulador,
+   te quedas en él: `data-fb` identifica cada campo). Fuera los tres botones «Guardar», y una línea arriba lo dice. La única
+   excepción es la clave de Jev, que sigue con botón: es una credencial y «Probar» necesita lo que acabas de pegar. De paso,
+   los botones de tema y de color anuncian su estado con `aria-pressed` y «Tu inicio» también avisa al guardar (era mudo).
+   Nuevo flujo de pruebas (9 en total): comprueba que no queda ningún «Guardar», que el cambio se guarda y que el foco aguanta.
+7. «Por revisar» cuenta las dos cosas en el título: «4 grupos · 6 movimientos… (lo del mismo comercio se resuelve de una
+   vez)». Los grupos se calculan antes del título (el cálculo estaba duplicado y ahora es uno). En el Inicio, «sin revisar
+   (4 movimientos **de este mes**)», que es otra cuenta distinta de la insignia del menú.
+
+**Descartado y por qué:** pantalla estrecha (regla 9); el contraste de `--ink-2`/`--ink-3` (medido: 5,35:1 y 4,82:1, pasan);
+el foco visible (parecía roto en `.fin-ayuda:focus{outline:none}`, pero la regla global de `pantallas.css` lleva `!important`
+y gana); los nombres de los campos de formulario (`etiquetar()` los cubre; solo quedan sueltos los `<select>` de «Otra…» de
+«Por revisar»); la línea «Valor» de Evolución y las barras de aportaciones siguen en `--brand` **a propósito**: es el color de
+acento de la app (configurable), no el verde semántico.
 
 ## 10. Pendiente y backlog (por valor aproximado)
 
@@ -647,6 +702,10 @@ repositorio público (no hay `gh` en este entorno: lo tiene que hacer el usuario
 15. Si se quiere privacidad total para el asistente: motor local (Ollama + modelo tipo Jev) como alternativa a la nube.
 16. `bizums.enlazar` es O(Bizums × gastos) y se ejecuta al abrir: 0,5 s con 10 años de datos (§9.15). Sin prisa, pero si el
     historial crece mucho, acotar la búsqueda por fechas.
+
+**Usabilidad pendiente (§9.16, por orden de valor)**
+17. **Jerga y contraste:** «TIR» y «k€» en Inversión; blanco sobre `--amber` (3,65:1) en la insignia de aviso.
+18. **Accesibilidad menor:** `<h1>` por pantalla, `accion()` como `<button>` en vez de `<a href="#">`, datos de los gráficos alcanzables sin ratón, atajos de una tecla que se puedan apagar.
 
 ---
 

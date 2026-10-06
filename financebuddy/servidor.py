@@ -44,7 +44,8 @@ class App:
         self.pruebas = pruebas
         self.lock = threading.RLock()
         self.ejemplo = False
-        self.deshacer = None  # foto de los datos antes de la última decisión de «Por revisar»
+        self.deshacer = None  # foto de los datos antes de la última decisión que se puede deshacer
+        self.deshacer_que = ""  # qué se deshace (se enseña en Ajustes: el aviso con «Deshacer» dura segundos, esto no)
         self.abrir(raiz)
 
     def abrir(self, raiz):
@@ -59,7 +60,7 @@ class App:
         except BaseException:
             alm.cerrar(); raise
         anterior = getattr(self, "alm", None)
-        self.deshacer = None
+        self.deshacer, self.deshacer_que = None, ""
         self.carpeta, self.alm = carpeta, alm
         if anterior is not None: anterior.cerrar()
 
@@ -102,6 +103,7 @@ class App:
         cfg["actualizaciones"] = actualizaciones.para_la_pagina(self.alm)
         return {"registros": regs, "pendientes": pend, "config": cfg,
                 "info": {"version": VERSION, "carpeta": self.carpeta.raiz, "hoy": self.hoy, "ejemplo": self.ejemplo,
+                         "deshacer": self.deshacer_que if self.deshacer else "",
                          "archivos": [{"nombre": os.path.basename(p), "tipo": t} for p, t in IM.archivos_pendientes(self.carpeta)]}}
 
     # ───── acciones ─────
@@ -398,7 +400,8 @@ class App:
         if ruta == "/api/confirmar_sugeridos":  # da por buenas las categorías sugeridas (todas o las de `ids`); se puede deshacer
             self.deshacer = a.instantanea()
             n = IM.confirmar_sugeridos(a, d.get("ids"))
-            return {"ok": True, "mensaje": f"Confirmado{'s' if n != 1 else ''}: {n} movimiento{'s' if n != 1 else ''}"}
+            self.deshacer_que = f"Confirmado{'s' if n != 1 else ''}: {n} movimiento{'s' if n != 1 else ''}"
+            return {"ok": True, "mensaje": self.deshacer_que}
         if ruta == "/api/recategorizar": return {"ok": True, "mensaje": IM.recategorizar(a, int(d["id"]), d)}
         if ruta == "/api/parecidos": return {"ok": True, **IM.parecidos(a, int(d["id"]))}
         if ruta == "/api/importar/carpeta": return self.importar_carpeta(bool(d.get("previa")))
@@ -406,14 +409,16 @@ class App:
         if ruta == "/api/importar/subir": return self.subir(d)
         if ruta == "/api/importar/reintentar": return self.reintentar(d)
         if ruta == "/api/saldo_banco": return self.saldo_banco(d)
-        if ruta == "/api/deshacer":  # vuelve a como estaba antes de la última decisión de «Por revisar»
+        if ruta == "/api/deshacer":  # vuelve a como estaba antes de la última decisión que se podía deshacer
             if not self.deshacer: return {"ok": False, "mensaje": "No hay nada que deshacer."}
-            a.recuperar(self.deshacer); self.deshacer = None
+            a.recuperar(self.deshacer); self.deshacer, self.deshacer_que = None, ""
             return {"ok": True, "mensaje": "Deshecho"}
         if ruta == "/api/resolver":
             if not d.get("mantener"): self.deshacer = a.instantanea()
             msg = IM.resolver(a, int(d["id"]), d)
             bizums.enlazar(a)
+            # `mantener`: es una decisión más de la misma tanda (aceptar sugerencias en bloque); se deshacen todas juntas
+            self.deshacer_que = "Varias decisiones de «Por revisar»" if d.get("mantener") else msg
             return {"ok": True, "mensaje": msg}
         if ruta == "/api/detectar": return {"ok": True, "fijos": jev.fijos(a, detectar.fijos(a)), "origenes": detectar.origenes(a)}
         if ruta == "/api/fijos": return {"ok": True, "mensaje": detectar.crear(a, d.get("fijos") or [])}
@@ -453,15 +458,18 @@ class App:
         if ruta == "/api/regla/probar": return {"ok": True, **ordenar.probar_regla(a, d)}
         if ruta == "/api/regla/aplicar":
             self.deshacer = a.instantanea()
-            return {"ok": True, "mensaje": ordenar.aplicar_regla(a, d)}
+            self.deshacer_que = ordenar.aplicar_regla(a, d)
+            return {"ok": True, "mensaje": self.deshacer_que}
         if ruta == "/api/categoria/fusionar":
             if d.get("previa"): return ordenar.vista_fusion(a, d.get("origen"), d.get("destino"))
             ordenar.vista_fusion(a, d.get("origen"), d.get("destino"))  # valida antes de guardar la foto
             self.deshacer = a.instantanea()
-            return {"ok": True, "mensaje": ordenar.fusionar(a, d.get("origen"), d.get("destino"))}
+            self.deshacer_que = ordenar.fusionar(a, d.get("origen"), d.get("destino"))
+            return {"ok": True, "mensaje": self.deshacer_que}
         if ruta == "/api/categoria/ocultar":
             self.deshacer = a.instantanea()
-            return {"ok": True, "mensaje": ordenar.ocultar(a, [str(x) for x in (d.get("nombres") or [])], d.get("ocultar") is not False)}
+            self.deshacer_que = ordenar.ocultar(a, [str(x) for x in (d.get("nombres") or [])], d.get("ocultar") is not False)
+            return {"ok": True, "mensaje": self.deshacer_que}
         if ruta == "/api/categoria/uso": return {"ok": True, "uso": ordenar.uso(a)}
         if ruta == "/api/plantilla": return {"ok": True, "nombre": "FinanceBuddy-plantilla.xlsx", "contenido": base64.b64encode(exportar.plantilla_excel(a)).decode()}
         if ruta.startswith("/api/precios/"): return self.precios(ruta[len("/api/precios/"):], d)

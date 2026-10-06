@@ -4,17 +4,8 @@
 function vistaRevisar() {
   const P = DB.pendientes || [];
   const S = (DB.registros.movimiento || []).filter((m) => m.sugerido).sort((a, b) => String(b.fecha).localeCompare(String(a.fecha)) || b.id - a.id);
-  titulo("Por revisar", P.length ? `${P.length} movimiento${P.length > 1 ? "s" : ""} que la app no ha sabido clasificar sola` : "");
-  if (S.length) panelSugeridos(root, S);
-  if (!P.length) {
-    if (S.length) return;
-    const ok = root.createDiv({ cls: "fb-hecho" });
-    ok.createDiv({ cls: "i", text: "✓" });
-    ok.createEl("b", { text: "Todo revisado" });
-    ok.createDiv({ text: "Lo que elijas aquí se recuerda: cada vez tendrás menos que revisar." });
-    enlace(ok, "Ir al inicio →", "#inicio");
-    return;
-  }
+  // Los grupos se cuentan antes del título: la insignia del menú y el subtítulo iban por movimientos y los chips de abajo
+  // por grupos, con la misma pinta («6 movimientos» arriba y «Todo · 4» justo debajo). Ahora el título dice las dos cosas.
   const banco = P.filter((p) => p.tipo_import !== "inversion"), inv = P.filter((p) => p.tipo_import === "inversion");
   const agrupar = (lista, conClase) => {
     const m = new Map(), rep = conClase ? repartosBizum(lista) : new Map();
@@ -27,10 +18,24 @@ function vistaRevisar() {
     return [...m.values()].sort((a, b) => b.length - a.length || sum(b.map((p) => Math.abs(p.fila.importe))) - sum(a.map((p) => Math.abs(p.fila.importe))));
   };
   const G = agrupar(banco, true), GI = agrupar(inv, false);
+  const nG = G.length + GI.length;
+  titulo("Por revisar", P.length ? `${nG} grupo${nG > 1 ? "s" : ""} · ${P.length} movimiento${P.length > 1 ? "s" : ""} que la app no ha sabido clasificar sola`
+    + (nG < P.length ? " (lo del mismo comercio se resuelve de una vez)" : "") : "");
+  avisoDeshacerPendiente(root);
+  if (S.length) panelSugeridos(root, S);
+  if (!P.length) {
+    if (S.length) return;
+    const ok = root.createDiv({ cls: "fb-hecho" });
+    ok.createDiv({ cls: "i", text: "✓" });
+    ok.createEl("b", { text: "Todo revisado" });
+    ok.createDiv({ text: "Lo que elijas aquí se recuerda: cada vez tendrás menos que revisar." });
+    enlace(ok, "Ir al inicio →", "#inicio");
+    return;
+  }
   const conProp = [...G.map((g) => [g, propuestaBanco(g)]), ...GI.map((g) => [g, propuestaBroker(g)])].filter(([, pr]) => pr);
   const conSug = new Set(conProp.map(([g]) => g));
   // Filtros (como en Lunch Money o Monarch): lo del banco, lo del bróker o solo lo que ya trae sugerencia
-  const F = [["todo", "Todo", G.length + GI.length], ["banco", "Banco", G.length], ["broker", "Bróker", GI.length], ["sug", "Con sugerencia", conProp.length]].filter(([k, , n]) => k === "todo" || n);
+  const F = [["todo", "Todo", nG], ["banco", "Banco", G.length], ["broker", "Bróker", GI.length], ["sug", "Con sugerencia", conProp.length]].filter(([k, , n]) => k === "todo" || n);
   let filtroRev = FB.estado.filtroRev || "todo";  // FB.estado: sobrevive a refrescar la pantalla, no a cambiar de pantalla
   if (!F.some(([k]) => k === filtroRev)) filtroRev = "todo";
   const fil = root.createDiv({ cls: "fb-chips fb-filtro-rev" });
@@ -201,6 +206,15 @@ function cabGrupo(card, g, av, nombre) {
   if (p.duda) card.createDiv({ cls: "duda", text: p.duda });
 }
 // Resolver un grupo entero (ids) con la misma decisión; la tarjeta se desliza fuera y la pantalla se refresca.
+// Lo último que se puede deshacer, a la vista: el aviso de abajo se borra solo a los segundos y hasta ahora era la única
+// forma de volver atrás (confirmar 200 categorías y mirar para otro lado no tenía vuelta salvo restaurando una copia).
+function avisoDeshacerPendiente(padre) {
+  const que = (DB.info || {}).deshacer;
+  if (!que) return;
+  const f = padre.createDiv({ cls: "fin-note fb-fila" });
+  f.appendText(`Lo último: ${que}.`);
+  accion(f, "Deshacer", async () => { const r = await FB.api("/api/deshacer", {}); FB.aviso(r.mensaje || "Hecho", !r.ok); await FB.refrescar(); }, "Deja tus datos como estaban justo antes");
+}
 // Botón «Deshacer» del aviso tras una decisión de «Por revisar» (el servidor guarda una foto de antes)
 const avisoDeshacer = () => ({ texto: "Deshacer", fn: async () => { const r = await FB.api("/api/deshacer", {}); FB.aviso(r.mensaje || "Hecho", !r.ok); await FB.refrescar(); } });
 const resolverGrupo = (card, g, extra) => async (datos, btn) => {

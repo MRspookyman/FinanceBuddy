@@ -16,7 +16,7 @@ body{margin:0;font-family:"Segoe UI Variable Text","Segoe UI",system-ui,-apple-s
  --r:12px;--r-s:10px;--g:14px;
  --ease-out:cubic-bezier(0.23,1,0.32,1);
  --hover:rgba(16,21,28,.045);
- --fin-s1:var(--brand);--fin-s2:#DD5F36;--fin-s3:#B38000;--fin-s4:#7558DD;--fin-s5:#2B82C6;--fin-s6:#CE457C;--fin-s7:#7C8A2E;
+ --fin-s1:var(--brand);--fin-s2:#DD5F36;--fin-s3:#B38000;--fin-s4:#7558DD;--fin-s5:#2B82C6;--fin-s6:#CE457C;--fin-s7:#7C8A2E;--fin-s8:#1A8F8F;
  --fin-good:var(--mint);--fin-bad:var(--rose);--fin-warn:var(--amber);--fin-up:#12794A;--fin-down:#C5332A;
  background:var(--bg);color:var(--ink)}
 /* Color de acento (Ajustes → Apariencia). Cada uno trae su tono vivo (--brand-hi): el que se usa sobre tinta y en oscuro. */
@@ -32,7 +32,7 @@ body.theme-dark{color-scheme:dark;
  --brand:var(--brand-hi);--brand-soft:color-mix(in srgb,var(--brand) 16%,var(--surface));
  --coral:#FF9270;--mint:#4FD08E;--rose:#FF7A6B;--amber:#F2B84B;
  --shadow-s:0 14px 36px -8px rgba(0,0,0,.7),0 0 0 1px rgba(255,255,255,.06);--hover:rgba(255,255,255,.05);
- --fin-s2:#FF9270;--fin-s3:#EFC455;--fin-s4:#AB9DFF;--fin-s5:#7DBBEE;--fin-s6:#F58DB6;--fin-s7:#BCC777;--fin-up:#4FD08E;--fin-down:#FF7A6B}
+ --fin-s2:#FF9270;--fin-s3:#EFC455;--fin-s4:#AB9DFF;--fin-s5:#7DBBEE;--fin-s6:#F58DB6;--fin-s7:#BCC777;--fin-s8:#6ED3D3;--fin-up:#4FD08E;--fin-down:#FF7A6B}
 a{color:var(--brand)}
 button{font:inherit}
 /* Títulos y cifras con la DIN */

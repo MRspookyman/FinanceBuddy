@@ -155,5 +155,44 @@ return (async () => {
     }
   });
 
+  // 9. Ajustes se guarda solo: no hay botón «Guardar», y al cambiar un campo se guarda y el foco se queda donde estaba
+  await caso("Ajustes guarda solo al cambiar un campo", async () => {
+    if (!(await ir("#ajustes"))) return "no se abre Ajustes";
+    const antes = Number(FB.DB.config.limite_variable) || 0;
+    const iL = app().querySelector('[data-fb="limite"]'), iP = app().querySelector('[data-fb="pagina"]');
+    if (!iL || !iP) return "no encuentro los campos del límite y de registros por página";
+    if (porTexto("button", "Guardar", app())) return "sigue habiendo un botón «Guardar» en Ajustes";
+    const nuevo = antes + 70;
+    iL.value = String(nuevo);
+    iP.focus();  // como al pasar al campo siguiente con el tabulador: «change» salta antes de que se redibuje
+    iL.dispatchEvent(new Event("change", { bubbles: true }));
+    if (!(await hasta(() => Number(FB.DB.config.limite_variable) === nuevo))) return `el límite no se ha guardado (sigue en ${FB.DB.config.limite_variable})`;
+    if (!(await hasta(() => (document.activeElement || {}).dataset && document.activeElement.dataset.fb === "pagina"))) return "el foco se pierde al redibujar";
+    const iL2 = await hasta(() => app().querySelector('[data-fb="limite"]'));
+    if (Number(iL2.value) !== nuevo) return `el campo no enseña lo guardado: ${iL2.value}`;
+    iL2.value = String(antes);
+    iL2.dispatchEvent(new Event("change", { bubbles: true }));
+    if (!(await hasta(() => Number(FB.DB.config.limite_variable) === antes))) return "no se puede dejar el límite como estaba";
+  });
+
+  // 10. La portada: el sufijo va pegado a la cifra, que es lo que se mira (el rótulo de arriba es pequeño y en versalitas)
+  await caso("La portada dice de qué es la cifra grande", async () => {
+    if (!(await ir("#inicio"))) return "no se abre el Inicio";
+    const hero = () => app().querySelector(".fb-hero");
+    const suf = () => { const v = app().querySelector(".fb-hero .v small"); return v ? v.textContent.trim() : ""; };
+    if (!hero()) return "no hay portada";
+    if (!Number(FB.DB.config.limite_variable)) return "";  // sin límite la cifra es lo gastado: no lleva sufijo
+    if (hero().classList.contains("pasado") !== (suf() === "de más")) return `este mes: «${suf()}» con la clase «${hero().className}»`;
+    const atras = todos(".fin-mes button")[0];
+    if (!atras) return "no está el botón del mes anterior";
+    atras.click();
+    if (!(await hasta(() => app().querySelector(".fb-hero")))) return "el mes anterior no dibuja la portada";
+    const s2 = suf();
+    if (s2 !== "de más" && s2 !== "de sobra") return `el mes pasado la cifra no dice si sobró o si se pasó: «${s2}»`;
+    if (hero().classList.contains("pasado") !== (s2 === "de más")) return `el mes pasado: «${s2}» con la clase «${hero().className}»`;
+    todos(".fin-mes button").slice(-1)[0].click();  // «Hoy»: dejarlo como estaba
+    if (!(await hasta(() => !app().querySelector(".fin-mes button:last-child").textContent.includes("Hoy")))) return "no se vuelve al mes actual";
+  });
+
   return casos;
 })();
