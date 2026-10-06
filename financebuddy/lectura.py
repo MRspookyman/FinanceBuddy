@@ -126,8 +126,69 @@ def cabecera_probable(filas):
         if any(fecha(x) for x in sig) and any(numero(x) is not None and not fecha(x) for x in sig): return i
     return 0
 
+# Cómo llama cada banco a cada columna (lo que se ha visto en extractos españoles). Se compara con la cabecera normalizada:
+# primero entera, luego «empieza por» y por último «contiene». El orden de cada lista va de lo más claro a lo más genérico.
+NOMBRES = {
+    "fecha": ["fecha operacion", "f. operacion", "f.operacion", "fecha de operacion", "fecha contable", "fecha movimiento", "fecha de la operacion",
+              "started date", "completed date", "transaction date", "fecha", "date"],
+    "fecha_valor": ["fecha valor", "f. valor", "f.valor", "fecha de valor", "value date", "valor"],
+    "concepto": ["concepto", "descripcion", "description", "detalle", "concepto del movimiento", "descripcion del movimiento", "movimiento",
+                 "operacion", "referencia", "beneficiario", "comercio", "merchant", "texto"],
+    "importe": ["importe", "importe eur", "importe (eur)", "importe €", "cantidad", "monto", "importe del movimiento", "amount", "euros"],
+    "cargo": ["cargo", "debe", "debito", "salida", "paid out", "money out", "pagos", "pago", "gasto"],
+    "abono": ["abono", "haber", "credito", "entrada", "paid in", "money in", "ingresos", "ingreso", "cobro"],
+    "saldo": ["saldo", "saldo eur", "saldo (eur)", "saldo posterior", "saldo disponible", "saldo contable", "balance"],
+    "categoria": ["categoria", "categoría", "tipo de gasto", "category"],
+}
+
+def _columna_de(campo, cab):
+    """Índice de la columna que parece ser `campo` según su nombre (o None)."""
+    for nombre in NOMBRES[campo]:
+        for prueba in (lambda c, n: c == n, lambda c, n: c.startswith(n), lambda c, n: n in c):
+            j = next((j for j, c in enumerate(cab) if c and prueba(c, nombre)), None)
+            if j is not None: return j
+    return None
+
+def columnas_probables(cabecera, ejemplos):
+    """Qué columna es cada cosa en un archivo de un banco que la app no conoce, mirando los nombres de la cabecera y
+    comprobándolo con las filas de ejemplo (que la de fecha traiga fechas y la de importe, números). → {campo: texto de la cabecera}.
+    Lo que no se vea claro se deja fuera: el usuario lo elige en la pantalla."""
+    cab = [norm(c) for c in cabecera]
+    def valores(j):
+        return [f[j] for f in ejemplos if j < len(f) and texto(f[j])]
+    def es_fecha(j):
+        v = valores(j)
+        return bool(v) and all(fecha(x) for x in v)
+    def es_numero(j, vacia_vale=False):
+        v = valores(j)
+        if not v: return vacia_vale  # en «Debe/Haber» cada fila rellena solo una de las dos columnas
+        return all(numero(x) is not None for x in v)
+    out, usadas = {}, set()
+    for campo in ("fecha", "fecha_valor", "saldo", "importe", "cargo", "abono", "categoria", "concepto"):
+        j = _columna_de(campo, cab)
+        if j is None or j in usadas or not texto(cabecera[j]): continue
+        if campo in ("fecha", "fecha_valor") and ejemplos and not es_fecha(j): continue
+        if campo in ("importe", "saldo") and ejemplos and not es_numero(j): continue
+        if campo in ("cargo", "abono") and ejemplos and not es_numero(j, vacia_vale=True): continue
+        if campo == "concepto" and ejemplos and (es_fecha(j) or es_numero(j)): continue
+        out[campo] = texto(cabecera[j]); usadas.add(j)
+    if "importe" in out: out.pop("cargo", None); out.pop("abono", None)  # con el importe con signo no hacen falta
+    elif not ("cargo" in out and "abono" in out): out.pop("cargo", None); out.pop("abono", None)
+    if "fecha" not in out and "fecha_valor" in out: out["fecha"] = out.pop("fecha_valor")  # solo hay fecha valor: esa es la fecha
+    # Sin nombres reconocibles, por el contenido: la primera columna con fechas y la primera con números distintos del saldo
+    if "fecha" not in out:
+        j = next((j for j in range(len(cab)) if j not in usadas and es_fecha(j)), None)
+        if j is not None: out["fecha"] = texto(cabecera[j]); usadas.add(j)
+    if "importe" not in out and not ("cargo" in out and "abono" in out):
+        j = next((j for j in range(len(cab)) if j not in usadas and es_numero(j)), None)
+        if j is not None: out["importe"] = texto(cabecera[j]); usadas.add(j)
+    if "concepto" not in out:
+        j = next((j for j in range(len(cab)) if j not in usadas and texto(cabecera[j]) and not es_fecha(j) and not es_numero(j)), None)
+        if j is not None: out["concepto"] = texto(cabecera[j])
+    return out if "fecha" in out and "concepto" in out and ("importe" in out or ("cargo" in out and "abono" in out)) else {}
+
 def muestra_para_configurar(filas):
     i = cabecera_probable(filas)
     cab = [texto(x) for x in filas[i]] if filas else []
     ejemplos = [[texto(x.isoformat()[:10] if isinstance(x, (datetime.date, datetime.datetime)) else x) for x in f] for f in filas[i + 1:i + 6]]
-    return {"fila_cabecera": i, "cabecera": cab, "ejemplos": ejemplos}
+    return {"fila_cabecera": i, "cabecera": cab, "ejemplos": ejemplos, "columnas_probables": columnas_probables(cab, ejemplos)}

@@ -160,7 +160,10 @@ class TestJev(unittest.TestCase):
             fh.write("F.Operación;F.Valor;Concepto del movimiento;Importe EUR;Saldo EUR\n01/09/2026;01/09/2026;Compra Lidl;-12,30;500,00\n02/09/2026;02/09/2026;Nomina;1500,00;2000,00\n")
         r = self.app._importar(ruta, "banco")
         self.assertEqual(r["necesita"], "perfil")
-        self.assertEqual(r["propuesta"], {"_tipo": "banco", "fecha": "F.Operación", "concepto": "Concepto del movimiento", "importe": "Importe EUR", "saldo": "Saldo EUR"})
+        # Las columnas las reconoce ya la propia app (lectura.columnas_probables, sin internet); de Jev solo se coge lo que
+        # falte, como si el archivo es del banco o del bróker (`_tipo`).
+        self.assertEqual(r["propuesta"], {"_tipo": "banco", "fecha": "F.Operación", "fecha_valor": "F.Valor",
+                                          "concepto": "Concepto del movimiento", "importe": "Importe EUR", "saldo": "Saldo EUR"})
 
     def mov(self, fecha, concepto, importe, categoria):
         r = self.app.manejar("/api/guardar", {"tipo": "movimiento", "datos": {"fecha": fecha, "clase": "gasto", "importe": importe, "concepto": concepto,

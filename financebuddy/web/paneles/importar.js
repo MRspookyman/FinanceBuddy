@@ -174,7 +174,8 @@ const reemplazar = async (viejo, nuevo) => { guardarImport(resultadosImport.map(
 function configurarFormato(card, r) {
   card.createDiv({ cls: "top", text: `${r.archivo}: formato nuevo` });
   card.createDiv({ cls: "txt", text: "Dime qué columna es cada cosa (solo esta vez: la próxima se reconocerá solo)." });
-  if (r.propuesta && Object.keys(r.propuesta).some((k) => k !== "_tipo")) card.createDiv({ cls: "fin-note", text: "✨ El asistente Jev ha elegido las columnas: revísalas antes de guardar." });
+  if (Object.keys(r.columnas_probables || {}).length) card.createDiv({ cls: "fin-note", text: "La app ha reconocido sola las columnas por su nombre y su contenido: compruébalas y dale a guardar." });
+  else if (r.propuesta && Object.keys(r.propuesta).some((k) => k !== "_tipo")) card.createDiv({ cls: "fin-note", text: "✨ El asistente Jev ha elegido las columnas: revísalas antes de guardar." });
   const cab = (r.cabecera || []).map((c, i) => [c, c || `(columna ${i + 1})`]).filter(([c]) => c);
   const tw = card.createDiv({ cls: "fin-tablewrap" });
   const t = tw.createEl("table", { cls: "fin-table fb-muestra" });
@@ -199,8 +200,8 @@ function configurarFormato(card, r) {
       const s = form.createEl("select"); const o0 = s.createEl("option", { text: "—" }); o0.value = "";
       for (const [v, et] of cab) { const o = s.createEl("option", { text: et }); o.value = v; }
       const adivina = cab.find(([c]) => ({ fecha: /^fecha( de)? ?(operaci|contable)?/i, concepto: /concepto|descripci|detalle|movimiento/i, importe: /importe|cantidad|monto/i, saldo: /saldo/i, fecha_valor: /valor/i, cargo: /cargo|debe/i, abono: /abono|haber/i }[k] || /^$/).test(c));
-      const deJev = (r.propuesta || {})[k];
-      s.value = sel[k] ?? (deJev && cab.some(([c]) => c === deJev) ? deJev : adivina && !(k === "fecha" && /valor/i.test(adivina[0])) ? adivina[0] : "");
+      const propuesto = (r.propuesta || {})[k];  // lo que ha reconocido la app en el archivo (y, si está activado, lo que añade Jev)
+      s.value = sel[k] ?? (propuesto && cab.some(([c]) => c === propuesto) ? propuesto : adivina && !(k === "fecha" && /valor/i.test(adivina[0])) ? adivina[0] : "");
       sel[k] = s.value; s.onchange = () => (sel[k] = s.value);
     }
     form.createDiv({ cls: "et", text: "Nombre de este formato" });
