@@ -88,12 +88,12 @@ class App:
             "movimientos": {"n": len(movs), "ingresos": round(sum(m["importe"] for m in movs if m["clase"] in ("ingreso", "reembolso")), 2),
                             "gastos": round(sum(m["importe"] for m in movs if m["clase"] == "gasto"), 2), "traspasos": sum(1 for m in movs if m["clase"] == "transferencia")},
             "aportaciones": {"n": len(aps), "compras": round(sum(a["importe"] for a in aps if a["importe"] > 0), 2), "ventas": round(-sum(a["importe"] for a in aps if a["importe"] < 0), 2)},
-            "activos_nuevos": [a["nombre"] for a in acts], "existentes": r.get("existentes", 0),
+            "sugeridos": sum(1 for m in movs if m.get("sugerido")), "activos_nuevos": [a["nombre"] for a in acts], "existentes": r.get("existentes", 0),
             "dudas": {"n": len(pend), "muestra": [{"fecha": p["fila"]["op"], "texto": p["fila"].get("texto", ""), "importe": p["fila"].get("importe", 0)}
                                                    for p in sorted(pend, key=lambda p: p["fila"]["op"], reverse=True)[:6]]},
             "desde": min(fechas) if fechas else None, "hasta": max(fechas) if fechas else None,
             "saldo_final": saldo,
-            "muestra": [{"fecha": m["fecha"], "concepto": m.get("concepto", ""), "importe": firmado(m), "categoria": m.get("categoria", ""), "clase": m["clase"]}
+            "muestra": [{"fecha": m["fecha"], "concepto": m.get("concepto", ""), "importe": firmado(m), "categoria": m.get("categoria", ""), "clase": m["clase"], "sugerido": bool(m.get("sugerido"))}
                         for m in sorted(movs, key=lambda m: (m["fecha"], m["id"]), reverse=True)[:12]],
             "categorias": [{"categoria": c, "total": round(v, 2)} for c, v in sorted(gasto_cat.items(), key=lambda kv: -kv[1])[:6]],
         }
@@ -320,6 +320,8 @@ class App:
                 if k in ("limite_variable",): a.set_config(k, modelo.numero(v) or 0)
                 elif k == "dia_inicio": a.set_config(k, min(28, max(1, int(modelo.numero(v) or 1))))  # día en que empieza «tu mes»
                 elif k == "colchon": a.set_config(k, max(0, modelo.numero(v) or 0))  # 0 = lo calcula la app
+                elif k == "guardar_sugeridos": a.set_config(k, v in (True, 1, "1", "true", "on"))  # guardar ya lo dudoso con categoría sugerida
+                elif k == "sugeridos_umbral": a.set_config(k, C.umbral_valido(v))
                 elif k == "acento": a.set_config(k, v if v in ACENTOS else ACENTOS[0])
                 elif k in ("inicio", "inicio_ocultos"):  # paneles de Inicio visibles (en orden) y ocultos
                     a.set_config(k, [x for x in (v if isinstance(v, list) else []) if isinstance(x, str) and re.fullmatch(r"[a-z]{2,20}", x)][:20])
@@ -327,6 +329,10 @@ class App:
         if ruta == "/api/titulares":
             a.set_config("titulares", [re.sub(r"\s+", " ", str(x)).strip()[:80] for x in (d.get("titulares") or []) if str(x).strip()][:6])
             return {"ok": True}
+        if ruta == "/api/confirmar_sugeridos":  # da por buenas las categorías sugeridas (todas o las de `ids`); se puede deshacer
+            self.deshacer = a.instantanea()
+            n = IM.confirmar_sugeridos(a, d.get("ids"))
+            return {"ok": True, "mensaje": f"Confirmado{'s' if n != 1 else ''}: {n} movimiento{'s' if n != 1 else ''}"}
         if ruta == "/api/recategorizar": return {"ok": True, "mensaje": IM.recategorizar(a, int(d["id"]), d)}
         if ruta == "/api/parecidos": return {"ok": True, **IM.parecidos(a, int(d["id"]))}
         if ruta == "/api/importar/carpeta": return self.importar_carpeta(bool(d.get("previa")))

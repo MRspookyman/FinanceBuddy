@@ -81,6 +81,7 @@ def memoria(movimientos):
     mem = {}
     for m in movimientos:
         if m.get("clase") not in ("gasto", "ingreso", "reembolso") or not m.get("categoria") or not m.get("ext_texto"): continue
+        if m.get("sugerido"): continue  # una categoría sin confirmar no enseña nada (si no, una suposición se reforzaría a sí misma)
         k = clave(m["ext_texto"])
         if len(k) < 3: continue
         clase = "gasto" if m["clase"] == "reembolso" else m["clase"]
@@ -119,6 +120,38 @@ def sugerir(texto, imp, mem, cat_actual=""):
             if r: return r
     if cat_actual and cat_actual not in ("Otros", "Otros ingresos"):
         return {"clase": signo if imp < 0 else "ingreso", "categoria": cat_actual, "motivo": "por el concepto"}
+    return None
+
+# ───────────── guardar ya lo dudoso con la categoría sugerida ─────────────
+# Lo que clasificar_fila deja como duda pero tu historial sabe resolver con confianza razonable se guarda ya (marcado «sugerido»)
+# en vez de esperar en «Por revisar». Confianza (0-1): la parte de las veces que ese comercio fue a esa categoría, limitada por
+# cuánta evidencia hay (1 vez → 0,8; 2 → 0,9; 3 o más → sin límite) y, si solo hay un comercio «parecido», por lo parecido que es.
+UMBRAL_SUGERIDO = 0.8  # por defecto: basta un solo antecedente del mismo comercio, o un nombre ≥ 80 % parecido
+UMBRAL_MIN, UMBRAL_MAX = 0.6, 1.0
+
+def umbral_valido(v):
+    try: return min(UMBRAL_MAX, max(UMBRAL_MIN, float(v)))
+    except (TypeError, ValueError): return UMBRAL_SUGERIDO
+
+def sugerir_guardable(texto, imp, mem, umbral=UMBRAL_SUGERIDO):
+    """{clase, categoria, motivo, confianza} si la sugerencia del historial alcanza el umbral; si no, None."""
+    if not mem: return None
+    k, umbral = clave(texto), umbral_valido(umbral)
+    signo = "ingreso" if imp > 0 else "gasto"
+    def mejor(c, tope, motivo):
+        total = sum(c.values())
+        for (clase, cat), n in c.most_common():
+            if clase == signo or (clase == "gasto" and imp > 0):
+                conf = round(min(n / total, 0.7 + 0.1 * n, tope), 2)
+                return {"clase": _con_signo(clase, imp), "categoria": cat, "motivo": motivo, "confianza": conf} if conf >= umbral else None
+        return None
+    if k in mem:
+        r = mejor(mem[k], 1.0, "como las otras veces")
+        if r: return r
+    if len(k) >= 4:
+        for parecido in difflib.get_close_matches(k, list(mem), n=3, cutoff=max(0.78, umbral)):
+            r = mejor(mem[parecido], difflib.SequenceMatcher(None, k, parecido).ratio(), f"parecido a «{titulo(parecido)}»")
+            if r: return r
     return None
 
 # Categorías que no se reparten con amigos: un Bizum recibido no es «tu parte» de un recibo o de una suscripción.
