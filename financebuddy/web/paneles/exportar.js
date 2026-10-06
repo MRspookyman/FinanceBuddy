@@ -21,6 +21,18 @@ async function descargarPlantilla() {
   FB.aviso("Plantilla descargada ✓");
 }
 
+// Todos tus datos en un Excel (una hoja por cosa): para guardarlos, llevarlos a otro sitio o hacer tus propias cuentas.
+async function descargarDatos(btn) {
+  btn.disabled = true;
+  const r = await FB.api("/api/exportar_datos", {});
+  btn.disabled = false;
+  if (!r.ok) { FB.aviso(r.mensaje || "No se han podido exportar los datos", true); return; }
+  const bin = atob(r.contenido), bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  descargarArchivo(r.nombre, new Blob([bytes], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+  FB.aviso("Datos exportados ✓");
+}
+
 // ───────────── gráficos del resumen: SVG simple y autónomo ─────────────
 const COLORES_RESUMEN = ["#5E8266", "#C9603F", "#44688A", "#B8892F", "#6A5AA8", "#B84A6E", "#3E7558", "#7A6F63"];
 function svgLinea(etiquetas, series, { fmt, alto = 170 } = {}) {
@@ -155,6 +167,9 @@ function panelCompartir(padre) {
   const b1 = f.createEl("button", { cls: "fb-btn", text: "Descargar con importes" }); b1.onclick = () => descargarResumen(false);
   const b2 = f.createEl("button", { cls: "fb-btn sec", text: "Descargar sin importes" }); b2.onclick = () => descargarResumen(true);
   p.createDiv({ cls: "fin-note", text: "«Sin importes» no tapa las cifras: no las incluye. Verás porcentajes (reparto, ahorro, rentabilidad) y la evolución como índice (100 = el primer registro), pero ni el archivo ni su código fuente dicen cuánto dinero es. Los nombres de tus activos sí salen." });
+  const gd = p.createDiv({ cls: "fb-fila" });
+  const bD = gd.createEl("button", { cls: "fb-btn sec", text: "Todos mis datos en Excel" }); bD.onclick = () => descargarDatos(bD);
+  p.createDiv({ cls: "fin-note", text: "Un archivo con una hoja por cosa: movimientos, cuentas, saldos, fijos, categorías, reglas, inversión, aportaciones, dividendos, objetivos y recordatorios. Es para consultar o hacer tus propias cuentas; para guardar algo que se pueda restaurar usa las copias de seguridad. Contiene tus datos reales: guárdalo en un sitio de confianza." });
   const g = p.createDiv({ cls: "fb-fila" });
   const b3 = g.createEl("button", { cls: "fb-btn sec", text: "Plantilla de Excel para apuntar movimientos" }); b3.onclick = descargarPlantilla;
   p.createDiv({ cls: "fin-note", text: "Una hoja con fecha, concepto, importe y un desplegable con tus categorías. Rellénala (o pega ahí movimientos de otro sitio) y súbela en Importar: la categoría que elijas es la que se usa." });

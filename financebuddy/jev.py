@@ -264,7 +264,7 @@ def _opciones(categorias):
 
 def categorias_de(alm):
     from .plantilla import DESCRIPCIONES
-    cats = alm.todos("categoria")
+    cats = [c for c in alm.todos("categoria") if not c.get("oculta")]  # las ocultas no se proponen
     gasto = [(c["nombre"], c.get("descripcion") or DESCRIPCIONES.get(c["nombre"], "")) for c in cats if c.get("grupo") != "ingreso"]
     ingreso = [(c["nombre"], c.get("descripcion") or DESCRIPCIONES.get(c["nombre"], "")) for c in cats if c.get("grupo") == "ingreso"]
     return gasto, ingreso

@@ -562,3 +562,20 @@ button:focus-visible,a:focus-visible,summary:focus-visible,[tabindex]:focus-visi
 .fin-chart .col .xh,.fin-chart .col .hd{transition:opacity 120ms var(--ease-out)}
 .fin-tip{transform:translateY(4px);transition:opacity 120ms var(--ease-out),transform 120ms var(--ease-out)}
 .fin-tip.on{transform:none}
+/* ── Fase 4: probar una regla, ordenar categorías y secciones de Ajustes ── */
+.fb-prueba{margin-top:18px;padding-top:14px;border-top:1px solid var(--line)}
+.fb-prueba-t{font-weight:700;font-size:.92em;margin-bottom:8px}
+.fb-prueba-res{margin-top:8px}
+.fb-prueba-n{font-size:.92em;margin-bottom:6px}
+.fb-prueba-lista{list-style:none;margin:6px 0 10px;padding:0;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--surface)}
+.fb-prueba-lista li{display:grid;grid-template-columns:62px minmax(0,1fr) auto minmax(0,150px);gap:10px;align-items:baseline;padding:6px 10px;font-size:.86em;border-top:1px solid var(--line)}
+.fb-prueba-lista li:first-child{border-top:0}
+.fb-prueba-lista .f{color:var(--ink-2)}
+.fb-prueba-lista .x{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fb-prueba-lista .i{font-variant-numeric:tabular-nums;text-align:right}
+.fb-prueba-lista .c{color:var(--ink-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fb-prueba-lista.fb-resumen li{display:block}
+.fb-sec{margin:18px 0 8px;font-size:.78em;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-2)}
+.fb-sec:first-of-type{margin-top:4px}
+.fin-more-body h4{margin:16px 0 4px;font-size:.95em}
+.fin-more-body h4:first-child{margin-top:4px}

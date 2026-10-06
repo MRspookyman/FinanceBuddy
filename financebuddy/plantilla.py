@@ -140,12 +140,13 @@ def instalar(alm):
     with alm.transaccion():
         v = alm.config("plantilla_version") or 1
         if v < VERSION and alm.contar("categoria"):
-            tengo = {c["nombre"].lower() for c in alm.todos("categoria")}
+            fus = alm.config("categorias_fusionadas") or {}  # las que el usuario fusionó en otra no se vuelven a crear
+            tengo = {c["nombre"].lower() for c in alm.todos("categoria")} | {n.lower() for n in fus}
             for n, g in CATEGORIAS:
                 if n.lower() not in tengo: alm.guardar("categoria", {"nombre": n, "grupo": g})
             patrones = {r["patron"] for r in alm.todos("regla")}
             for p, c, cl in REGLAS:
-                if p not in patrones: alm.guardar("regla", {"patron": p, "categoria": c, "clase": cl, "origen": "plantilla"})
+                if p not in patrones: alm.guardar("regla", {"patron": p, "categoria": fus.get(c, c), "clase": cl, "origen": "plantilla"})
             formatos = {p["nombre"].lower() for p in alm.todos("perfil")}
             for p in PERFILES:
                 if p["nombre"].lower() not in formatos: alm.guardar("perfil", p)

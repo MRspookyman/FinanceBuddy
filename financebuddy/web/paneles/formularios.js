@@ -3,7 +3,7 @@
 // listan en «Ajustes». formulario() dibuja el editor y guarda con /api/guardar.
 const TIPO_CUENTA = { corriente: "Corriente (día a día)", ahorro: "Ahorro", broker: "Bróker (efectivo para invertir)", otro: "Otra (fianza, depósito…)" };
 const CLASE_MOV = { gasto: "Gasto", ingreso: "Ingreso", reembolso: "Te lo devolvieron", transferencia: "Entre tus cuentas" };
-const opcCategorias = (grupo) => () => categorias().filter((c) => !grupo || (grupo === "ingreso" ? c.grupo === "ingreso" : c.grupo !== "ingreso")).map((c) => [c.nombre, c.nombre]);
+const opcCategorias = (grupo) => () => categorias().filter((c) => !c.oculta).filter((c) => !grupo || (grupo === "ingreso" ? c.grupo === "ingreso" : c.grupo !== "ingreso")).map((c) => [c.nombre, c.nombre]);
 const opcCuentas = (filtro) => () => cuentas().filter((c) => !filtro || filtro(c)).map((c) => [c.nombre, c.nombre]);
 const opcActivos = () => registros("activo").map((a) => [a.nombre, a.nombre]);
 // Los gastos de los 60 días anteriores a este movimiento (los más cercanos primero), con lo que ayuda a reconocerlos
@@ -14,7 +14,11 @@ const opcGastosRecientes = (d) => {
     .map((m) => [String(m.id), `${fechaCorta(m.fecha)} · ${m.concepto} · ${eur(m.importe)} · ${m.categoria || "sin categoría"}`]);
 };
 const opcRecurrentes = (clase) => () => registros("recurrente").filter((r) => !clase || r.clase === clase).map((r) => [r.nombre, r.nombre]);
-const catSegunClase = (d) => d.clase === "ingreso" ? opcCategorias("ingreso")() : opcCategorias("gasto")();
+// Las categorías ocultas no se ofrecen, salvo la que ya tiene el registro que se está editando (para no perderla al guardar).
+const catSegunClase = (d) => {
+  const o = d.clase === "ingreso" ? opcCategorias("ingreso")() : opcCategorias("gasto")();
+  return d.categoria && !o.some(([v]) => v === d.categoria) && catReg(d.categoria) ? [...o, [d.categoria, d.categoria + " (oculta)"]] : o;
+};
 
 const FORMS = {
   cuenta: { uno: "cuenta", plural: "Cuentas", ayuda: "Tus cuentas del banco, de ahorro y del bróker. Los saldos se anotan al cerrar cada mes.",
@@ -32,8 +36,9 @@ const FORMS = {
       { k: "presupuesto", l: "Presupuesto mensual (opcional)", t: "num", ayuda: "Si lo pones, verás una barra de lo gastado frente a este presupuesto y un aviso si te pasas." },
       { k: "descripcion", l: "Qué entra aquí (opcional)", ph: "p. ej. clases de pádel y material deportivo", ayuda: "Si usas el asistente Jev, le ayuda a proponer esta categoría." },
       { k: "icono", l: "Icono", t: "emoji" },
-      { k: "color", l: "Color", t: "color" }],
-    fila: (r) => [`${r.icono || catIcono(r.nombre)}  ${r.nombre}`, { variable: "variable", fijo: "fijo", ingreso: "ingreso" }[r.grupo] || r.grupo, r.presupuesto ? eur(r.presupuesto, 0) : ""], cols: ["Nombre", "Grupo", "Presupuesto"] },
+      { k: "color", l: "Color", t: "color" },
+      { k: "oculta", l: "Ocultar", t: "bool", ayuda: "Una categoría oculta no sale al elegir categoría ni la propone Jev, pero sus movimientos se conservan y siguen contando en los totales." }],
+    fila: (r) => [`${r.icono || catIcono(r.nombre)}  ${r.nombre}`, ({ variable: "variable", fijo: "fijo", ingreso: "ingreso" }[r.grupo] || r.grupo) + (r.oculta ? " · oculta" : ""), r.presupuesto ? eur(r.presupuesto, 0) : ""], cols: ["Nombre", "Grupo", "Presupuesto"] },
   movimiento: { uno: "movimiento", plural: "Movimientos", ayuda: "Todo lo importado del banco y lo apuntado a mano.",
     campos: [
       { k: "fecha", l: "Fecha", t: "fecha", req: true, defecto: () => hoy.toISODate() },
@@ -151,7 +156,7 @@ const FORMS = {
       { k: "recurrente", l: "Enlazar con el recurrente", t: "opc", opc: opcRecurrentes(), vacio: "— ninguno —", si: (d) => d.clase !== "transferencia" },
       { k: "origen", l: "", t: "oculto", defecto: () => "usuario" }],
     fila: (r) => [r.patron, r.clase === "transferencia" ? `entre cuentas${r.cuenta_otra ? " · " + r.cuenta_otra : ""}` : r.categoria, r.origen === "plantilla" ? "de serie" : "tuya"], cols: ["Patrón", "Categoría", ""],
-    orden: (a, b) => (a.origen === "plantilla") - (b.origen === "plantilla") || b.id - a.id },
+    orden: (a, b) => (a.origen === "plantilla") - (b.origen === "plantilla") || b.id - a.id, extra: panelProbarRegla },
   perfil: { uno: "formato de archivo", plural: "Formatos de archivo", ayuda: "Cómo leer el Excel/CSV de cada banco o bróker. Se crean solos al importar un archivo nuevo.",
     campos: [
       { k: "nombre", l: "Nombre", req: true },
@@ -280,7 +285,55 @@ function formulario(padre, tipo, reg, opciones = {}) {
     };
   }
   const bC = botones.createEl("a", { cls: "fb-btn sec", text: "Cancelar", href: opciones.volver || `#gestionar/${tipo}` });
+  if (F.extra) F.extra(p, d);
   return p;
+}
+// Probar una regla antes de guardarla: qué movimientos ya importados casarían (recuento y los más recientes) y, si quieres,
+// pasarlos a la categoría de la regla (con confirmación y un «Deshacer»). No guarda la regla: eso lo hace «Guardar».
+function panelProbarRegla(p, d) {
+  const caja = p.createDiv({ cls: "fb-prueba" });
+  caja.createDiv({ cls: "fb-prueba-t", text: "Probar la regla con lo que ya has importado" });
+  const fila = caja.createDiv({ cls: "fb-fila" });
+  const bP = fila.createEl("button", { cls: "fb-btn sec", text: "Ver qué movimientos casan", attr: { type: "button" } });
+  const res = caja.createDiv({ cls: "fb-prueba-res", attr: { "aria-live": "polite" } });
+  const pedir = () => ({ patron: String(d.patron || "").trim(), clase: d.clase || "gasto", categoria: d.categoria || "" });
+  const probar = async () => {
+    const q = pedir(); res.innerHTML = "";
+    if (q.patron.length < 2) { res.createDiv({ cls: "fin-note", text: "Escribe primero el texto que debe contener (al menos 2 letras)." }); return; }
+    bP.disabled = true;
+    const r = await FB.api("/api/regla/probar", q);
+    bP.disabled = false;
+    res.innerHTML = "";
+    if (!r.ok) { mensaje(res, r.mensaje || "No se ha podido probar", "err"); return; }
+    if (!r.n) { res.createDiv({ cls: "fin-note", text: `Ningún movimiento importado contiene «${q.patron}».` + (r.pendientes ? ` Sí casan ${r.pendientes} en «Por revisar».` : "") }); return; }
+    const t = res.createDiv({ cls: "fb-prueba-n" });
+    t.createEl("b", { text: `${r.n} movimiento${r.n === 1 ? "" : "s"}` });
+    t.appendText(q.clase === "transferencia" ? " casan con esta regla (se usará al importar)." : r.cambian ? ` casan · ${r.cambian} cambiarían de categoría${r.ya ? ` y ${r.ya} ya la tienen` : ""}.` : " casan y ya tienen esa categoría.");
+    const ul = res.createEl("ul", { cls: "fb-prueba-lista" });
+    for (const m of r.muestra) {
+      const li = ul.createEl("li");
+      li.createSpan({ cls: "f", text: fechaCorta(m.fecha) });
+      li.createSpan({ cls: "x", text: m.texto });
+      li.createSpan({ cls: "i", text: eur(m.importe) });
+      li.createSpan({ cls: "c", text: m.categoria || "sin categoría" });
+    }
+    const resto = (r.cambian || r.n) - r.muestra.length;
+    if (resto > 0) res.createDiv({ cls: "fin-note", text: `…y ${resto} más.` });
+    if (r.pendientes) res.createDiv({ cls: "fin-note", text: `Además, ${r.pendientes} dudas de «Por revisar» casan con ella (se quedan ahí hasta que las revises).` });
+    if (r.aplicable) {
+      const b = res.createEl("button", { cls: "fb-btn", text: `Aplicar a los ${r.cambian} ya importados`, attr: { type: "button" } });
+      b.onclick = async () => {
+        if (!confirm(`¿Pasar ${r.cambian} movimiento${r.cambian === 1 ? "" : "s"} a «${q.categoria}»? Podrás deshacerlo justo después.`)) return;
+        b.disabled = true;
+        const a = await FB.api("/api/regla/aplicar", q);
+        FB.aviso(a.mensaje || "Hecho", !a.ok, a.ok ? avisoDeshacer() : undefined);
+        await FB.recargar(); probar();  // sin repintar la pantalla: lo que llevas escrito en el formulario se conserva
+      };
+      res.createDiv({ cls: "fin-note", text: "Esto no guarda la regla: para que valga con lo que importes después, pulsa «Guardar»." });
+    }
+  };
+  bP.onclick = probar;
+  if (d.id && d.patron) probar();
 }
 // Apuntar a mano: al escribir el concepto, la categoría que dicen tus reglas, tu historial o (si lo tienes activado) Jev.
 // Solo si aún no has elegido una tú.
