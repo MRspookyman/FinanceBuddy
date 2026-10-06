@@ -5,7 +5,7 @@ const COMP = { Liquidez: SERIES[0], "Efectivo bróker": SERIES[6], "Inversión":
 const colorActivo = (nombre) => {
   const orden = activos().map((a) => a.nombre).sort((a, b) => a.localeCompare(b, "es"));
   const i = orden.indexOf(nombre);
-  return i < 0 ? "var(--text-faint)" : SERIES[i % SERIES.length]; // activos vendidos: gris
+  return i < 0 ? "var(--ink-3)" : SERIES[i % SERIES.length]; // activos vendidos: gris
 };
 const GOOD = "var(--fin-good)", BAD = "var(--fin-bad)", WARN = "var(--fin-warn)";
 const polar = (v) => (v >= 0 ? GOOD : BAD);
@@ -100,7 +100,7 @@ function spark(vals, { w = 96, h = 28, color = "var(--fin-s1)" } = {}) {
   const X = (i) => 3 + i * (w - 6) / (vals.length - 1), Y = (v) => 4 + (max - v) * (h - 8) / span;
   const d = vals.map((v, i) => `${i ? "L" : "M"}${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join("");
   const n = vals.length - 1;
-  return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" aria-hidden="true"><path d="${d}" style="fill:none;stroke:var(--text-faint);stroke-width:1.5;stroke-linejoin:round;stroke-linecap:round"/><circle cx="${X(n).toFixed(1)}" cy="${Y(vals[n]).toFixed(1)}" r="3.5" style="fill:${color};stroke:var(--background-secondary);stroke-width:2"/></svg>`;
+  return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" aria-hidden="true"><path d="${d}" style="fill:none;stroke:var(--ink-3);stroke-width:1.5;stroke-linejoin:round;stroke-linecap:round"/><circle cx="${X(n).toFixed(1)}" cy="${Y(vals[n]).toFixed(1)}" r="3.5" style="fill:${color};stroke:var(--surface-2);stroke-width:2"/></svg>`;
 }
 function hero(padre, { l, v, d, s, sparkVals }) {
   const h = padre.createDiv({ cls: "fin-hero" });
@@ -129,7 +129,7 @@ function kv(padre, items) {
   const k = padre.createDiv({ cls: "fin-kv" });
   for (const it of items.filter(Boolean)) { const d = k.createDiv(); d.createDiv({ cls: "l", text: it.l }); d.createDiv({ cls: "v " + (it.t || ""), text: it.v }); }
 }
-const ICO = { ok: ["✓", GOOD], warn: ["!", WARN], over: ["✕", BAD], info: ["i", "var(--text-faint)"] };
+const ICO = { ok: ["✓", GOOD], warn: ["!", WARN], over: ["✕", BAD], info: ["i", "var(--ink-3)"] };
 function ico(padre, tipo) { const [c, col] = ICO[tipo]; setVar(padre.createSpan({ cls: "fin-ico", text: c }), "--ic", col); }
 function meter(padre, { nombre, ruta, onclick, title, dot, valor, total, color, fuerte, resto, sub, ico: icono, marca, lg, act }) {
   const m = padre.createDiv({ cls: "fin-meter" + (lg ? " lg" : "") + (act ? " act" : "") });

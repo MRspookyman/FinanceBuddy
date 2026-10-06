@@ -154,6 +154,7 @@
     aviso(texto, error, accion) {
       const el = document.getElementById("aviso");
       el.textContent = texto; el.className = "on" + (error ? " err" : "");
+      if (!error) el.insertAdjacentHTML("afterbegin", '<svg class="ck" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>');
       if (accion) { const b = document.createElement("button"); b.type = "button"; b.className = "fin-link"; b.textContent = accion.texto; b.onclick = () => { el.className = ""; accion.fn(); }; el.appendChild(b); }
       clearTimeout(FB._t); FB._t = setTimeout(() => (el.className = ""), error ? 9000 : accion ? 9000 : 4500);
     },
@@ -212,6 +213,45 @@
     const menu = document.getElementById("menu");
     document.querySelector("#cabecera .apuntar").classList.toggle("act", act === "importar");
     menu.innerHTML = items.map(([k, t]) => `<a href="#${k}" class="internal-link${k === act ? " act" : ""}" title="${t}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">${ICO[k]}</svg><span>${t}</span>${k === "revisar" ? `<span class="num">${n}</span>` : ""}</a>`).join("");
+    // El subrayado de la sección activa es un solo elemento (el ::after del menú) que se desliza hasta ella
+    const sel = menu.querySelector("a.act");
+    menu.style.setProperty("--ind-o", sel ? "1" : "0");
+    if (sel) { menu.style.setProperty("--ind-x", (sel.offsetLeft + 12) + "px"); menu.style.setProperty("--ind-w", (sel.offsetWidth - 24) + "px"); }
+  }
+
+  // ── movimiento: se omite con «reducir movimiento» del sistema y en las pruebas ──
+  const SIN_MOVIMIENTO = () => matchMedia("(prefers-reduced-motion: reduce)").matches || new URLSearchParams(location.search).has("pruebas");
+  // Los importes en euros y los porcentajes de la pantalla que se ve suben contando hasta su valor (500 ms); el texto final es siempre el original
+  function contarCifras(raiz) {
+    const agrupar = (n, d) => { const [e, f] = Math.abs(n).toFixed(d).split("."); return e.replace(/\B(?=(\d{3})+(?!\d))/g, ".") + (f ? "," + f : ""); };
+    const RE = /([−+\-]?)(\d[\d.]*)(?:,(\d+))?(?=[  ]?[€%])/g;
+    const w = document.createTreeWalker(raiz, NodeFilter.SHOW_TEXT, { acceptNode: (n) => (/[€%]/.test(n.nodeValue) && n.parentElement && !n.parentElement.closest("option, textarea, script, style, svg, #aviso, .fin-tip") ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT) });
+    const lista = [];
+    while (w.nextNode() && lista.length < 150) {
+      const nodo = w.currentNode, r = nodo.parentElement.getBoundingClientRect();
+      if (r.bottom < 0 || r.top > innerHeight) continue;  // lo que queda fuera de la vista no se anima
+      const texto = nodo.nodeValue, partes = []; let i = 0, m; RE.lastIndex = 0;
+      while ((m = RE.exec(texto))) {
+        const valor = parseFloat(m[2].replace(/\./g, "") + "." + (m[3] || "0"));
+        if (!(valor > 0)) continue;
+        partes.push({ ini: m.index, fin: m.index + m[0].length, signo: m[1], dec: (m[3] || "").length, valor });
+      }
+      if (partes.length) lista.push({ nodo, texto, partes });
+    }
+    if (!lista.length) return;
+    const t0 = performance.now(), D = 500;
+    const paso = (t) => {
+      const k = Math.min(1, (t - t0) / D), e = 1 - Math.pow(1 - k, 3);
+      for (const { nodo, texto, partes } of lista) {
+        if (!nodo.isConnected) continue;
+        if (k >= 1) { nodo.nodeValue = texto; continue; }
+        let sal = "", i = 0;
+        for (const p of partes) { sal += texto.slice(i, p.ini) + p.signo + agrupar(p.valor * e, p.dec); i = p.fin; }
+        nodo.nodeValue = sal + texto.slice(i);
+      }
+      if (k < 1) requestAnimationFrame(paso);
+    };
+    requestAnimationFrame(paso);
   }
 
   // ── montaje de la pantalla actual ──
@@ -221,16 +261,20 @@
     barra();
     const [vista, ...params] = ruta();
     const app = document.getElementById("app");
+    // Solo al cambiar de pantalla (no al refrescar tras guardar): entrada en cascada, barras que crecen, cifras que cuentan
+    const entra = FB._nav && !SIN_MOVIMIENTO(); FB._nav = false;
+    clearTimeout(FB._tEntra); delete app.dataset.entra; app.dataset.vista = vista;
     app.innerHTML = "";
     FB.container = app.createDiv({ cls: "fin-page" });
     try { new Function("FB", "luxon", "input", FB.codigo)(FB, luxon, { vista, params, ...(extra || {}) }); }
     catch (e) { log("Error: " + (e.stack || e)); }
     if (discreto) aplicarDiscreto();
     window.scrollTo(0, 0);
+    if (entra) { app.dataset.entra = ""; FB._tEntra = setTimeout(() => delete app.dataset.entra, 900); if (!discreto) contarCifras(app); }
   }
   FB.montar = montar;
   let actual = location.hash;
-  window.addEventListener("hashchange", () => { FB.anterior = actual; actual = location.hash; FB.estado = {}; montar(); });
+  window.addEventListener("hashchange", () => { FB.anterior = actual; actual = location.hash; FB.estado = {}; FB._nav = true; montar(); });
   // Enlaces internos: navegación sin recargar
   document.addEventListener("click", (e) => {
     const a = e.target.closest && e.target.closest("a.internal-link");
@@ -245,6 +289,7 @@
     FB.codigo = p.fuentes.join("\n");
     await FB.recargar();
     const params = new URLSearchParams(location.search);
+    FB._nav = true;
     montar({ exponer: params.has("pruebas") });
     const pr = ((FB.DB || {}).config || {}).precios;  // al abrir: si los precios por internet están activados y son de hace más de 6 h, se ponen al día
     if (pr && pr.activo && pr.viejo && !pr.en_marcha && !params.has("pruebas")) FB.actualizarPrecios({ silencioso: true, forzar: false });
