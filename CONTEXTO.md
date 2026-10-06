@@ -3,10 +3,13 @@
 > **Para qué sirve este archivo.** Si se pierde el hilo de una conversación con Claude (o entra una persona nueva), aquí está
 > todo lo necesario para retomar el trabajo sin preguntar: qué es la app, las reglas que no se rompen, cómo está hecha, qué
 > se ha hecho y por qué, qué auditorías se han pasado, qué está probado y qué no, y qué queda pendiente.
-> Complementa a `README.md` (para quien usa la app) y a `.claude/skills/financebuddy-dev/SKILL.md` (referencia técnica
-> detallada de cada módulo). **Si cambias algo importante, actualiza este archivo en el mismo commit.**
 >
-> Última actualización: 3 oct 2026 · rama `claude/intelligent-cerf-wuzuc9` · versión de la app `1.0.0` · plantilla de datos `v4`.
+> **Este archivo es largo (leerlo entero cuesta unos 27.000 tokens).** Para empezar una sesión basta con
+> [`CLAUDE.md`](CLAUDE.md) (reglas, comandos, mapa del código y trampas); aquí se viene a buscar **una sección concreta**:
+> el porqué de una decisión (§8), una auditoría (§9) o lo que queda pendiente (§10). `README.md` es para quien usa la app.
+> **Si cambias algo importante, actualiza este archivo en el mismo commit.**
+>
+> Última actualización: 6 oct 2026 · rama `main` · versión de la app `1.1.0` · plantilla de datos `v4`.
 
 ---
 
@@ -20,15 +23,15 @@
 - **Usuario tipo:** una persona (no técnica) con Santander (banco) y MyInvestor (bróker), que usa mucho **Bizum** (envía su
   parte de cenas/copas y recibe lo que le devuelven de lo que paga ella), invierte en un fondo indexado a S&P 500 y en
   ETC de cripto/cobre/oro, y quiere mínimo trabajo manual.
-- **Estado:** PRs #1–#10 fusionadas en `main` (la #10: Bizums, más contexto para Jev y este documento). Después, sin PR todavía y
-  subido a la rama `claude/intelligent-cerf-wuzuc9`: la **auditoría de Rumbo** (`e91e80e`) y sus **cuatro olas** (§9.8):
-  Ola 1 `9efefe6` (Tu progreso, modo discreto…), Ola 2 `f9877a4` (vista previa, dividendos, «Para la renta»), Ola 3 `35da6fd`
-  (precios por internet) y Ola 4 (exportar resumen, plantilla de Excel, aviso de versión).
-- **Último gran tema:** las olas de Rumbo. **Nada que salga a internet se ha probado contra el servicio real** (el entorno de
-  desarrollo bloquea Jev, Yahoo, Morningstar y CoinGecko): todo se verificó con servidores falsos y hay scripts para que el
-  usuario lo compruebe en su PC (`evaluar_jev.py`, `evaluar_precios.py`). GitHub (aviso de versión) sí responde desde el entorno.
-- **Tests:** 153 de Python (`unittest`), 84 de cálculos y todas las pantallas sin errores en navegador. Siempre en verde al cerrar
-  cada tarea.
+- **Estado:** PRs #1–#16 fusionadas. Desde el 5 oct 2026 se trabaja **directamente en `main` en el PC del usuario** (Windows,
+  Claude Code): auditoría de producto e interfaz (§9.9), interfaz «pizarra» (§9.10–9.12), Fase 4 de Ajustes, Bizums (§9.13),
+  archivos grandes partidos (§9.14) y el **estudio del estado de la app con sus arreglos** (§9.15).
+- **Último gran tema:** §9.15 — seguridad del servidor de archivos, arranque que explica los fallos, segunda carpeta de copias,
+  aviso al borrar algo en uso, columnas de bancos nuevos reconocidas solas y flujos con clics.
+- **Internet:** los precios **sí se han probado ya contra los servicios reales** desde el PC del usuario (6 oct 2026, §9.15):
+  Yahoo, Morningstar, CoinGecko y Frankfurter responden. **Jev sigue sin probarse con la API real.**
+- **Tests:** 175 de Python (`unittest`), 84 de cálculos, 20 pantallas sin errores y **8 flujos con clics**. Siempre en verde al
+  cerrar cada tarea; `build.bat` los pasa todos.
 
 ---
 
@@ -57,7 +60,8 @@
    base local (o en la variable `TYPESAFE_API_KEY`). La página nunca la recibe (solo sus 4 últimas cifras). El usuario la
    pegó en el chat durante el desarrollo: se le recomendó **rotarla** en TypeSafe.
 8. El servidor solo escucha en `127.0.0.1`, rechaza cualquier cabecera `Host` que no sea local y exige un token por arranque
-   (`X-FB-Token`).
+   (`X-FB-Token`). **De `/web/` solo salen archivos de la carpeta `web/`**: `servidor._dentro_de()` rechaza `..`, rutas
+   absolutas y unidades (`C:\…`). Antes, una ruta absoluta servía cualquier archivo del ordenador sin token (§9.15).
 9. **Privacidad hacia Jev:** solo sale el concepto saneado + importe + contexto del historial (sin nombres). Ver §7.
 9b. **Privacidad en los precios:** a Yahoo/Morningstar/CoinGecko solo viaja el código del producto (la URL). Nunca importes,
     participaciones, cuentas, nombres de activos ni movimientos (hay una prueba que lo comprueba). Las series descargadas se
@@ -66,24 +70,22 @@
     archivo (taparlas con CSS no valdría). Una prueba comprueba que ninguna cifra real del ejemplo aparece en él.
 
 ### Cómo trabaja Claude en este repo
-10. Se desarrolla en la rama **`claude/intelligent-cerf-wuzuc9`** (nombre fijo). Tras fusionar una PR, la rama se reinicia
-    desde `main` (`git fetch origin main && git checkout -B claude/intelligent-cerf-wuzuc9 origin/main`) y se sube con
-    `git push --force-with-lease=<rama>:<sha remoto>` (la remota solo tenía historia ya fusionada).
-11. **No se abre PR salvo que el usuario lo pida.** El flujo habitual: Claude termina, sube la rama, resume y pregunta
-    «¿la fusiono?»; el usuario responde «fusiona» y entonces se abre/fusiona la PR con las herramientas MCP de GitHub
-    (no hay `gh` en el entorno).
-12. Commits y PRs terminan con las líneas de atribución que dicte el sistema (`Co-Authored-By` y `Claude-Session`; las PR,
-    `🤖 Generated with [Claude Code]…` + enlace de sesión).
-13. Remoto: el repo se llama ahora `MRspookyman/FinanceBuddy` (antes `financebuddy`); el push funciona igual con la URL
-    antigua, pero conviene actualizar el remoto.
-14. Nota de entorno: la sesión de Claude Code arranca en otro repo (`/home/user/PideYa`, que tiene su propio `CLAUDE.md` y
-    **no tiene relación** con FinanceBuddy). FinanceBuddy está en `/home/user/financebuddy`.
+10. **Desde el 5 oct 2026 se trabaja en `main`, en el PC del usuario** (`C:\Users\…\Desktop\FinanceBuddy`, Windows, Claude
+    Code). Ya no se usa la rama `claude/intelligent-cerf-wuzuc9` ni el entorno Linux de antes; las notas sobre `/home/user/…`
+    y sobre los dominios bloqueados por el túnel **ya no aplican**: aquí hay internet y navegador de verdad.
+11. **No se abre PR salvo que el usuario lo pida.** Lo normal ahora: commits en `main` y `git push` cuando él lo diga.
+    En este entorno **no hay `gh` ni herramientas MCP de GitHub**: lo que haya que hacer en github.com lo hace él.
+12. Commits y PRs terminan con las líneas de atribución que dicte el sistema.
+13. Remoto: `MRspookyman/FinanceBuddy` (**público**: ver §10, es lo primero del backlog).
+14. La app real del usuario suele estar abierta en el **puerto 8765**: las pruebas van en otro puerto y con carpeta de datos
+    propia. Nunca pulsar «Volver a mis datos» ni «Usar otra carpeta» en un servidor de pruebas.
 
 ---
 
 ## 2. Arquitectura en una página
 
-Detalle módulo a módulo: **`.claude/skills/financebuddy-dev/SKILL.md`**. Aquí, el mapa mental.
+Mapa corto y trampas: **[`CLAUDE.md`](CLAUDE.md)**. El detalle de cada módulo está en la cabecera de su propio archivo
+(la skill `.claude/skills/financebuddy-dev/SKILL.md` se borró el 5 oct 2026). Aquí, el mapa mental.
 
 ```
  navegador ──GET /api/datos──▶ servidor.py ──▶ almacen.py ──▶ SQLite (datos.db)
@@ -124,7 +126,8 @@ Detalle módulo a módulo: **`.claude/skills/financebuddy-dev/SKILL.md`**. Aquí
 ### 2.2 Claves de `config`
 `titulares` (nombre(s) del usuario, para reconocer traspasos propios y para **no enviarlos a Jev**), `limite_variable`,
 `dia_inicio` (día en que empieza «tu mes», 1–28), `colchon` (colchón de la cuenta corriente fijado a mano; 0 = automático),
-`configurado`, `plantilla_version`, `version_esquema`, `avisos_descartados`, `saldo_extracto:<cuenta>`, `acento`, `inicio`/
+`configurado`, `plantilla_version`, `version_esquema`, `avisos_descartados`, `saldo_extracto:<cuenta>`, `acento`,
+`copia_extra` (segunda carpeta donde repetir las copias) y `copia_extra_error` ({carpeta, motivo, cuando} de la última que falló), `inicio`/
 `inicio_ocultos` (paneles del Inicio), y las de Jev: `jev` (clave + opciones), `jev_uso` (consultas/tokens por mes),
 `jev_revision` (repaso de categorías), `jev_fijos` (caché de «¿cuota fija?»), `jev_enviado` (últimas 30 consultas). Precios:
 `precios` ({activo, ultima, resultado}), `precio_serie:<fuente>:<código>` (caché {serie, moneda, actualizado}; **no sale a la página**) y
@@ -135,7 +138,8 @@ Detalle módulo a módulo: **`.claude/skills/financebuddy-dev/SKILL.md`**. Aquí
 vista previa en `Almacen.simular()`), `resolver`, `plantilla` (Excel en base64), `precios/config|actualizar|estado|buscar|autoconfigurar|comparar`,
 `actualizaciones/config|comprobar`,
 `detectar`, `fijos`, `bienvenida`, `cierre`, `valores`, `activo/unir|borrar|cuadrar`, `jev/config|probar|revisar|enviado|
-categoria|auditar|hallazgo`, `config/descartar_aviso`, `carpeta`, `ejemplo`, `abrir_carpeta`, `copia`, `restaurar`, `vaciar`.
+categoria|auditar|hallazgo`, `config/descartar_aviso`, `carpeta`, `copia_extra`, `ejemplo`, `abrir_carpeta`, `copia`, `restaurar`, `vaciar`.
+`borrar` no borra un registro que se esté usando sin `confirmar: true`: antes devuelve `{necesita_confirmar, mensaje}` (§9.15).
 
 ### 2.4 Trampas conocidas de la interfaz
 - `FB.refrescar()` **vuelve a ejecutar los módulos** y por tanto reinicia las variables a nivel de módulo → el estado que
@@ -154,7 +158,8 @@ categoria|auditar|hallazgo`, `config/descartar_aviso`, `carpeta`, `ejemplo`, `ab
 Los saldos salen de proyectar el último registro de `patrimonio` con los movimientos posteriores, **cuenta a cuenta**. Un
 traspaso mueve dinero a la otra cuenta solo si esa cuenta **no** importa extracto (`cuenta.extracto`). Los recurrentes
 generan movimientos automáticos salvo que exista uno real enlazado ese mes. Un **reembolso** resta de la categoría del gasto
-(el gasto neto). Detalle de inversión (TIR, precio medio, valor estimado «≈», traspasos entre fondos, ajustes): SKILL.md.
+(el gasto neto). Detalle de inversión (TIR, precio medio, valor estimado «≈», traspasos entre fondos, ajustes):
+`web/paneles/calculos*.js` y `cartera.py`.
 
 ---
 
@@ -214,39 +219,43 @@ Atajos: `?` (ayuda), `I`, `A`, `D`, `1`–`5`.
 ## 5. Pruebas y cómo verificar (siempre tras un cambio)
 
 ```bat
-python -m unittest pruebas.test_importar pruebas.test_servidor pruebas.test_jev pruebas.test_precios pruebas.test_actualizaciones   :: 109 pruebas (sin red)
-python pruebas\run.py --tests                                        :: 16 pantallas sin errores + 79 pruebas de cálculos
-python pruebas\run.py inicio,movimientos --shot [--tema=oscuro]      :: capturas en %TEMP%\fb-pruebas
+python -m unittest discover -s pruebas -p "test_*.py" -t .           :: 175 pruebas de Python (sin red). Un test_*.py nuevo entra solo
+python pruebas\run.py --tests                                        :: 20 pantallas sin errores + 84 pruebas de cálculos
+python pruebas\run.py --flujos                                       :: 8 flujos con clics de verdad (pruebas_flujos.js)
+python pruebas\run.py inicio,movimientos --shot [--tema=oscuro]      :: capturas en %TEMP%\fb-pruebas (sin animaciones: ?quieto=1)
 python pruebas\run.py --capturas                                     :: todas las pantallas, en claro y en oscuro
 python pruebas\evaluar_jev.py [--mostrar]                            :: precisión de Jev con TUS datos (lo ejecuta el usuario)
-python pruebas\evaluar_precios.py [ISIN|ticker…]                     :: ¿responden HOY Yahoo/Morningstar/CoinGecko? (lo ejecuta el usuario)
-build.bat                                                            :: pasa pruebas y genera dist\FinanceBuddy.exe
+python pruebas\evaluar_precios.py [ISIN|ticker…]                     :: ¿responden HOY Yahoo/Morningstar/CoinGecko?
+build.bat                                                            :: pasa las TRES tandas y genera dist\FinanceBuddy\
 ```
 
-- `test_importar.py` (50): importación, clasificación, traspasos, bróker, órdenes, fijos, reglas, y `TestBizums`.
+- `test_importar.py` (59): importación, clasificación, traspasos, bróker, órdenes, fijos, reglas, y `TestBizums`.
+- `test_robustez.py` (21, 6 oct 2026): carpeta de datos imposible, base dañada y recuperación con una copia, borrar algo en
+  uso, segunda carpeta de copias y columnas de un banco nuevo. `test_ordenar.py` (11), `test_categoria_nueva.py` (16),
+  `test_bizums.py` (2).
+- `pruebas_flujos.js`: lo que hace el usuario con el ratón, contra el servidor de verdad (apuntar, resolver una duda,
+  deshacer, buscar, borrar una cuenta en uso, ajustes, modo discreto, menú). Al añadir una pantalla o un flujo, añade un caso.
 - `test_precios.py` (22): precios contra un servidor falso (`PreciosFalso`, `FB_PRECIOS_URL`): apagado de serie, solo identificadores,
   caché, USD/GBp, fallos agrupados, buscador, autoconfigurar por ISIN y comparador. `test_actualizaciones.py` (5): aviso de versión
   contra un GitHub falso (`FB_ACTUALIZACIONES_URL`).
-- `test_servidor.py` (15): API y seguridad, vista previa, plantilla de Excel. `test_jev.py` (16): Jev contra un **servidor falso** (`JevFalso`) con el mismo formato
+- `test_servidor.py` (21): API y seguridad (token, `Host`, y que de `/web/` no salga ningún archivo de fuera), vista previa,
+  plantilla de Excel. `test_jev.py` (16): Jev contra un **servidor falso** (`JevFalso`) con el mismo formato
   que la API, apuntado con `FB_JEV_URL`; comprueban privacidad, errores 401/sin conexión, sugerencias, repaso, bróker,
   fijos, contexto, repartos y registro de lo enviado.
 - `pruebas_calculos.js`: cálculos del navegador (recibe `F` = `window.__fin`). Al tocar un cálculo, añade un caso.
 - Si cambias `ejemplo.py` (datos inventados; «hoy» = 30/09/2026), revisa las cifras esperadas.
 
-### Para Claude en el entorno Linux de desarrollo
-- Navegador: `FB_NAVEGADOR=/opt/pw-browsers/chromium-1194/chrome-linux/chrome python pruebas/run.py --tests`
-  (otro puerto si está ocupado: `--puerto=8795`). Playwright para recorridos a mano:
-  `require("/opt/node22/lib/node_modules/playwright")` con ese mismo `executablePath` y `args: ["--no-sandbox"]`.
-- **Importar mueve el archivo** a `Importar/Procesados/…`: para repetir una prueba, importa una **copia**.
-- Servidores en segundo plano: `pgrep/pkill -f` casa con su propio comando (código 144); usa
-  `ps aux | grep "[p]uerto NNNN"` y mata por PID, en comandos separados.
-- Un servidor con la carpeta de datos borrada hay que reiniciarlo en otro puerto.
-- **Jev, Yahoo, Morningstar y CoinGecko no se pueden llamar desde el entorno** (política de red: 403 del túnel). Para probarlos
-  habría que permitir esos dominios en *Network access*. Mientras tanto: servidores falsos (`JevFalso`, `PreciosFalso`).
-  `api.github.com` sí responde (el aviso de versión recibe un 404: el repo no tiene releases o es privado).
+### Al probar en el PC del usuario (Windows)
+- **La app real suele estar en el puerto 8765**: usa otro (`--puerto=8796`) y una carpeta de datos propia. Nunca pulses
+  «Volver a mis datos» ni «Usar otra carpeta» en un servidor de pruebas: abren o cambian sus datos de verdad.
+- **Importar mueve el archivo** a `Importar\Procesados\…`: para repetir una prueba, importa una **copia**.
+- Internet funciona: Yahoo, Morningstar, CoinGecko, Frankfurter y GitHub responden (comprobado el 6 oct 2026). Aun así, las
+  pruebas automáticas siguen yendo contra servidores falsos (`JevFalso`, `PreciosFalso`) para no depender de la red.
 - Servidor de precios falso para ver la interfaz: `from pruebas.test_precios import PreciosFalso`, servirlo en un puerto y arrancar
   la app con `FB_PRECIOS_URL=http://127.0.0.1:PUERTO`. Con `--ejemplo` los activos no traen participaciones: para ver el «precio de
   mercado» en una ficha hay que «Cuadrar con el bróker» (p. ej. 70 participaciones).
+- Los cuadros de aviso de Windows del arranque no salen con `--sin-navegador` (`__main__.AUTOMATICO`): así nada se queda
+  esperando a que alguien pulse un botón en una prueba.
 
 ---
 
@@ -560,53 +569,102 @@ ese orden desde `index.html`). **El orden importa:** los módulos JS se concaten
 (un solo `new Function`), y las hojas CSS dependen del orden de las `<link>`. Se comprobó que la unión de los trozos es idéntica al archivo
 original. Al añadir un archivo, ponlo en `MODULOS` en su sitio.
 
+### 9.15 Estudio del estado de la app y arreglos (6 oct 2026)
+Estudio con medidas, no solo lectura: suite completa en verde, servicios de precios probados de verdad, rendimiento con
+1, 5 y 10 años de datos inventados y repaso del historial de git en busca de secretos. **Lo medido:**
+- **Rendimiento** (unos 71 movimientos al mes): con 1 año (852 movimientos) `datos()` tarda 48 ms y resolver una duda 12 ms;
+  con 5 años, 129 y 129 ms; con 10 años (8.520 movimientos, 3,5 MB), 246 y 545 ms, y abrir la app 726 ms. La base real del
+  usuario pesa 0,36 MB: **no hay nada que optimizar en años**. Lo que peor escala es `bizums.enlazar` (7 → 117 → 508 ms).
+- **Precios:** Yahoo, CoinGecko, Frankfurter y Morningstar (con ISIN reales: `IE00BYX5MX67` → `0P0001CLDM`, 2.204 días)
+  responden. `evaluar_precios.py` da 14/15 porque su fondo de ejemplo `0P0000YXQE` ya no tiene precios.
+- **Historial de git:** sin claves, IBAN ni correos en el código. El repo es `MRspookyman/FinanceBuddy` y **está público**.
+- **Documentación:** `CONTEXTO.md` cuesta ~27.000 tokens por sesión; se añade [`CLAUDE.md`](CLAUDE.md) corto y este archivo
+  queda como historial que se consulta por secciones.
+
+**Arreglado (todo con pruebas):**
+1. **Agujero de seguridad:** `GET /web/<ruta absoluta>` servía **cualquier archivo del ordenador sin token** (se descargó la
+   base de datos de una instancia de prueba). Ahora `servidor._dentro_de()` solo deja salir lo que está dentro de `web/`.
+2. **Arranque que se explica** (`__main__.py`): `decir()` enseña un cuadro de Windows (el `.exe` no tiene consola) cuando la
+   carpeta de datos no se puede abrir, el puerto lo ocupa otro programa o la base está dañada; antes se cerraba sin decir nada.
+   `almacen.BaseDañada` + `_reparar()` ofrecen **volver a la última copia** (el archivo dañado se guarda como `datos.db.roto …`,
+   no se borra). Con `--sin-navegador` no sale ningún cuadro (`AUTOMATICO`), para que las pruebas no se queden colgadas.
+3. **Cambiar de carpeta ya no deja la app inservible:** `App.abrir()` monta la carpeta nueva **antes** de soltar la vieja; si
+   falla, se sigue con la de antes y se dice por qué (`rutas.motivo()` traduce los errores del sistema al español).
+4. **Segunda carpeta de copias** (`config.copia_extra`, `/api/copia_extra`, Ajustes → Tus datos): cada copia se guarda también
+   en un USB u otro disco. Si no está disponible, la app sigue y lo cuenta (`copia_extra_error`).
+   De paso se corrigió que **las copias se ordenaban mal**: `datos 2026-10-06 173000 manual.db` iba *antes* que
+   `datos 2026-10-06.db` (el espacio es menor que el punto), así que «la última copia» y la limpieza de las 30 cogían la
+   equivocada. Ahora `almacen.copias_de()` ordena por la fecha y hora del nombre.
+5. **Borrar algo que se usa avisa antes:** `Almacen.usos()` cuenta quién apunta a ese registro (`modelo.REFERENCIAS`) y
+   `/api/borrar` no borra sin `confirmar`, devolviendo ««Cuenta nómina» se está usando en 135 movimientos…» y qué pasaría.
+6. **Un banco nuevo se importa en un clic:** `lectura.columnas_probables()` reconoce las columnas por el nombre de la cabecera
+   (español e inglés, Debe/Haber, Cargo/Abono) **y comprobando el contenido** de las filas de ejemplo. Jev ya solo rellena lo
+   que falte (antes era la única ayuda y hacía falta tener el asistente activado).
+7. **`build.bat` ya no deja pruebas fuera:** `unittest discover` (cualquier `test_*.py` entra solo) + pantallas + flujos. Si no
+   hay navegador, `run.py` devuelve **3** y el build avisa y sigue.
+8. **Flujos con clics** (`pruebas/pruebas_flujos.js`, `run.py --flujos`, `?flujos=1`): 8 recorridos que hacen lo que haría el
+   usuario y comprueban el resultado contra el servidor de verdad.
+9. **Capturas sin cifras a medio contar:** `?quieto=1` apaga las animaciones y `run.py` lo usa en `--shot` y `--capturas`.
+10. Versión de la app a **1.1.0** (antes 1.0.0 desde el primer día).
+
+**No se ha tocado** (y por qué): el rendimiento (sobra), la estructura del código (densa pero coherente y con pruebas) y el
+repositorio público (no hay `gh` en este entorno: lo tiene que hacer el usuario en github.com).
+
 ## 10. Pendiente y backlog (por valor aproximado)
 
-**Inmediato**
-1. **Abrir la PR** de lo subido tras #9 (Bizums + contexto Jev + este documento) cuando el usuario lo pida, y fusionarla.
-2. **Probar Jev con la API real** (el usuario en su PC: Ajustes → Probar, y `python pruebas\evaluar_jev.py`; o permitir el
-   dominio en el entorno) y ajustar umbrales con aciertos reales. Comparar con/sin contexto.
-3. El usuario debe **rotar la clave de Jev** (se pegó en el chat).
-4. Actualizar el remoto de git al nuevo nombre del repo.
+**Inmediato (lo tiene que hacer el usuario: aquí no hay `gh` ni MCP de GitHub)**
+1. **El repositorio `MRspookyman/FinanceBuddy` está público.** Él no quiere publicar la app para cualquiera y `CONTEXTO.md`
+   cuenta su banco, su bróker y cuánto mete al mes, junto a commits con su nombre y correo. En github.com → *Settings* →
+   *Danger Zone* → *Change visibility* → *Private*. (En el historial **no** hay claves, IBAN ni correos dentro de los archivos.)
+2. **Probar Jev con la API real** (Ajustes → Probar, y `python pruebas\evaluar_jev.py`) y ajustar umbrales con aciertos
+   reales. Comparar con/sin contexto. Es lo único que sigue sin probarse contra el servicio de verdad.
+3. **Rotar la clave de Jev** (se pegó en el chat durante el desarrollo).
+4. Si quiere que funcione el aviso de versión, **publicar una release** en GitHub (hoy `releases/latest` devuelve 404, así que
+   el aviso nunca salta).
 
 **Producto** (ver también las olas de `docs/AUDITORIA-RUMBO.md`: Ola 1 sin red es lo más barato y visible)
-0. **Probar los precios por internet con los servicios reales** (el usuario en su PC: `python pruebas\evaluar_precios.py`) y arreglar
-   en `precios.py` lo que haya cambiado (sobre todo Morningstar, el menos documentado).
+0. ~~Probar los precios por internet con los servicios reales~~ (hecho, §9.15: responden los cuatro; el fondo de ejemplo de
+   `evaluar_precios.py` se cambió a `0P0001CLDM`, que sigue vivo).
 5. ~~Guardar ya lo importado con la categoría sugerida~~ (hecho, §9.12; texto original: «como Copilot/Lunch Money»): hoy lo dudoso no cuenta hasta revisarlo.
    Es un cambio de fondo; PR aparte.
 6. ~~Vista «Para la renta»~~ (hecho, Ola 2).
 7. ~~Rentabilidad por periodo~~ (hecho: selector desde el inicio / 1 año / este mes en Inversión).
 8. ~~Reparto objetivo y rebalanceo~~ (hecho, §9.12): % ideal por activo y a dónde va la próxima aportación.
 9. ~~Dividendos~~ (hecho: registro `cobro`). Mejora posible: usar los precios mensuales para «esfuerzo vs mercado» sin anotar valores.
-10. **Fase 4 del plan original (Ajustes por secciones):** reorganizar Ajustes, ~~día en que empieza tu mes~~ y ~~colchón
-    configurable~~ (hechos, §9.10), **exportar datos a Excel**, probar una regla antes de guardarla y
-    aplicarla a lo ya importado, fusionar/ocultar categorías.
+10. ~~Fase 4 del plan original (Ajustes por secciones)~~ (hecha, §9.12): Ajustes por secciones, día en que empieza tu mes,
+    colchón configurable, exportar datos a Excel, probar una regla antes de guardarla y fusionar/ocultar categorías.
+    Queda **probar a mano con clics el panel «Ordenar»**.
 11. **Bitcoin:** solo 12 de 21 compras tenían títulos (las antiguas no vienen en el Excel del usuario) → sin precio medio hasta
     que añada esas fechas.
 12. Menores de §9.3 y §9.4.
+13. **Formatos de serie de más bancos:** hoy solo Santander y MyInvestor vienen de fábrica. Desde el 6 oct 2026 un banco nuevo
+    se configura en un clic (§9.15), pero si alguien pasa la fila de cabecera de su banco (BBVA, CaixaBank, ING, Sabadell…)
+    se puede añadir su perfil a `plantilla.PERFILES` y subir `plantilla.VERSION`.
 
 **Técnico**
-13. Fondos desconocidos (ISIN fuera del catálogo `plantilla.ISIN`) se crean como «Fondo ‹ISIN›»: ampliar el catálogo o consultar
+14. Fondos desconocidos (ISIN fuera del catálogo `plantilla.ISIN`) se crean como «Fondo ‹ISIN›»: ampliar el catálogo o consultar
     una fuente.
-14. Si se quiere privacidad total para el asistente: motor local (Ollama + modelo tipo Jev) como alternativa a la nube.
+15. Si se quiere privacidad total para el asistente: motor local (Ollama + modelo tipo Jev) como alternativa a la nube.
+16. `bizums.enlazar` es O(Bizums × gastos) y se ejecuta al abrir: 0,5 s con 10 años de datos (§9.15). Sin prisa, pero si el
+    historial crece mucho, acotar la búsqueda por fechas.
 
 ---
 
 ## 11. Cómo retomar (checklist para Claude o para una persona)
 
-1. Lee este archivo, luego `README.md` (uso) y `.claude/skills/financebuddy-dev/SKILL.md` (módulos).
-2. `git fetch origin && git log --oneline -15` y `git status`: ¿qué hay sin fusionar? (Estado conocido: rama
-   `claude/intelligent-cerf-wuzuc9` por delante de `main` con la auditoría de Rumbo y las cuatro olas, sin PR.)
+1. Lee [`CLAUDE.md`](CLAUDE.md) (reglas, comandos, mapa y trampas). De este archivo, solo la sección que necesites: §8 el
+   porqué de las decisiones, §9 las auditorías, §10 lo pendiente. `README.md` es para quien usa la app.
+2. `git log --oneline -15` y `git status`: se trabaja en `main`, en el PC del usuario.
 3. Instala y comprueba: `pip install -r requirements.txt -r requirements-dev.txt` y
-   `python -m unittest pruebas.test_importar pruebas.test_servidor pruebas.test_jev pruebas.test_precios pruebas.test_actualizaciones`
-   (deben ser **109 correctas**).
+   `python -m unittest discover -s pruebas -p "test_*.py" -t .` (deben ser **175 correctas**), más
+   `python pruebas\run.py --tests` y `python pruebas\run.py --flujos`.
 4. Arranca con datos inventados: `python -m financebuddy --ejemplo --sin-navegador --puerto 8830 --hoy 2026-09-30`.
 5. Antes de cambiar nada, relee §1 (reglas): sobre todo **clave de Jev, datos reales, español sin jerga, la app funciona sin
    IA y nada de subir extractos**.
 6. Para añadir cualquier cosa: modelo (`modelo.CAMPOS` + `FORMS`) → lógica (módulo de dominio) → `servidor.py` (ruta/`datos()`)
-   → pantalla (`paneles/*.js`) → prueba (Python y, si hay cálculo, `pruebas_calculos.js`) → documentación (README + SKILL +
-   este archivo) → `build.bat` si hay una prueba nueva que deba pasar siempre.
-7. Al terminar: commit con atribución, push a la rama, resumen al usuario y «¿la fusiono?».
+   → pantalla (`paneles/*.js`) → prueba (Python y, si hay cálculo, `pruebas_calculos.js`; si es algo que el usuario hace con el
+   ratón, `pruebas_flujos.js`) → documentación (README + CLAUDE.md + este archivo). `build.bat` ya pasa cualquier `test_*.py`.
+7. Al terminar: commit con atribución, resumen al usuario y preguntarle si se sube.
 
 ### Cómo suele pedir las cosas el usuario (tono y expectativas)
 Habla en español, directo. Pide **auditorías** («haz una auditoría de…, mejora solo lo necesario»), **estudios en
@@ -638,3 +696,5 @@ jerga ni de cifras engañosas) que añadir funciones.
 - **Resumen sin importes**: HTML con porcentajes e índice 100; no contiene euros (no están tapados: no están).
 - **Plantilla de Excel**: hoja con desplegable de tus categorías; el perfil «Plantilla de FinanceBuddy» la importa con la categoría elegida.
 - **Cobro**: dividendo o comisión de un activo (no cambia sus participaciones).
+- **Segunda carpeta de copias** (`config.copia_extra`): un USB u otro disco donde se repite cada copia de seguridad.
+- **Flujo** (`pruebas_flujos.js`): recorrido con clics de verdad en el navegador, contra el servidor, de algo que hace el usuario.

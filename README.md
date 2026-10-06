@@ -48,6 +48,9 @@ Tipo, Activo, Estado, Títulos) completa las participaciones de ETF y cripto. Na
 cuenta, se importe antes uno u otro. Con las participaciones, en *Actualizar valores* basta con poner el precio.
 Sin valor anotado, un activo con participaciones se estima con el precio de su última compra o venta (marcado «≈»).
 
+**Reparto ideal** (*Inversión*): dices qué porcentaje quieres en cada activo y la app te enseña en cuánto te has desviado y
+**a dónde llevar la próxima aportación** para acercarte, sin vender nada. Es información, no asesoramiento financiero.
+
 **Hitos** (al final de *Inversión*): las cifras redondas de patrimonio (1 k€, 2,5 k€, 5 k€…) con la fecha en que las cruzaste, la barra
 hacia la siguiente y cuánto tardarías al ritmo actual. **Solo largo plazo**: desmarca un activo («Inversión a
 largo plazo») para dejar fuera un colchón o una apuesta de las cifras.
@@ -119,10 +122,20 @@ Lo que no cuadra aparece en *Por revisar* como un **reparto** (un solo grupo) co
 categoría, cuánto te han devuelto ya y cuánto te costó de verdad: eliges uno y queda enlazado.
 
 **Por revisar**: filtros (banco, bróker, con sugerencia) y **Revisar y aceptar las sugerencias** de una vez, con una
-casilla por grupo (las dudosas, sin marcar). Las entradas de dinero al bróker con un concepto tuyo («ahorro», «Inicio»)
+casilla por grupo (las dudosas, sin marcar). Lo que tu historial resuelve con bastante seguridad **se guarda ya** con esa
+categoría y cuenta en el mes, marcado «categoría por confirmar» (se apaga en *Ajustes → General → Importar*). Y si ninguna
+categoría tuya encaja, te propone **crear una nueva** (Mascotas, Viajes, Salud…) con su emoji: solo se crea si la pulsas. Las entradas de dinero al bróker con un concepto tuyo («ahorro», «Inicio»)
 se proponen como traspaso desde tu banco, no como la venta de un activo.
 
+**Poner orden en las categorías** (*Ajustes → Categorías*): **probar una regla** antes de guardarla (cuántos movimientos ya
+importados casarían, con una muestra, y aplicarla a todos de golpe), **fusionar** dos categorías en una y **ocultar** las que
+no usas (no se borra nada y sus movimientos siguen contando). Todo con vista previa y **Deshacer**.
+
+**Todos tus datos en Excel** (*Ajustes → Tus datos*): un `.xlsx` con una hoja por cosa (movimientos, cuentas, saldos, fijos,
+categorías, reglas, inversión, aportaciones, dividendos, objetivos y recordatorios) para consultarlo fuera de la app.
+
 **A tu gusto** (*Ajustes*): tema automático, claro u oscuro y color de acento; qué paneles ves en el Inicio y en qué orden;
+cuántos registros por página en las listas largas; el día en que empieza tu mes y tu colchón;
 icono, color y presupuesto de cada categoría (con aviso si te pasas). En *Movimientos → Por categoría* ves cada una
 frente a tu media de los meses anteriores, y en el Inicio, el ritmo de gasto del mes frente a lo que sueles llevar.
 
@@ -142,9 +155,11 @@ Importar dos veces el mismo periodo **no duplica nada**: cada movimiento se reco
 
 - **De serie** reconoce los extractos de **Santander** y la cuenta de efectivo de **MyInvestor**.
 - **Cualquier otro** banco o bróker que exporte Excel o CSV funciona:
-  - la primera vez le dices qué columna es cada cosa;
-  - vale el importe con signo, o columnas separadas de cargo y abono;
-  - el saldo es opcional, pero recomendado.
+  - la primera vez la app **reconoce sola las columnas** (fecha, concepto, importe, saldo…) por su nombre y por lo que
+    hay dentro, y solo tienes que comprobarlas y dar a guardar; si algo no lo ve claro, lo eliges tú;
+  - vale el importe con signo, o columnas separadas de cargo y abono (Debe/Haber);
+  - el saldo es opcional, pero recomendado;
+  - a partir de ahí ese banco queda guardado como un formato y se reconoce solo.
 - **Sin preguntar de qué cuenta es**: si el extracto trae el IBAN, la app lo recuerda (sus 4 últimas cifras) y la próxima vez lo importa en su cuenta sola.
 - **Tus traspasos**: si el extracto trae el titular, el dinero que mueves a tu nombre se reconoce como traspaso (no como gasto o ingreso). Y si la salida de una cuenta y la entrada en otra (mismo importe, ±3 días) están en extractos distintos, se emparejan solas.
 - **Inversión**: las compras se asignan a cada activo por el texto con el que aparecen en el extracto. La primera vez te propone crear el activo (con nombre y tipo) y con un clic guarda todas sus compras.
@@ -162,6 +177,17 @@ Están en `Documentos\FinanceBuddy` (se puede cambiar en *Ajustes*):
 
 Para llevarte tus datos a otro ordenador, copia la carpeta entera.
 
+**Copias en otro sitio** (*Ajustes → Tus datos y copias → Guardar también las copias en otro sitio*): si pones la carpeta de
+un USB, de otro disco o de una carpeta sincronizada, cada copia se guarda también ahí. Las copias de `Copias\` están en el
+mismo disco que tus datos: si ese disco falla, se van con él. Si el sitio no está disponible (el USB sin poner), la app sigue
+funcionando y te lo avisa en esa misma pantalla.
+
+**Si algo va mal al abrir:** la app te lo explica en un cuadro en vez de cerrarse sin más. Si el archivo de datos se ha
+dañado, te ofrece volver a la última copia (el archivo dañado no se borra: se guarda al lado como `datos.db.roto …`).
+
+**Al borrar una cuenta o una categoría que se está usando**, la app te dice antes cuántos movimientos la usan y qué pasaría
+con ellos. Para juntar dos categorías sin perder nada, mejor *Ajustes → Categorías → Fusionar*.
+
 ## Para desarrolladores
 
 Requisitos: Python 3.10+ en Windows.
@@ -170,10 +196,11 @@ Requisitos: Python 3.10+ en Windows.
 pip install -r requirements.txt -r requirements-dev.txt
 python -m financebuddy                 :: arranca con tus datos (Documentos\FinanceBuddy)
 python -m financebuddy --ejemplo       :: con datos inventados en una carpeta temporal
-python -m unittest pruebas.test_importar pruebas.test_servidor pruebas.test_jev pruebas.test_precios pruebas.test_actualizaciones
+python -m unittest discover -s pruebas -p "test_*.py" -t .   :: todas las pruebas de Python
 python pruebas\run.py --tests          :: todas las pantallas en Chrome/Edge sin ventana + pruebas de cálculos
+python pruebas\run.py --flujos         :: flujos con clics (apuntar, resolver dudas, buscar, borrar, ajustes)
                                        :: (otro navegador: variable FB_NAVEGADOR con la ruta de chrome)
-build.bat                              :: genera dist\FinanceBuddy.exe
+build.bat                              :: pasa todo lo anterior y genera dist\FinanceBuddy.exe
 ```
 
 Estructura:
@@ -192,7 +219,8 @@ financebuddy/
   cartera.py       arreglos a mano: unir activos, deshacer un traspaso tomado por venta, cuadrar participaciones
   precios.py       precios por internet (opcional): Yahoo, Morningstar, CoinGecko, caché, cambio de moneda, buscador y comparador
   actualizaciones.py  aviso de versión nueva (opcional)
-  exportar.py      plantilla de Excel con desplegable de categorías
+  exportar.py      plantilla de Excel con desplegable de categorías y exportación de todos tus datos a Excel
+  ordenar.py       poner orden en las categorías: probar una regla antes de guardarla, fusionar y ocultar categorías
   bizums.py        Bizums recibidos: casar con el gasto que devuelven (aritmética de repartos) y enlazarlo
   jev.py           asistente opcional Jev (TypeSafe AI): dudas del banco y del bróker, repaso de categorías, apuntar, fijos y formatos nuevos
   plantilla.py     categorías, reglas y formatos de serie
@@ -201,9 +229,13 @@ financebuddy/
 pruebas/           pruebas (Python y cálculos en el navegador)
 ```
 
-Los módulos de `web/paneles/` se concatenan y comparten ámbito, en este orden: `datos`, `calculos`, `componentes`, `graficos`, `inicio`, `inversion`, `renta`, `precios`, `exportar`, `formularios`, `pantallas`.
+Los módulos de `web/paneles/` se concatenan y comparten ámbito **en el orden de `servidor.MODULOS`**: `datos`, `calculos`,
+`calculos_saldos`, `calculos_avisos`, `componentes`, `graficos`, `inicio`, `inversion`, `renta`, `precios`, `exportar`,
+`formularios`, `bienvenida`, `importar`, `revisar`, `fijos`, `cierre`, `ajustes`, `gestionar`, `pantallas`. Si añades uno,
+ponlo en esa lista en su sitio.
 
-Con [Claude Code](https://claude.com/claude-code), la skill `.claude/skills/financebuddy-dev` explica la arquitectura y cómo probar y extender la app.
+Con [Claude Code](https://claude.com/claude-code), [`CLAUDE.md`](CLAUDE.md) tiene lo imprescindible para trabajar en el repo
+(reglas, comandos y trampas conocidas).
 
 Comparativa con otra app similar: [`docs/AUDITORIA-RUMBO.md`](docs/AUDITORIA-RUMBO.md).
 
