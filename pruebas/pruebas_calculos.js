@@ -144,6 +144,16 @@ caso("Reparto objetivo: la próxima aportación va al activo más por debajo", R
 const RO2 = F.repartoObjetivo([{ valor: 650, p: { objetivo: 70 } }, { valor: 350, p: { objetivo: 30 } }]);
 caso("Reparto objetivo: dentro de la banda de 5 puntos no hay que hacer nada", RO2 && !RO2.proxima && RO2.dentro, null);
 
+const RA = F.repartoAportacion([{ valor: 6000, p: { nombre: "A", objetivo: 70 } }, { valor: 1000, p: { nombre: "B", objetivo: 30 } }], 300);
+caso("Aportación: se reparte entera y solo a lo que está por debajo del objetivo (sin vender)", RA && RA.lineas[0].aporta === 0 && RA.lineas[1].aporta === 300 && RA.lineas.every((l) => l.aporta >= 0), JSON.stringify(RA && RA.lineas.map((l) => l.aporta)));
+const RA2 = F.repartoAportacion([{ valor: 1000, p: { objetivo: 50 } }, { valor: 500, p: { objetivo: 30 } }, { valor: 0, p: { objetivo: 20 } }], 1000);
+caso("Aportación: suma exactamente el importe, en céntimos, y se acerca al objetivo", RA2 && Math.round(RA2.lineas.reduce((a, l) => a + l.aporta, 0) * 100) === 100000 && Math.abs(RA2.lineas[0].despues - 50) < 1e-6, JSON.stringify(RA2 && RA2.lineas.map((l) => [l.aporta, l.despues])));
+const RA3 = F.repartoAportacion([{ valor: 100, p: { objetivo: 1 } }, { valor: 100, p: { objetivo: 1 } }, { valor: 100, p: { objetivo: 1 } }], 100);
+caso("Aportación: los céntimos que sobran se reparten (100 € entre 3 = 33,34 + 33,33 + 33,33)", RA3 && RA3.normalizado && RA3.lineas.map((l) => l.aporta).sort().join() === "33.33,33.33,33.34", JSON.stringify(RA3 && RA3.lineas.map((l) => l.aporta)));
+caso("Aportación: sin importe solo muestra la desviación; sin objetivos, nada", F.repartoAportacion([{ valor: 5, p: { objetivo: 100 } }], 0).lineas[0].aporta === 0 && F.repartoAportacion([{ valor: 5, p: {} }], 50) === null, null);
+caso("Validar objetivos: suma 100 válida; 90 faltan 10; 120 sobran; fuera de rango; vacío = quitar",
+  F.validarObjetivos(["70", "30,0"]).ok && F.validarObjetivos(["60", "30"]).falta === 10 && !F.validarObjetivos(["80", "40"]).ok && F.validarObjetivos(["80", "40"]).falta === -20 && !F.validarObjetivos(["101", ""]).ok && F.validarObjetivos(["", ""]).vacio, JSON.stringify(F.validarObjetivos(["60", "30"])));
+
 const RESMES = F.resumenMes("2026-08");
 caso("Resumen del mes: frases de entradas y salidas, lo que más pesó y la inversión", RESMES.length >= 3 && /Entraron 1\.850/.test(RESMES[0]) && /Metiste/.test(RESMES[RESMES.length - 1]), JSON.stringify(RESMES));
 caso("Fijos que suben de precio: sin subidas en los datos de ejemplo", F.subidasFijos().length === 0, JSON.stringify(F.subidasFijos()));

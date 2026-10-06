@@ -298,6 +298,23 @@ class App:
         if ruta == "/api/borrar":
             if d.get("tipo") not in modelo.EDITABLES: raise ValueError("Tipo no editable.")
             a.borrar(d["tipo"], int(d["id"])); return {"ok": True}
+        if ruta == "/api/objetivos":  # reparto objetivo: {id de activo: %}. Vacío = quitar el objetivo de todos. Si hay alguno, suman 100.
+            a_ver = d.get("objetivos") or {}
+            if not isinstance(a_ver, dict): raise ValueError("Objetivos no válidos.")
+            nuevos = {}
+            for k, v in a_ver.items():
+                n = modelo.numero(v)
+                if n is None: continue
+                if not 0 <= n <= 100: raise ValueError("Cada porcentaje tiene que estar entre 0 y 100.")
+                if n > 0: nuevos[int(k)] = n
+            if nuevos and abs(sum(nuevos.values()) - 100) > 0.05:
+                raise ValueError(f"Los porcentajes suman {round(sum(nuevos.values()), 2)} %, tienen que sumar 100 %.")
+            with a.transaccion():
+                for r in a.todos("activo"):
+                    datos = {k: v for k, v in r.items() if k not in ("id", "objetivo")}
+                    if r["id"] in nuevos: datos["objetivo"] = nuevos[r["id"]]
+                    if r.get("objetivo") != datos.get("objetivo"): a.guardar("activo", datos, r["id"])
+            return {"ok": True, "mensaje": "Reparto objetivo guardado ✓" if nuevos else "Reparto objetivo quitado"}
         if ruta == "/api/config":
             for k, v in (d or {}).items():
                 if k in ("limite_variable",): a.set_config(k, modelo.numero(v) or 0)
