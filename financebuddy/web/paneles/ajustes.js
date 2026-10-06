@@ -97,6 +97,21 @@ function vistaAjustes() {
   const fc = pC.createDiv({ cls: "fb-fila" });
   const bAbrir = fc.createEl("button", { cls: "fb-btn sec", text: "Abrir la carpeta" }); bAbrir.onclick = () => FB.api("/api/abrir_carpeta", { que: "datos" });
   const bCopia = fc.createEl("button", { cls: "fb-btn sec", text: "Hacer una copia ahora" }); bCopia.onclick = async () => { const r = await FB.api("/api/copia", {}); FB.aviso(r.mensaje || "Hecho"); };
+  // Segunda copia en otro sitio (un USB, otro disco, una carpeta sincronizada): si el disco falla, las copias de al lado se van con él
+  const detX = pC.createEl("details"); detX.createEl("summary", { text: "Guardar también las copias en otro sitio" });
+  detX.createDiv({ cls: "fin-note", text: "Si pones aquí una carpeta de un USB, de otro disco o de una carpeta sincronizada, cada copia se guarda también ahí. Si ese sitio no está disponible (el USB sin poner), la app sigue como si nada y te lo dice aquí." });
+  const frX = detX.createDiv({ cls: "fb-fila" });
+  const iX = frX.createEl("input", { attr: { type: "text", placeholder: "E:\\Copias de FinanceBuddy", "aria-label": "Carpeta para la segunda copia" } });
+  iX.value = DB.config.copia_extra || "";
+  const bX = frX.createEl("button", { cls: "fb-btn sec", text: "Guardar" });
+  bX.onclick = async () => {
+    const r = await FB.api("/api/copia_extra", { carpeta: iX.value });
+    FB.aviso(r.mensaje || "Hecho", !r.ok);
+    await FB.refrescar();
+  };
+  const fallo = DB.config.copia_extra_error;
+  if (fallo) mensaje(detX, `La última copia en ${fallo.carpeta} no se pudo guardar (${fallo.motivo}). Las copias de la carpeta Copias sí están.`, "err");
+  else if (DB.config.copia_extra) detX.createDiv({ cls: "fin-note", text: "Última copia guardada ahí sin problemas." });
   const det = pC.createEl("details"); det.createEl("summary", { text: "Restaurar una copia" });
   const fr = det.createDiv({ cls: "fb-fila" });
   const sCop = fr.createEl("select", { attr: { "aria-label": "Copia de seguridad" } });

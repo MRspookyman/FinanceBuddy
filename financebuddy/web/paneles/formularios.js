@@ -277,7 +277,12 @@ function formulario(padre, tipo, reg, opciones = {}) {
       const nOps = tipo === "activo" ? (DB.registros.aportacion || []).filter((x) => x.activo === reg.nombre).length : 0;
       if (!confirm(tipo === "activo" ? `¿Borrar «${reg.nombre}» con sus ${nOps} operaciones y dividendos? No se puede deshacer (salvo restaurando una copia de seguridad).\n\nSi solo quieres dejar de verlo porque lo vendiste, mejor cámbiale el estado a «Vendido».`
         : `¿Borrar este ${F.uno}? No se puede deshacer (salvo restaurando una copia de seguridad).`)) return;
-      const r = tipo === "activo" ? await FB.api("/api/activo/borrar", { id: reg.id }) : await FB.api("/api/borrar", { tipo, id: reg.id });
+      let r = tipo === "activo" ? await FB.api("/api/activo/borrar", { id: reg.id }) : await FB.api("/api/borrar", { tipo, id: reg.id });
+      // Si algo se apoya en esto (movimientos de una cuenta, gastos de una categoría…), el servidor no lo borra sin que lo veas
+      if (r.necesita_confirmar) {
+        if (!confirm(`${r.mensaje}\n\n¿Lo borras de todas formas?`)) return;
+        r = await FB.api("/api/borrar", { tipo, id: reg.id, confirmar: true });
+      }
       if (!r.ok) { mensaje(msg, r.mensaje || "Error", "err"); return; }
       FB.aviso("Borrado");
       await FB.recargar();
