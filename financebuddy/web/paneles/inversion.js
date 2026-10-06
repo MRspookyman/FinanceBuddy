@@ -131,7 +131,9 @@ function tarjetaEvolucion(p, solo) {
   t.createDiv({ cls: "s", text: `hoy · ${eur(met, 0)} metidos` });
   lineas(p, { etiquetas: EV.keys.map(mesLbl), etiquetasX: EV.keys.map(mesCorto), series, marcas, alto: 190 });
   leyenda(p, series.map((s) => [s.nombre, s.color]));
-  if (EV.valor.filter((v) => v != null).length < 2) p.createDiv({ cls: "fin-note", text: "La línea del valor se completa cada vez que actualizas los valores o cierras un mes." });
+  const conValor = EV.valor.filter((v) => v != null).length;
+  if (conValor < 2) p.createDiv({ cls: "fin-note", text: (conValor === 1 ? "De momento solo se sabe el valor de hoy (el punto de la derecha): " : "Aún no hay valores anotados: ")
+    + "la línea se va dibujando cada vez que actualizas los valores o cierras un mes." });
 }
 
 function tarjetaReparto(p, I) {

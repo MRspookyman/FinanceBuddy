@@ -145,21 +145,45 @@ function panelReembolsos(padre, reg) {
 }
 function cambioCategoria(padre, reg, volver) {
   const p = panel(padre, "Cambiar la categoría");
-  const chips = p.createDiv({ cls: "fb-cats" });
-  const opciones = p.createDiv({ cls: "fb-fila fb-opciones" });
-  let parecidos = true, recordar = true;
+  let parecidos = false, recordar = false;
   const conExtracto = !!reg.ext_texto;
+  // Qué va a pasar al pulsar una categoría, delante y a la vista: un clic puede cambiar decenas de movimientos y dejar una
+  // regla para siempre, y eso estaba en dos casillas pequeñas debajo de los botones. Se marcan solas **la primera vez**;
+  // si ya tienes una regla tuya de ese comercio salen desactivadas, porque entonces lo que manda es la regla.
   if (conExtracto) {
-    const l1 = opciones.createEl("label"); const c1 = l1.createEl("input", { attr: { type: "checkbox" } }); c1.checked = true; c1.onchange = () => (parecidos = c1.checked);
-    const t1 = l1.createSpan({ text: "Cambiar también los parecidos" });
-    const l2 = opciones.createEl("label"); const c2 = l2.createEl("input", { attr: { type: "checkbox" } }); c2.checked = true; c2.onchange = () => (recordar = c2.checked);
-    l2.appendText("y recordarlo para los próximos");
+    const caja = p.createDiv({ cls: "fb-aplicar" });
+    caja.createDiv({ cls: "et", text: "Al elegir una categoría" });
+    const opcion = (texto) => {
+      const l = caja.createEl("label");
+      const c = l.createEl("input", { attr: { type: "checkbox" } });
+      c.disabled = true;  // hasta saber si ya hay regla no se promete nada
+      const t = l.createSpan({ text: texto });
+      return { l, c, t };
+    };
+    const o1 = opcion("Cambiar también los demás movimientos de este comercio");
+    const o2 = opcion("Recordarlo para los próximos");
+    const por = caja.createDiv({ cls: "por", text: "Comprobando qué hay de este comercio…" });
     FB.api("/api/parecidos", { id: reg.id }).then((r) => {
-      if (!r.ok) return;
-      if (!r.n) { l1.style.display = "none"; parecidos = false; }
-      t1.textContent = `Cambiar también ${r.n === 1 ? "el otro movimiento" : `los otros ${r.n} movimientos`} de «${C_titulo(r.patron)}»`;
+      if (!r.ok) { por.setText("No se ha podido comprobar: se cambiará solo este movimiento."); return; }
+      const quien = `«${C_titulo(r.patron)}»`;
+      if (r.n) o1.t.setText(`Cambiar también ${r.n === 1 ? "el otro movimiento" : `los otros ${r.n} movimientos`} de ${quien}`);
+      o2.t.setText(`Recordarlo para los próximos de ${quien}`);
+      if (!r.n) o1.l.style.display = "none";
+      por.empty();
+      if (r.regla) {  // ya hay una regla tuya: ni se tocan los demás ni se reescribe sola
+        for (const o of [o1, o2]) o.l.addClass("off");
+        por.appendText(`Ya tienes una regla para ${quien}: lo suyo va a ${r.regla.categoria || "su categoría"}. Esto cambia solo este movimiento. `);
+        enlace(por, "Para los demás y los próximos, cambia la regla →", `#editar/regla/${r.regla.id}`);
+        return;
+      }
+      for (const o of [o1, o2]) { o.c.disabled = false; o.c.checked = true; }
+      parecidos = !!r.n; recordar = true;
+      o1.c.onchange = () => (parecidos = o1.c.checked);
+      o2.c.onchange = () => (recordar = o2.c.checked);
+      por.setText("Es la primera vez que clasificas este comercio: por eso van marcadas.");
     });
   }
+  const chips = p.createDiv({ cls: "fb-cats" });
   const grupo = reg.clase === "ingreso" ? "ingreso" : "gasto";
   for (const [c] of catSegunClase({ clase: grupo })) {
     const b = chips.createEl("button", { text: `${catIcono(c)} ${c}`, cls: c === reg.categoria ? "act" : "" });

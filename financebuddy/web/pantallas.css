@@ -14,6 +14,13 @@
 .fb-grupo .fin-more{margin:10px 0 0;border:none;background:none}
 .fb-grupo .fin-more>summary{padding:4px 0;font-size:.82em;color:var(--ink-3);font-weight:600}
 .fb-grupo .fin-more-body{padding:4px 0 0}
+/* Lo que va a pasar al elegir una categoría: antes eran dos casillas pequeñas debajo de los botones */
+.fb-aplicar{margin:4px 0 2px;padding:12px 14px;border-radius:var(--r-s);border:1px solid var(--line);background:var(--surface-2)}
+.fb-aplicar .et{font-size:.78em;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-2);margin-bottom:8px}
+.fin .fb-aplicar label{display:flex;align-items:flex-start;gap:9px;padding:3px 0;font-size:.95em;cursor:pointer}
+.fin .fb-aplicar label input{flex:none;width:17px;height:17px;margin:2px 0 0;accent-color:var(--brand);cursor:pointer}
+.fin .fb-aplicar label.off,.fin .fb-aplicar label.off input{color:var(--ink-3);cursor:default}
+.fb-aplicar .por{margin-top:9px;font-size:.86em;color:var(--ink-2)}
 .fb-cats{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
 .fb-cats>a{align-self:center;font-size:.85em;color:var(--ink-2);margin-left:4px}
 .fin .fb-cats button{all:unset;cursor:pointer;display:inline-flex;align-items:center;gap:6px;padding:6px 11px;border-radius:8px;font-size:.86em;font-weight:620;color:var(--ink);background:var(--surface);border:1px solid var(--line);transition:background .12s,border-color .12s,transform 120ms var(--ease-out)}

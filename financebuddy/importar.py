@@ -586,7 +586,11 @@ def parecidos(alm, mid):
     m = alm.obtener("movimiento", mid)
     if not m: raise ValueError("Ese movimiento ya no existe.")
     patron, otros = _parecidos(alm, m)
-    return {"patron": patron, "n": len(otros), "distintos": sum(1 for x in otros if x.get("categoria") != m.get("categoria"))}
+    # Tu regla de este comercio, si ya la tienes: «recordar» la reescribiría, así que la página avisa en vez de hacerlo sola.
+    # Solo las tuyas: sobre una de la plantilla sí se puede poner la tuya encima (es lo que hace «recordar» la primera vez).
+    r = next((x for x in alm.todos("regla") if x.get("origen") != "plantilla" and patron and L.norm(x["patron"]) == patron), None)
+    return {"patron": patron, "n": len(otros), "distintos": sum(1 for x in otros if x.get("categoria") != m.get("categoria")),
+            "regla": {"id": r["id"], "categoria": r.get("categoria") or ""} if r else None}
 
 def recategorizar(alm, mid, d):
     """d: {categoria, parecidos: bool, recordar: bool}. Cambia la categoría del movimiento; con `parecidos`, también la de

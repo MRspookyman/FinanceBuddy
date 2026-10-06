@@ -29,7 +29,7 @@ cada decisión, backlog): se consulta por secciones cuando hace falta, no entero
 
 ```bat
 python -m financebuddy --ejemplo --sin-navegador --puerto 8830 --hoy 2026-09-30   :: app con datos inventados
-python -m unittest discover -s pruebas -p "test_*.py" -t .     :: 175 pruebas de Python
+python -m unittest discover -s pruebas -p "test_*.py" -t .     :: 176 pruebas de Python
 python pruebas\run.py --tests                                  :: 20 pantallas sin errores + 84 pruebas de cálculos
 python pruebas\run.py --flujos                                 :: 10 flujos con clics de verdad
 python pruebas\run.py --capturas                               :: capturas en claro y oscuro (%TEMP%\fb-pruebas)

@@ -30,7 +30,7 @@
   aviso al borrar algo en uso, columnas de bancos nuevos reconocidas solas y flujos con clics.
 - **Internet:** los precios **sí se han probado ya contra los servicios reales** desde el PC del usuario (6 oct 2026, §9.15):
   Yahoo, Morningstar, CoinGecko y Frankfurter responden. **Jev sigue sin probarse con la API real.**
-- **Tests:** 175 de Python (`unittest`), 84 de cálculos, 20 pantallas sin errores y **10 flujos con clics**. Siempre en verde al
+- **Tests:** 176 de Python (`unittest`), 84 de cálculos, 20 pantallas sin errores y **10 flujos con clics**. Siempre en verde al
   cerrar cada tarea; `build.bat` los pasa todos.
 
 ---
@@ -219,7 +219,7 @@ Atajos: `?` (ayuda), `I`, `A`, `D`, `1`–`5`.
 ## 5. Pruebas y cómo verificar (siempre tras un cambio)
 
 ```bat
-python -m unittest discover -s pruebas -p "test_*.py" -t .           :: 175 pruebas de Python (sin red). Un test_*.py nuevo entra solo
+python -m unittest discover -s pruebas -p "test_*.py" -t .           :: 176 pruebas de Python (sin red). Un test_*.py nuevo entra solo
 python pruebas\run.py --tests                                        :: 20 pantallas sin errores + 84 pruebas de cálculos
 python pruebas\run.py --flujos                                       :: 10 flujos con clics de verdad (pruebas_flujos.js)
 python pruebas\run.py inicio,movimientos --shot [--tema=oscuro]      :: capturas en %TEMP%\fb-pruebas (sin animaciones: ?quieto=1)
@@ -673,6 +673,23 @@ y gana); los nombres de los campos de formulario (`etiquetar()` los cubre; solo 
 «Por revisar»); la línea «Valor» de Evolución y las barras de aportaciones siguen en `--brand` **a propósito**: es el color de
 acento de la app (configurable), no el verde semántico.
 
+### 9.17 Dos cosas que pidió el usuario mirando sus datos (6 oct 2026)
+
+1. **«No se ve el valor en verde»** (Inversión → Evolución). No era el color: `lineas()` hacía `if (pts.length < 2) continue`,
+   así que una serie con **un solo dato** no dibujaba nada, ni línea ni punto. Con sus datos (aportaciones desde hace meses y
+   ningún valor anotado todavía) el único valor conocido es el de hoy, así que la leyenda decía «Valor» y el gráfico estaba
+   vacío. Ahora con un solo dato se pinta su punto, y la nota de debajo lo explica («De momento solo se sabe el valor de hoy
+   (el punto de la derecha)…»). Comprobado con dos bases hechas a mano: con un valor → 1 punto y la nota; con dos → línea y
+   sin nota.
+2. **«Cambiar también los demás y recordarlo» más visible, y desactivado si ya hay regla.** Eran dos casillas pequeñas
+   *debajo* de los botones de categoría, marcadas siempre, y un clic podía cambiar decenas de movimientos y dejar una regla
+   para siempre. Ahora es una caja con rótulo («Al elegir una categoría») **encima** de los botones. `/api/parecidos` dice
+   además si ya existe una **regla tuya** de ese comercio (`regla: {id, categoria}`; las de la plantilla no cuentan, porque
+   sobre esas sí se pone la tuya la primera vez): si la hay, las dos opciones salen **desactivadas** con «Ya tienes una regla
+   para «X»: lo suyo va a Y. Esto cambia solo este movimiento» y un enlace a la regla, que es donde se cambia para todos. Si
+   no la hay, van marcadas y lo dice: «Es la primera vez que clasificas este comercio: por eso van marcadas».
+   Prueba nueva (176 de Python): `test_parecidos_dice_si_ya_hay_una_regla_tuya_de_ese_comercio`.
+
 ## 10. Pendiente y backlog (por valor aproximado)
 
 **Inmediato (lo tiene que hacer el usuario: aquí no hay `gh` ni MCP de GitHub)**
@@ -723,7 +740,7 @@ acento de la app (configurable), no el verde semántico.
    porqué de las decisiones, §9 las auditorías, §10 lo pendiente. `README.md` es para quien usa la app.
 2. `git log --oneline -15` y `git status`: se trabaja en `main`, en el PC del usuario.
 3. Instala y comprueba: `pip install -r requirements.txt -r requirements-dev.txt` y
-   `python -m unittest discover -s pruebas -p "test_*.py" -t .` (deben ser **175 correctas**), más
+   `python -m unittest discover -s pruebas -p "test_*.py" -t .` (deben ser **176 correctas**), más
    `python pruebas\run.py --tests` y `python pruebas\run.py --flujos`.
 4. Arranca con datos inventados: `python -m financebuddy --ejemplo --sin-navegador --puerto 8830 --hoy 2026-09-30`.
 5. Antes de cambiar nada, relee §1 (reglas): sobre todo **clave de Jev, datos reales, español sin jerga, la app funciona sin

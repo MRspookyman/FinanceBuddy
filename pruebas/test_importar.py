@@ -221,6 +221,21 @@ class TestAprender(Base):
         self.assertEqual([x["categoria"] for x in self.movs() if x["fecha"] == "2026-09-20"], ["Hogar"])
         with self.assertRaises(ValueError): IM.recategorizar(self.a, m["id"], {"categoria": "No existe"})
 
+    def test_parecidos_dice_si_ya_hay_una_regla_tuya_de_ese_comercio(self):
+        """La pantalla marca sola «cambiar los demás y recordarlo» solo la primera vez: si ya hay una regla tuya de ese
+        comercio, sale desactivado (lo que manda es la regla) y para eso necesita saber que existe y a dónde manda."""
+        self.importar(self.extracto([("2026-09-01", "Compra Mercadona, Madrid", -10.0), ("2026-09-08", "Compra Mercadona, Madrid", -20.0)]))
+        m = next(x for x in self.movs() if x["importe"] == 10.0)
+        r = IM.parecidos(self.a, m["id"])
+        self.assertEqual((r["n"], r["regla"]), (1, None))  # la primera vez no hay nada tuyo
+        IM.recategorizar(self.a, m["id"], {"categoria": "Hogar", "parecidos": True, "recordar": True})
+        r = IM.parecidos(self.a, m["id"])
+        self.assertEqual(r["regla"]["categoria"], "Hogar")
+        self.assertTrue(self.a.obtener("regla", r["regla"]["id"]))
+        # Una regla de la plantilla no cuenta: sobre esa sí se puede poner la tuya desde ahí
+        self.a.borrar("regla", r["regla"]["id"])
+        self.assertIsNone(IM.parecidos(self.a, m["id"])["regla"])
+
     def test_categoria_icono_y_color(self):
         i = self.a.guardar("categoria", {"nombre": "Pádel", "grupo": "variable", "icono": "🎾", "color": "#12AB34"})
         self.assertEqual(self.a.obtener("categoria", i)["color"], "#12AB34")

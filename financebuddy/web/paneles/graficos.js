@@ -98,13 +98,16 @@ function lineas(padre, { etiquetas, series, marcas, etiquetasX, alto = 200 }) {
     const s = [`<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img">`];
     ejeY(s, ticks.filter((v) => v !== 0), Y, L, W, R);
     s.push(`<line class="base" x1="${L}" x2="${W - R}" y1="${Y(0).toFixed(1)}" y2="${Y(0).toFixed(1)}"/>`);
+    // El punto del final de una serie continua (y, si solo hay un dato, ese punto solo: si no, la serie no se vería)
+    const punto = (se, [x, y]) => s.push(`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="4.5" style="fill:${se.color};stroke:var(--surface);stroke-width:2.5"/>`);
     for (const se of series) {
       const pts = se.valores.map((v, i) => (v == null ? null : [X(i), Y(v)])).filter(Boolean);
-      if (pts.length < 2) continue;
+      if (!pts.length) continue;
+      if (pts.length === 1) { if (!se.discontinua) punto(se, pts[0]); continue; }  // un solo dato: el punto, que una línea no hay
       const d = pts.map(([x, y], i) => `${i ? "L" : "M"}${x.toFixed(1)},${y.toFixed(1)}`).join("");
       if (se.area) s.push(`<path d="${d}L${pts[pts.length - 1][0].toFixed(1)},${Y(0).toFixed(1)}L${pts[0][0].toFixed(1)},${Y(0).toFixed(1)}Z" style="fill:${se.color};opacity:.1"/>`);
       s.push(`<path d="${d}" style="fill:none;stroke:${se.color};stroke-width:${se.discontinua ? 1.6 : 2.6};stroke-linejoin:round;stroke-linecap:round${se.discontinua ? `;stroke-dasharray:${se.discontinua === true ? "5 5" : se.discontinua}` : ""}"/>`);
-      if (!se.discontinua) { const [x, y] = pts[pts.length - 1]; s.push(`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="4.5" style="fill:${se.color};stroke:var(--surface);stroke-width:2.5"/>`); }
+      if (!se.discontinua) punto(se, pts[pts.length - 1]);
     }
     const gw = (W - L - R) / Math.max(1, n - 1);
     etiquetas.forEach((et, i) => {
