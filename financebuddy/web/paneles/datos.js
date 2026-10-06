@@ -176,7 +176,7 @@ const movsDelMes = (key) => {
   return _movsMes.get(key) || [];
 };
 const categorias = () => (_cats ??= registros("categoria").map((p) => ({
-  p, nombre: p.nombre, grupo: txt(p.grupo).toLowerCase() || "variable", presupuesto: num(p.presupuesto),
+  p, nombre: p.nombre, grupo: txt(p.grupo).toLowerCase() || "variable", presupuesto: num(p.presupuesto), oculta: p.oculta === true,
 })));
 const activoDe = (p) => ({
   p, nombre: p.nombre, clase: txt(p.clase) || "otro", cuenta: txt(p.cuenta), valor: num(p.valor), conValor: hasNum(p.valor), ter: hasNum(p.ter) ? num(p.ter) : null, fechaValor: toDate(p.fecha_valor),

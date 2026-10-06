@@ -1,7 +1,7 @@
 # Servidor local de la app: sirve las pantallas (web/) y una API JSON sobre la base de datos.
 # Solo escucha en 127.0.0.1 y cada arranque genera una clave que la página envía en la cabecera X-FB-Token.
 import base64, datetime, http.server, io, json, mimetypes, os, re, secrets, socketserver, tempfile, threading, traceback, urllib.parse
-from . import VERSION, actualizaciones, bizums, cartera, clasificar as C, detectar, exportar, importar as IM, jev, modelo, plantilla, precios, rutas
+from . import VERSION, actualizaciones, bizums, cartera, clasificar as C, detectar, exportar, importar as IM, jev, modelo, ordenar, plantilla, precios, rutas
 from .almacen import Almacen
 
 mimetypes.add_type("font/woff2", ".woff2")
@@ -360,6 +360,20 @@ class App:
         if ruta == "/api/actualizaciones/comprobar":
             try: return {"ok": True, **actualizaciones.comprobar(a, bool(d.get("forzar")))}
             except actualizaciones.ErrorActualizacion as e: return {"ok": False, "mensaje": str(e)}
+        if ruta == "/api/exportar_datos": return {"ok": True, "nombre": f"FinanceBuddy-datos-{datetime.date.today().isoformat()}.xlsx", "contenido": base64.b64encode(exportar.datos_excel(a)).decode()}
+        if ruta == "/api/regla/probar": return {"ok": True, **ordenar.probar_regla(a, d)}
+        if ruta == "/api/regla/aplicar":
+            self.deshacer = a.instantanea()
+            return {"ok": True, "mensaje": ordenar.aplicar_regla(a, d)}
+        if ruta == "/api/categoria/fusionar":
+            if d.get("previa"): return ordenar.vista_fusion(a, d.get("origen"), d.get("destino"))
+            ordenar.vista_fusion(a, d.get("origen"), d.get("destino"))  # valida antes de guardar la foto
+            self.deshacer = a.instantanea()
+            return {"ok": True, "mensaje": ordenar.fusionar(a, d.get("origen"), d.get("destino"))}
+        if ruta == "/api/categoria/ocultar":
+            self.deshacer = a.instantanea()
+            return {"ok": True, "mensaje": ordenar.ocultar(a, [str(x) for x in (d.get("nombres") or [])], d.get("ocultar") is not False)}
+        if ruta == "/api/categoria/uso": return {"ok": True, "uso": ordenar.uso(a)}
         if ruta == "/api/plantilla": return {"ok": True, "nombre": "FinanceBuddy-plantilla.xlsx", "contenido": base64.b64encode(exportar.plantilla_excel(a)).decode()}
         if ruta.startswith("/api/precios/"): return self.precios(ruta[len("/api/precios/"):], d)
         if ruta == "/api/config/descartar_aviso":  # avisos de la revisión de la cartera que el usuario da por buenos

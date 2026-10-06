@@ -10,7 +10,7 @@ CAMPOS = {
     # iban: sus 4 últimas cifras (para saber de qué cuenta es un extracto sin preguntar).
     "cuenta": {"nombre": "texto*", "tipo": ("corriente", "ahorro", "broker", "otro"), "extracto": "bool", "iban": "texto", "notas": "texto"},
     # icono: un emoji · color: #RRGGBB (si faltan, la app pone uno propio de la categoría).
-    "categoria": {"nombre": "texto*", "grupo": ("variable", "fijo", "ingreso"), "presupuesto": "num+", "icono": "texto", "color": "texto", "descripcion": "texto"},
+    "categoria": {"nombre": "texto*", "grupo": ("variable", "fijo", "ingreso"), "presupuesto": "num+", "icono": "texto", "color": "texto", "descripcion": "texto", "oculta": "bool"},  # oculta: no sale al elegir categoría (se conserva)
     # importe siempre positivo: la clase da el signo. Transferencias con destino (sale) u origen (entra) = otra cuenta.
     # ext_*: huella de la fila del extracto de la que sale (para no importarla dos veces).
     "movimiento": {"fecha": "fecha*", "clase": ("gasto", "ingreso", "reembolso", "transferencia"), "categoria": "texto",
