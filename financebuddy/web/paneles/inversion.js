@@ -63,6 +63,7 @@ function vistaInversion() {
   tarjetaEvolucion(panel(g1, "Evolución", null, "Lo que llevas metido (línea discontinua) y lo que valía al final de cada mes en que anotaste los valores, más el de hoy."), solo);
   tarjetaReparto(panel(g1, "Cómo está repartido"), I);
 
+  if (repartoAportacion(I.filas, 0)) panelObjetivo(root, I.filas);
   tablaActivos(panel(root, "Tus activos", { text: "Editar", ruta: "#gestionar/activo" }), I);
 
   const g2 = root.createDiv({ cls: "fin-grid dos" });
@@ -149,13 +150,100 @@ function tarjetaReparto(p, I) {
     const b = el.querySelector(".n").createDiv({ cls: "fb-barra fina reparto" });
     const d = b.createDiv(); d.style.width = `${((100 * f.valor) / total).toFixed(1)}%`; d.style.background = colorActivo(f.nombre);
   }
-  const RO = repartoObjetivo(filas);
-  if (RO) {
-    p.createDiv({ cls: "fin-note", text: "Objetivo: " + RO.lista.map((x) => `${x.f.nombre} ${nf(x.actual, 0, 0)} % (quieres ${nf(x.objetivo, 0, 0)} %)`).join(" · ") });
-    p.createDiv({ cls: "fin-note", text: RO.proxima ? `Tu próxima aportación, a «${RO.proxima.f.nombre}»: está ${nf(-RO.proxima.dif, 0, 0)} puntos por debajo de su objetivo. No hace falta vender nada.` : "Todo está a menos de 5 puntos de tu objetivo: sigue aportando como hasta ahora." });
+  if (!repartoAportacion(I.filas, 0)) {  // sin reparto objetivo: solo un enlace discreto para definirlo
+    const n = p.createDiv({ cls: "fin-note fb-objetivo-ini" });
+    enlace(n, "Definir un reparto ideal", "#reparto");
+    ayuda(n, AYUDA_REBALANCEO);
   }
   const top = tipos[0];
   if (top && top[1] / total >= 0.6 && tipos.length > 1) p.createDiv({ cls: "fin-note", text: `El ${pct(top[1] / total)} está en ${(TIPO_ACTIVO[top[0]] || top[0]).toLowerCase()}.` });
+}
+
+// Reparto objetivo (opcional): tu reparto actual frente al ideal (desviación en puntos) y, dado un importe, a dónde llevar la
+// próxima aportación. Nada se vende: solo se reparte lo nuevo. Sin objetivo definido solo aparece un enlace en «Cómo está repartido».
+const AYUDA_REBALANCEO = "Rebalancear es acercar tu reparto real al que querías (por ejemplo 70 % en un fondo y 30 % en otro). Aquí no hace falta vender nada: la app te dice cómo repartir tu próxima aportación para acercarte, empezando por lo que está por debajo.";
+function panelObjetivo(padre, filas) {
+  const p = panel(padre, "Tu reparto frente al ideal", { text: "Cambiar", ruta: "#reparto" }, AYUDA_REBALANCEO);
+  const fila = p.createDiv({ cls: "fb-fila fb-aportar" });
+  fila.createEl("label", { text: "Si aportas", attr: { for: "fb-aporta-obj" } });
+  const inp = fila.createEl("input", { cls: "corto", attr: { id: "fb-aporta-obj", type: "number", min: "0", step: "0.01", placeholder: "300", inputmode: "decimal" } });
+  fila.createSpan({ text: "€" });
+  if (FB.estado.aportaObj != null) inp.value = FB.estado.aportaObj;
+  const cuerpo = p.createDiv({ cls: "cuerpo" });
+  const pintar = () => {
+    cuerpo.empty();
+    const imp = num(FB.estado.aportaObj);
+    const R = repartoAportacion(filas, imp > 0 ? imp : 0);
+    const con = R.importe > 0;
+    const puntos = (x) => (Math.abs(x) < 0.05 ? "0 puntos" : `${x > 0 ? "+" : "−"}${nf(Math.abs(x), 1, 1)} puntos`);
+    const cols = [{ t: "Activo" }, { t: "Ahora", num: true }, { t: "Objetivo", num: true }, { t: "Diferencia", num: true }, con && { t: "Tu aportación", num: true }, con && { t: "Quedaría", num: true }].filter(Boolean);
+    tabla(cuerpo, cols, R.lineas.map((l) => [
+      { text: l.f.nombre, dot: colorActivo(l.f.nombre) }, `${nf(l.actual, 1, 1)} %`, `${nf(l.objetivo, 1, 1)} %`,
+      { text: puntos(l.dif), cls: Math.abs(l.dif) > 5 ? "fb-fuera" : "" },
+      con && (l.aporta > 0 ? { text: "+" + eur(l.aporta), cls: "fb-aporta" } : "—"),
+      con && `${nf(l.despues, 1, 1)} % (${puntos(l.difDespues)})`,
+    ].filter((c) => c !== false)));
+    if (R.normalizado) cuerpo.createDiv({ cls: "fin-note", text: `Tus porcentajes suman ${nf(R.sumaObjetivos, 0, 1)} %, no 100 %: para el cálculo se han escalado. Ajústalos en «Cambiar».` });
+    if (R.lineas.length < filas.filter((f) => f.valor > 0.5).length) cuerpo.createDiv({ cls: "fin-note", text: "Los activos sin porcentaje objetivo no cuentan en este cálculo." });
+    cuerpo.createDiv({ cls: "fin-note", text: con ? "Reparto orientativo para acercarte al objetivo sin vender nada. Es información, no asesoramiento financiero." : R.dentro ? "Todo está a menos de 5 puntos de tu objetivo: sigue aportando como hasta ahora. Es información, no asesoramiento financiero." : "Escribe cuánto vas a aportar y verás a dónde llevarlo. Es información, no asesoramiento financiero." });
+  };
+  inp.oninput = () => { FB.estado.aportaObj = inp.value; pintar(); };  // solo redibuja la tabla: el campo conserva el foco
+  pintar();
+}
+
+// Pantalla «Reparto objetivo»: el % ideal de cada activo. Vacío = sin objetivo para ese activo; si pones alguno, suman 100 %.
+function vistaReparto() {
+  cabecera("Reparto objetivo", false, "Qué parte de tu inversión querrías en cada activo");
+  const bot = root.createDiv({ cls: "fb-filtros" });
+  enlace(bot, "← Inversión", "#inversion").className = "fb-btn sec";
+  const I = resumenInversion(), valor = new Map(I.filas.map((f) => [f.nombre, f.valor])), total = I.total;
+  const lista = registros("activo").filter((a) => txt(a.estado).toLowerCase() !== "vendido").sort((a, b) => (valor.get(b.nombre) || 0) - (valor.get(a.nombre) || 0));
+  const p = panel(root, "Porcentaje ideal de cada activo", null, AYUDA_REBALANCEO);
+  if (!lista.length) { vacio(p, "Aún no hay activos", ""); return; }
+  p.createDiv({ cls: "fin-note", text: "Escribe el porcentaje que querrías en cada activo (los que no quieras controlar, déjalos en blanco). Tienen que sumar 100 %." });
+  const filas = p.createDiv({ cls: "fb-reparto-ed" });
+  const campos = [];
+  const igual = p.createEl("button", { cls: "fb-btn sec", text: "Repartir a partes iguales", attr: { type: "button" } });
+  const marca = p.createDiv({ cls: "fb-suma", attr: { role: "status", "aria-live": "polite" } });
+  const err = p.createDiv();
+  const guardar = p.createEl("button", { cls: "fb-btn", text: "Guardar reparto", attr: { type: "button" } });
+  const revisar = () => {
+    const V = validarObjetivos(campos.map((c) => c.i.value));
+    marca.empty();
+    if (V.vacio) marca.createSpan({ text: "Sin reparto objetivo: no se mostrará nada en Inversión." });
+    else { marca.createEl("b", { text: `Suman ${nf(V.suma || 0, 0, 2)} %` }); marca.appendText(V.ok ? " ✓" : ` · ${V.mensaje.replace(/^Suman [^:]*: /, "")}`); }
+    marca.className = "fb-suma" + (V.ok ? (V.vacio ? "" : " ok") : " mal");
+    campos.forEach((c) => c.i.setAttribute("aria-invalid", String(!V.ok)));
+    guardar.disabled = !V.ok;
+    return V;
+  };
+  for (const a of lista) {
+    const fila = filas.createDiv({ cls: "fb-fila" });
+    const v = valor.get(a.nombre) || 0;
+    const n = fila.createEl("label", { cls: "n", attr: { for: `fb-obj-${a.id}` } });
+    setVar(n.createSpan({ cls: "fin-dot" }), "--dc", colorActivo(a.nombre));
+    n.appendText(a.nombre);
+    n.createSpan({ cls: "s", text: total > 0 && v > 0 ? `ahora ${nf((100 * v) / total, 1, 1)} %` : "ahora 0 %" });
+    const i = fila.createEl("input", { cls: "mini", attr: { id: `fb-obj-${a.id}`, type: "number", min: "0", max: "100", step: "0.1", placeholder: "—" } });
+    fila.createSpan({ text: "%" });
+    if (hasNum(a.objetivo) && num(a.objetivo) > 0) i.value = String(num(a.objetivo));
+    i.oninput = revisar;
+    campos.push({ a, i });
+  }
+  // Atajo: repartir a partes iguales entre los activos que tienen valor
+  igual.onclick = () => { const k = campos.filter((c) => (valor.get(c.a.nombre) || 0) > 0.5); if (!k.length) return; campos.forEach((c) => (c.i.value = "")); k.forEach((c) => (c.i.value = String(Math.round(10000 / k.length) / 100))); revisar(); };
+  p.insertBefore(igual, marca);
+  p.createDiv({ cls: "fin-note", text: "Es información para orientarte, no asesoramiento financiero." });
+  guardar.onclick = async () => {
+    guardar.disabled = true; err.empty();
+    const objetivos = {}; for (const c of campos) objetivos[c.a.id] = c.i.value;
+    const r = await FB.api("/api/objetivos", { objetivos });
+    if (!r.ok) { guardar.disabled = false; mensaje(err, r.mensaje || "No se ha podido guardar", "err"); return; }
+    FB.aviso(r.mensaje);
+    await FB.recargar();
+    FB.ir("#inversion");
+  };
+  revisar();
 }
 
 // La rentabilidad anual (TIR) de algo que tienes desde hace semanas se dispara al anualizarla: solo con un año o más.

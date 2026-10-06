@@ -643,6 +643,42 @@ function repartoObjetivo(filas, banda = 5) {
   const debajo = lista.filter((x) => x.dif < -banda).sort((a, b) => a.dif - b.dif)[0] || null;
   return { lista, proxima: debajo, dentro: !lista.some((x) => Math.abs(x.dif) > banda) };
 }
+// Comprueba los % que el usuario teclea para su reparto objetivo. `valores`: cadenas o números (vacío = sin objetivo).
+// Vale si no hay ninguno (quitar el objetivo) o si cada uno está entre 0 y 100 y suman 100 (con 0,05 de margen por los decimales).
+function validarObjetivos(valores) {
+  const lleno = valores.filter((v) => String(v ?? "").trim() !== "");
+  if (!lleno.length) return { ok: true, vacio: true, suma: 0, falta: 0, mensaje: "" };
+  const n = lleno.map((v) => Number(String(v).replace(",", ".")));
+  if (n.some((x) => !isFinite(x) || x < 0 || x > 100)) return { ok: false, suma: NaN, falta: NaN, mensaje: "Cada porcentaje tiene que estar entre 0 y 100." };
+  const suma = Math.round(n.reduce((a, b) => a + b, 0) * 100) / 100, falta = Math.round((100 - suma) * 100) / 100;
+  if (Math.abs(falta) <= 0.05) return { ok: true, suma, falta: 0, mensaje: "" };
+  return { ok: false, suma, falta, mensaje: falta > 0 ? `Suman ${suma.toLocaleString("es-ES")} %: faltan ${falta.toLocaleString("es-ES")} puntos para llegar a 100 %.` : `Suman ${suma.toLocaleString("es-ES")} %: sobran ${(-falta).toLocaleString("es-ES")} puntos para quedarte en 100 %.` };
+}
+// Reparto actual frente al objetivo y, dado un importe, cómo repartir la próxima aportación sin vender nada.
+// filas: [{ valor, p: { objetivo } }] (los activos de la pantalla). Solo cuentan los que tienen objetivo; si sus % no suman 100
+// se escalan para que sí (normalizado = true). La aportación va a los que están por debajo, en proporción a lo que les falta
+// para llegar a su parte del total (valor actual + aportación): así nunca sobra nada y no se vende ningún activo.
+// Devuelve null sin objetivos. Los importes del reparto van en céntimos exactos (la suma da justo el importe).
+function repartoAportacion(filas, importe = 0, banda = 5) {
+  const base = filas.filter((f) => hasNum(f.p.objetivo) && num(f.p.objetivo) > 0 && f.valor >= 0);
+  if (!base.length) return null;
+  const sumaObj = sum(base.map((f) => num(f.p.objetivo))), total = sum(base.map((f) => f.valor));
+  const cent = Math.max(0, Math.round((importe || 0) * 100)), x = cent / 100, T = total + x;
+  const lineas = base.map((f) => {
+    const objetivo = (100 * num(f.p.objetivo)) / sumaObj, ideal = (objetivo / 100) * T;
+    return { f, objetivo, actual: total > 0 ? (100 * f.valor) / total : 0, falta: Math.max(0, ideal - f.valor), aporta: 0 };
+  });
+  const S = sum(lineas.map((l) => l.falta));
+  if (cent > 0 && S > 0) {
+    // Reparto proporcional a lo que falta, en céntimos: parte entera y los céntimos sobrantes a los mayores restos.
+    const parte = lineas.map((l) => (l.falta * cent) / S), base0 = parte.map(Math.floor);
+    let resto = cent - sum(base0);
+    [...parte.keys()].sort((a, b) => parte[b] - base0[b] - (parte[a] - base0[a])).slice(0, Math.max(0, resto)).forEach((i) => base0[i]++);
+    lineas.forEach((l, i) => (l.aporta = base0[i] / 100));
+  }
+  for (const l of lineas) { l.dif = l.actual - l.objetivo; l.despues = T > 0 ? (100 * (l.f.valor + l.aporta)) / T : 0; l.difDespues = l.despues - l.objetivo; }
+  return { lineas, total, importe: x, normalizado: Math.abs(sumaObj - 100) > 0.05, sumaObjetivos: sumaObj, dentro: !lineas.some((l) => Math.abs(l.dif) > banda) };
+}
 // Meses que tardarías en llegar a `meta` con esos supuestos (null si no llega en 50 años).
 function mesesHasta50(inicial, apoMes, rentAnual, meta) {
   if (inicial >= meta) return 0;

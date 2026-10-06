@@ -400,6 +400,18 @@ a.fb-btn,.fin a.fb-btn.internal-link,.fin a.fb-btn.internal-link:hover{color:var
 .fb-seg.mini{margin:0}
 .fin .fb-tipos{margin:-4px 0 6px}
 .fb-expo{margin:14px 0 4px}
+.fin .fb-objetivo-ini{margin:8px 0 0}
+.fb-aportar{margin:0 0 10px}
+.fb-aportar label{font-size:.9em;font-weight:600;color:var(--ink)}
+.fin .fb-fuera{font-weight:700;color:var(--ink)}
+.fin .fb-aporta{font-weight:700;color:var(--brand)}
+.fb-reparto-ed{max-width:560px;margin:8px 0 12px}
+.fb-reparto-ed .fb-fila{justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--line)}
+.fb-reparto-ed .n{display:flex;align-items:baseline;gap:8px;flex:1 1 200px;font-size:.92em;font-weight:600}
+.fb-reparto-ed .n .s{font-size:.82em;font-weight:400;color:var(--ink-2)}
+.fb-suma{margin:10px 0;font-size:.92em;color:var(--ink-2)}
+.fb-suma.ok{color:var(--fin-up)} .fb-suma.mal{color:var(--fin-down)}
+.fin input[aria-invalid=true]:not(:placeholder-shown){border-color:var(--fin-down)}
 .fin .fb-cubre{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0 0 10px}
 
 /* ── accesos en rejilla (ajustes e inicio) ── */

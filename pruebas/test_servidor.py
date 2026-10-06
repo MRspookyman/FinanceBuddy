@@ -118,6 +118,19 @@ class TestFlujo(unittest.TestCase):
         # Sin categoría, en una de ingreso con signo de gasto o inventada: lo decide el resto (reglas) y, si no sabe, queda por revisar
         self.assertEqual(len(self.app.alm.todos("pendiente")), 3)
 
+    def test_reparto_objetivo_suma_100_y_se_puede_quitar(self):
+        ids = [self.api("/api/guardar", {"tipo": "activo", "datos": {"nombre": n, "clase": "fondo", "ter": 0.2}})["id"] for n in ("A", "B", "C")]
+        r = self.api("/api/objetivos", {"objetivos": {str(ids[0]): "60", str(ids[1]): "40,0", str(ids[2]): ""}})
+        self.assertTrue(r["ok"], r)
+        act = {x["nombre"]: x for x in self.app.alm.todos("activo")}
+        self.assertEqual((act["A"]["objetivo"], act["B"]["objetivo"], act["C"].get("objetivo")), (60, 40, None))
+        self.assertEqual(act["A"]["ter"], 0.2)  # el resto del activo no se toca
+        with self.assertRaises(ValueError): self.api("/api/objetivos", {"objetivos": {str(ids[0]): "60", str(ids[1]): "30"}})
+        with self.assertRaises(ValueError): self.api("/api/objetivos", {"objetivos": {str(ids[0]): "150"}})
+        self.assertEqual({x["nombre"]: x.get("objetivo") for x in self.app.alm.todos("activo")}, {"A": 60, "B": 40, "C": None})  # lo rechazado no cambia nada
+        self.api("/api/objetivos", {"objetivos": {}})
+        self.assertTrue(all("objetivo" not in x for x in self.app.alm.todos("activo")))
+
     def test_activo_largo_plazo(self):
         r = self.api("/api/guardar", {"tipo": "activo", "datos": {"nombre": "Fondo A", "clase": "fondo"}})
         self.assertTrue(r["ok"], r)
