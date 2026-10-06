@@ -140,6 +140,7 @@ def importar_banco(alm, ruta, cuenta=None, perfil_nombre=None):
         f.update(C.clasificar_fila(f, filas, reglas, cuentas, recs, cuenta, categorias=grupos, mem=mem, titulares=titulares, previos=previos))
     for f in filas: categoria_del_archivo(f, grupos)
     bizums.propagar(filas)  # los hermanos de un reparto heredan la categoría del que ya la tiene
+    sugeridas = guardar_sugeridos(alm, filas, mem)  # lo dudoso con categoría sugerida fiable se guarda ya, marcado «por confirmar»
     huellas = huellas_existentes(alm, cuenta)
     # Movimientos apuntados a mano (sin huella) en esa cuenta: mismo importe y sentido, fecha a ±3 días (el banco
     # suele cargarlo un par de días después). Al casar, el apunte manual se queda con la huella del extracto.
@@ -173,10 +174,25 @@ def importar_banco(alm, ruta, cuenta=None, perfil_nombre=None):
         recordar_cabecera(alm, info, cuenta)
     aprendidas = sum(1 for f in nuevas if f.get("aprendido"))
     return {"ok": True, "tipo": "banco", "cuenta": cuenta, "perfil": perfil["nombre"], "filas": len(filas), "nuevas": len(nuevas),
-            "existentes": existentes, "dudas": len(dudas), "aprendidas": aprendidas, "desde": filas[-1]["op"], "hasta": filas[0]["op"],
+            "existentes": existentes, "dudas": len(dudas), "aprendidas": aprendidas, "sugeridas": sugeridas, "desde": filas[-1]["op"], "hasta": filas[0]["op"],
             "mensaje": f"{cuenta}: {len(nuevas)} movimientos nuevos" + (f" ({aprendidas} clasificados por lo que ya sabía de ti)" if aprendidas else "")
+                       + (f", {sugeridas} con categoría sugerida por confirmar" if sugeridas else "")
                        + (f", {len(dudas)} por revisar" if dudas else "")
                        + (f" ({existentes} ya estaban)" if existentes else "") + f" · del {fmt(filas[-1]['op'])} al {fmt(filas[0]['op'])}"}
+
+def guardar_sugeridos(alm, filas, mem):
+    """Ajuste «Guardar ya lo importado con la categoría sugerida» (config guardar_sugeridos, encendido de serie): las filas con duda
+    para las que tu historial propone una categoría con confianza ≥ umbral (config sugeridos_umbral) dejan de ser duda y llevan
+    `sugerido` (el motivo). Traspasos y repartos de Bizums se siguen preguntando. → nº de filas."""
+    if alm.config("guardar_sugeridos") is False: return 0
+    umbral, n = C.umbral_valido(alm.config("sugeridos_umbral") if alm.config("sugeridos_umbral") is not None else C.UMBRAL_SUGERIDO), 0
+    for f in filas:
+        if not f.get("duda") or f.get("clase") == "transferencia" or "reparto" in f["duda"]: continue
+        s = C.sugerir_guardable(f["texto"], f["importe"], mem, umbral)
+        if not s: continue
+        f.update(clase=s["clase"], cat=s["categoria"], sugerido=f"{s['motivo']} · {round(100 * s['confianza'])} %", aprendido=False)
+        f.pop("duda", None); n += 1
+    return n
 
 def movimiento_de(f, cuenta, **cambios):
     """Fila del extracto ya clasificada → registro de movimiento (validado)."""
@@ -184,7 +200,7 @@ def movimiento_de(f, cuenta, **cambios):
     d = {"fecha": min(f["op"], f.get("val") or f["op"]), "clase": f["clase"], "categoria": f.get("cat") if f["clase"] != "transferencia" else "",
          "importe": abs(f["importe"]), "cuenta": cuenta, "concepto": f.get("concepto") or C.titulo(f["texto"]),
          "ext_texto": f["texto"], "ext_importe": f["importe"], "ext_fecha": f["op"]}
-    for k in ("recurrente", "destino", "origen", "reembolsa"):
+    for k in ("recurrente", "destino", "origen", "reembolsa", "sugerido"):
         if f.get(k): d[k] = f[k]
     return modelo.limpiar("movimiento", d)
 
@@ -528,6 +544,15 @@ def _accion_perfil(alm, perfil_nombre, patron, accion):
     acc = [a for a in (p.get("acciones") or []) if a.get("patron") != patron] + [{"patron": patron, "accion": accion}]
     alm.guardar("perfil", {**p, "acciones": acc}, p["id"])
 
+def confirmar_sugeridos(alm, ids=None):
+    """Da por buenas las categorías sugeridas (todas, o solo las de `ids`). → nº de movimientos confirmados."""
+    ids = None if ids is None else {int(x) for x in ids if str(x).isdigit()}
+    n = 0
+    with alm.transaccion():
+        for m in alm.todos("movimiento"):
+            if m.get("sugerido") and (ids is None or m["id"] in ids): alm.guardar("movimiento", {**m, "sugerido": ""}, m["id"]); n += 1
+    return n
+
 # ───────────── cambiar la categoría de un movimiento (y de los parecidos) ─────────────
 def _parecidos(alm, m):
     """Otros movimientos importados del mismo comercio y sentido que `m` (mismo patrón que usaría una regla)."""
@@ -554,11 +579,11 @@ def recategorizar(alm, mid, d):
     if not any(c["nombre"] == cat for c in alm.todos("categoria")): raise ValueError("Elige una categoría.")
     n = 0
     with alm.transaccion():
-        alm.guardar("movimiento", {**m, "categoria": cat}, m["id"])
+        alm.guardar("movimiento", {**m, "categoria": cat, "sugerido": ""}, m["id"])  # elegirla tú la confirma
         patron, otros = _parecidos(alm, m)
         if d.get("parecidos") and patron:
             for x in otros:
-                if x.get("categoria") != cat: alm.guardar("movimiento", {**x, "categoria": cat}, x["id"]); n += 1
+                if x.get("categoria") != cat or x.get("sugerido"): alm.guardar("movimiento", {**x, "categoria": cat, "sugerido": ""}, x["id"]); n += (x.get("categoria") != cat)
             clase = "ingreso" if m["clase"] == "ingreso" else "gasto"
             for q in alm.todos("pendiente"):
                 if q["tipo_import"] == "banco" and (q["fila"]["importe"] > 0) == (clase == "ingreso") and C.aplica(patron, q["fila"]["texto"]):

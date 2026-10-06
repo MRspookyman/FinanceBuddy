@@ -162,12 +162,13 @@ function tarjetaPrevia(card, r) {
   if (M.n) t.push({ l: "Movimientos nuevos", v: String(M.n), s: V.desde ? `del ${fechaCorta(V.desde)} al ${fechaCorta(V.hasta)}` : "" }, { l: "Entra", v: eur(M.ingresos, 2), t: "pos" }, { l: "Sale", v: eur(M.gastos, 2), s: M.traspasos ? `+ ${M.traspasos} traspaso${M.traspasos > 1 ? "s" : ""}` : "" });
   if (A.n) t.push({ l: "Compras y ventas", v: String(A.n), s: `compras ${eur(A.compras, 0)}${A.ventas ? ` · ventas ${eur(A.ventas, 0)}` : ""}` });
   if (V.saldo_final) t.push({ l: "Saldo del extracto", v: eur(V.saldo_final.saldo, 2), s: `a ${fechaCorta(V.saldo_final.fecha)}: compáralo con tu banco` });
+  if (V.sugeridos) t.push({ l: "Con categoría sugerida", v: String(V.sugeridos), s: "se guardan ya, por confirmar" });
   t.push({ l: "Ya estaban", v: String(V.existentes), s: "se omiten, no se duplican" }, { l: "Por revisar", v: String(V.dudas.n), t: V.dudas.n ? "neg" : "" });
   tiles(card, t);
   if (V.activos_nuevos.length) card.createDiv({ cls: "fin-note", text: `Se crearían los activos: ${V.activos_nuevos.join(", ")}.` });
   if (V.categorias.length) card.createDiv({ cls: "fin-note", text: "Más gasto: " + V.categorias.map((c) => `${c.categoria} ${eur(c.total, 0)}`).join(" · ") });
   if (V.muestra.length) plegable(card, `Ver los últimos ${V.muestra.length} movimientos`, (c) => tabla(c, [{ t: "Fecha" }, { t: "Concepto" }, { t: "Categoría", opt: true }, { t: "Importe", num: true }],
-    V.muestra.map((m) => [fechaCorta(m.fecha), m.concepto, m.clase === "transferencia" ? "Entre tus cuentas" : m.categoria, { text: eurS(m.importe), cls: m.importe < 0 ? "neg" : "" }])));
+    V.muestra.map((m) => [fechaCorta(m.fecha), m.concepto, m.clase === "transferencia" ? "Entre tus cuentas" : { text: m.categoria, badge: m.sugerido ? "por confirmar" : "" }, { text: eurS(m.importe), cls: m.importe < 0 ? "neg" : "" }])));
   if (V.dudas.n) plegable(card, `Lo que quedaría por revisar (${V.dudas.n})`, (c) => tabla(c, [{ t: "Fecha" }, { t: "Texto del extracto" }, { t: "Importe", num: true }],
     V.dudas.muestra.map((m) => [fechaCorta(m.fecha), m.texto, eurS(m.importe)])));
   const f = card.createDiv({ cls: "fb-fila" });
@@ -189,6 +190,7 @@ function resultadoImport(padre, r) {
   if (r.ok) {
     mensaje(card, r.mensaje || "Importado", "ok");
     cuadreExtracto(card, r);
+    if (r.sugeridas) enlace(card, `Ver o confirmar las ${r.sugeridas} categoría${r.sugeridas > 1 ? "s" : ""} sugerida${r.sugeridas > 1 ? "s" : ""} →`, "#revisar");
     if (r.dudas) enlace(card, `Revisar ${r.dudas} movimiento${r.dudas > 1 ? "s" : ""} →`, "#revisar");
     if (r.tipo === "banco" && r.nuevas) enlace(card, "Detectar tus ingresos y gastos fijos →", "#fijos");
     if (r.jev_hallazgos) enlace(card, "✨ Revisar tus categorías →", "#revision");
@@ -319,8 +321,11 @@ function configurarFormato(card, r) {
 // Cada grupo ofrece la categoría más probable (por tu historial) y las que más usas, a un clic.
 function vistaRevisar() {
   const P = DB.pendientes || [];
+  const S = (DB.registros.movimiento || []).filter((m) => m.sugerido).sort((a, b) => String(b.fecha).localeCompare(String(a.fecha)) || b.id - a.id);
   titulo("Por revisar", P.length ? `${P.length} movimiento${P.length > 1 ? "s" : ""} que la app no ha sabido clasificar sola` : "");
+  if (S.length) panelSugeridos(root, S);
   if (!P.length) {
+    if (S.length) return;
     const ok = root.createDiv({ cls: "fb-hecho" });
     ok.createDiv({ cls: "i", text: "✓" });
     ok.createEl("b", { text: "Todo revisado" });
@@ -366,6 +371,32 @@ function vistaRevisar() {
     for (const g of pg.parte) tarjetaGrupoInversion(ci, g);
     pg.pie(root);
   }
+}
+// Movimientos ya guardados (y contados en el mes) con una categoría que la app eligió sola: se confirman de golpe o se corrigen uno a uno.
+function panelSugeridos(padre, S) {
+  const p = panel(padre, "Guardados con categoría sugerida", { text: `${S.length}` },
+    "La app los ha guardado ya y cuentan en tu mes, con la categoría más probable según tu historial. Confírmalos o cambia la categoría de los que no acierte; si te equivocas, «Deshacer». Se puede apagar en Ajustes.");
+  const cab = p.createDiv({ cls: "fb-fila" });
+  const b = cab.createEl("button", { cls: "fb-btn", text: `Confirmar ${S.length === 1 ? "este movimiento" : `los ${S.length}`}` });
+  cab.createSpan({ cls: "fin-note", text: "Si no tocas nada, se quedan como están." });
+  b.onclick = async () => {
+    b.disabled = true;
+    const r = await FB.api("/api/confirmar_sugeridos", {});
+    FB.aviso(r.mensaje || "Hecho", !r.ok, r.ok ? avisoDeshacer() : undefined);
+    await FB.refrescar();
+  };
+  const lista = p.createDiv({ cls: "fb-sug-lista2" });
+  const pg = paginacion(S, "rev_sug", render, 10);
+  for (const m of pg.parte) {
+    const f = lista.createDiv({ cls: "fb-sug2" });
+    const n = f.createDiv({ cls: "n" });
+    n.createDiv({ cls: "t", text: m.concepto });
+    n.createDiv({ cls: "s", text: `${fechaCorta(m.fecha)} · ${eurS(m.clase === "gasto" ? -num(m.importe) : num(m.importe))} · ${m.categoria || "Sin categoría"} · ${m.sugerido}` });
+    const ok = f.createEl("button", { cls: "fb-btn sec", text: "Está bien", attr: { "aria-label": `Confirmar la categoría de ${m.concepto}` } });
+    ok.onclick = async () => { ok.disabled = true; await FB.api("/api/confirmar_sugeridos", { ids: [m.id] }); await FB.refrescar(); };
+    enlace(f, "Cambiar", `#editar/movimiento/${m.id}`);
+  }
+  pg.pie(p);
 }
 // Bizums recibidos iguales (≥ 2) el mismo día: son el reparto de UN gasto que pagaste tú, se resuelven juntos. Igual que bizums.repartos().
 const esBizum = (t) => /bizum/i.test(t || "");
@@ -928,6 +959,12 @@ function vistaAjustes() {
   pM.createDiv({ cls: "fin-note", text: `Lo que quieres dejar siempre en la cuenta antes de mover lo que sobra. Vacío o 0 = lo calcula la app${RP ? ` (ahora ${eur(RP.colchonAuto, 0)}: un mes de fijos y de gasto variable, más los meses que se prevén en negativo)` : ""}.` });
   const bM = pM.createEl("button", { cls: "fb-btn", text: "Guardar" });
   bM.onclick = async () => { await FB.api("/api/config", { dia_inicio: iM.value || 1, colchon: iC.value || 0 }); FB.aviso("Guardado ✓"); await FB.refrescar(); };
+
+  const pS = panel(g, "Importar", null, "Cuando un movimiento no está claro pero tu historial sugiere una categoría con confianza (mismo comercio u otro muy parecido), se guarda ya con esa categoría y cuenta en tu mes; queda marcado «por confirmar» en Por revisar. Apagado, todo lo dudoso espera en Por revisar hasta que lo decidas.");
+  const lS = pS.createEl("label", { cls: "fb-fila" });
+  const cS = lS.createEl("input", { attr: { type: "checkbox" } }); cS.checked = cfg.guardar_sugeridos !== false;
+  lS.appendText("Guardar ya lo importado con la categoría sugerida (por confirmar)");
+  cS.onchange = async () => { await FB.api("/api/config", { guardar_sugeridos: cS.checked }); FB.aviso("Guardado ✓"); await FB.refrescar(); };
 
   apariencia(panel(g, "Apariencia"));
   const pT = panel(g, "Tú", null, "Tu nombre tal y como sale en el banco. Con él, el dinero que mueves entre cuentas a tu nombre se reconoce como traspaso y no como gasto o ingreso.");

@@ -307,6 +307,73 @@ class TestExtractosReales(Base):
         self.assertEqual((a["clase"], a["patrones"]), ("cripto", ["fidelity physical bitcoin"]))
         self.assertEqual(sorted(x["importe"] for x in self.a.todos("aportacion")), [55.43, 55.45])
 
+class TestSugeridos(Base):
+    """Lo dudoso con categoría sugerida fiable se guarda ya (marcado «sugerido»); lo demás sigue en «Por revisar»."""
+    def historial(self):
+        self.a.guardar("movimiento", {"fecha": "2026-08-01", "clase": "gasto", "categoria": "Hogar", "importe": 9.0, "cuenta": "Nómina", "concepto": "Ferretería",
+                                      "ext_texto": "Pago Movil En Ferreteria Lopez, Madrid", "ext_importe": -9.0, "ext_fecha": "2026-08-01"})
+    FILAS_S = [("2026-09-05", "Pago Movil En Ferreteria Lopes, Madrid", -12.0),  # nombre parecido al del historial
+               ("2026-09-06", "Pago Movil En Taller Raro Sur, Madrid", -30.0),  # sin pistas
+               ("2026-09-07", "Traspaso interno cuenta 9999", -100.0)]  # un traspaso se sigue preguntando
+
+    def test_se_guarda_ya_con_la_categoria_sugerida(self):
+        self.historial()
+        r = self.importar(self.extracto(self.FILAS_S))
+        self.assertEqual((r["nuevas"], r["dudas"], r["sugeridas"]), (1, 2, 1))
+        m = next(m for m in self.movs() if "Lopes" in m.get("ext_texto", ""))
+        self.assertEqual((m["clase"], m["categoria"]), ("gasto", "Hogar"))
+        self.assertIn("parecido", m["sugerido"])
+        self.assertEqual(len(self.a.todos("pendiente")), 2)
+        self.assertIn("1 con categoría sugerida", r["mensaje"])
+
+    def test_apagado_lo_deja_por_revisar(self):
+        self.historial(); self.a.set_config("guardar_sugeridos", False)
+        r = self.importar(self.extracto(self.FILAS_S))
+        self.assertEqual((r["nuevas"], r["dudas"], r["sugeridas"]), (0, 3, 0))
+        self.assertFalse(any(m.get("sugerido") for m in self.movs()))
+
+    def test_umbral_mas_alto_exige_mas(self):
+        self.historial(); self.a.set_config("sugeridos_umbral", 1.0)
+        self.assertEqual(self.importar(self.extracto(self.FILAS_S))["sugeridas"], 0)
+
+    def test_lo_sugerido_no_ensena_ni_se_duplica(self):
+        from financebuddy import clasificar as C
+        self.historial(); self.importar(self.extracto(self.FILAS_S))
+        mem = C.memoria(self.movs())
+        self.assertNotIn("ferreteria lopes", mem)  # una suposición sin confirmar no aprende
+        r = self.importar(self.extracto(self.FILAS_S))
+        self.assertEqual((r["nuevas"], r["dudas"], r["existentes"]), (0, 0, 3))
+        self.assertEqual(sum(1 for m in self.movs() if "Lopes" in m.get("ext_texto", "")), 1)
+
+    def test_confirmar_y_cambiar(self):
+        self.historial(); self.importar(self.extracto(self.FILAS_S))
+        m = next(m for m in self.movs() if m.get("sugerido"))
+        self.assertEqual(IM.confirmar_sugeridos(self.a, [m["id"]]), 1)
+        self.assertFalse(self.a.obtener("movimiento", m["id"]).get("sugerido"))
+        self.assertEqual(IM.confirmar_sugeridos(self.a), 0)
+        # Cambiar la categoría también confirma
+        self.a.set_config("sugeridos_umbral", 0.6)
+        self.importar(self.extracto(self.FILAS_S + [("2026-09-08", "Pago Movil En Ferreteria Lopex, Madrid", -4.0)], nombre="b.xlsx"))
+        n = next(m for m in self.movs() if "Lopex" in m.get("ext_texto", ""))
+        self.assertTrue(n.get("sugerido"))
+        IM.recategorizar(self.a, n["id"], {"categoria": "Compras"})
+        self.assertEqual((self.a.obtener("movimiento", n["id"]).get("sugerido"), self.a.obtener("movimiento", n["id"])["categoria"]), (None, "Compras"))
+
+    def test_vista_previa_cuenta_los_sugeridos_y_no_guarda(self):
+        from financebuddy.servidor import App
+        self.historial(); self.a.cerrar()
+        app = App(self.dir)
+        try:
+            app.alm.guardar("cuenta", {"nombre": "Nómina", "tipo": "corriente", "extracto": True}) if not any(c["nombre"] == "Nómina" for c in app.alm.todos("cuenta")) else None
+            ruta = self.extracto(self.FILAS_S)
+            r = app._importar(ruta, "banco", "Nómina", previa=True)
+            self.assertEqual(r["previa"]["sugeridos"], 1)
+            self.assertTrue(any(x["sugerido"] for x in r["previa"]["muestra"]))
+            self.assertEqual(sum(1 for m in app.alm.todos("movimiento") if m.get("sugerido")), 0)
+            self.assertEqual(app.alm.todos("pendiente"), [])
+        finally: app.alm.cerrar()
+        self.a = Almacen(self.c.db)
+
 class TestBizums(Base):
     """Bizums recibidos: la parte que te devuelven de un gasto que pagaste tú (bizums.py)."""
     def reparto(self, extra=()):

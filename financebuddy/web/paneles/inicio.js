@@ -423,7 +423,7 @@ function vistaMovimientos() {
       const sub = m.clase === "transferencia" ? `Entre tus cuentas ${m.destino ? "→ " + m.destino : m.origen ? "← " + m.origen : ""}` : `${m.categoria}${m.clase === "reembolso" ? " · te lo devolvieron" : ""}${devuelto.has(m.p.id) ? ` · te devolvieron ${eur(devuelto.get(m.p.id))}` : ""}`;
       item(cont, {
         av: { cat: m.clase === "transferencia" ? null : m.categoria, clase: m.clase }, t: m.concepto,
-        s: `${sub}${cuentas().length > 1 ? " · " + m.cuenta : ""}${m.auto ? " · previsto" : ""}${m.pendiente ? " · sin revisar" : ""}`,
+        s: `${sub}${cuentas().length > 1 ? " · " + m.cuenta : ""}${m.auto ? " · previsto" : ""}${m.pendiente ? " · sin revisar" : ""}${m.p && m.p.sugerido ? " · categoría por confirmar" : ""}`,
         v: signo + eur(m.importe), pos: entra, prev: m.auto || m.previsto,
         ruta: m.pendiente ? "#revisar" : m.auto ? (m.p.id ? `#editar/recurrente/${m.p.id}` : null) : `#editar/movimiento/${m.p.id}`,
       });

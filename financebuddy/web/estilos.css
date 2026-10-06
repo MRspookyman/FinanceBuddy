@@ -457,6 +457,11 @@ a.fb-btn,.fin a.fb-btn.internal-link,.fin a.fb-btn.internal-link:hover{color:var
 .fb-sug-l .s{font-size:.78em;color:var(--ink-2)}
 .fb-sug-l .v{font-weight:700;font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}.fb-sug-l .v.pos{color:var(--fin-up)}
 .fb-sug-l .pr{font-size:.88em;font-weight:600;color:var(--ink-2)}
+.fb-sug2{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:4px 12px;align-items:center;padding:9px 0;border-top:1px solid var(--line)}
+.fb-sug2:first-child{border-top:0}
+.fb-sug2 .n{min-width:0}
+.fb-sug2 .t{font-weight:650;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fb-sug2 .s{font-size:.78em;color:var(--ink-2)}
 
 /* ── ajustes: apariencia, orden del inicio, selectores de icono y color ── */
 .fb-colores{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
