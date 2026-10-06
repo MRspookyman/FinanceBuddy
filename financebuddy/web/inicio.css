@@ -9,14 +9,6 @@
 .fb-chip.aviso{background:color-mix(in srgb,var(--amber) 18%,var(--surface));border-color:transparent}
 .fb-chip.brand{color:var(--brand);background:var(--brand-soft);border-color:transparent}
 a.fb-chip:hover{border-color:var(--ink-3)}
-.fb-alertas{display:flex;flex-direction:column;gap:8px;margin:0 0 var(--g)}
-.fb-alerta{display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:var(--r-s);background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--amber);font-size:.9em;color:var(--ink);text-decoration:none}
-.fb-alerta.info{border-left-color:var(--brand)}
-.fb-alerta .i{display:grid;place-items:center;flex:none;width:24px;height:24px;border-radius:6px;font-size:13px;font-weight:800;background:color-mix(in srgb,var(--amber) 22%,transparent)}
-.fb-alerta.info .i{background:var(--brand-soft)}
-.fb-alerta .fl{margin-left:auto;color:var(--ink-3);font-weight:700}
-a.fb-alerta:hover{background:var(--surface-2)}
-.fin-panel .fb-alerta{background:var(--surface-2);border-color:transparent;border-left-color:var(--amber)}
 /* portada: la cifra del mes sobre tinta; dentro, los colores base se redefinen para que todo lo que cuelga se lea */
 .fb-hero,.fb-bienvenida{color:#fff;background:var(--tinta);
  --ink:#fff;--ink-2:rgba(255,255,255,.7);--ink-3:rgba(255,255,255,.56);--line:rgba(255,255,255,.14);--surface:rgba(255,255,255,.09);--surface-2:rgba(255,255,255,.09);
@@ -101,7 +93,6 @@ a.fb-item:hover,.fb-item.click:hover{background:var(--surface-2);cursor:pointer}
 .fb-item.prev{opacity:.62}
 .fb-av{display:grid;place-items:center;flex:none;width:38px;height:38px;border-radius:9px;font-size:18px;background:color-mix(in srgb,var(--cc,var(--brand)) 15%,var(--surface))}
 .fb-av.sm{width:32px;height:32px;border-radius:8px;font-size:15px}
-.fb-top .fb-av{font-size:.9em;font-weight:800;color:var(--ink-2)}
 .fb-fecha{display:grid;place-items:center;flex:none;width:40px;height:42px;border-radius:8px;border:1px solid var(--line);line-height:1.05;text-align:center}
 .fb-fecha b{font-family:var(--num);font-size:1.1em} .fb-fecha span{font-size:.8em;color:var(--ink-2);text-transform:uppercase;font-weight:700;letter-spacing:.04em}
 .fb-total{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;margin:0 0 8px}
@@ -111,11 +102,6 @@ a.fb-item:hover,.fb-item.click:hover{background:var(--surface-2);cursor:pointer}
 .fb-spark{margin:6px 0 4px}
 .fb-spark svg{display:block;width:100%;height:48px}
 /* plan */
-.fb-plan{display:flex;flex-direction:column;gap:10px}
-.fb-accion{display:flex;align-items:center;gap:14px;padding:14px 16px;border-radius:var(--r-s);background:var(--surface-2)}
-.fb-accion .ic{display:grid;place-items:center;flex:none;width:38px;height:38px;border-radius:9px;font-size:18px;background:var(--surface)}
-.fb-accion .t{font-weight:700} .fb-accion .s{font-size:.8em;color:var(--ink-2)}
-.fb-accion.destacada{background:var(--brand-soft)}
 /* movimientos */
 .fb-filtros{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:14px}
 .fin .fb-filtros>.fb-seg{margin:0 0 0 auto}

@@ -236,9 +236,3 @@ ponlo en esa lista en su sitio.
 
 Con [Claude Code](https://claude.com/claude-code), [`CLAUDE.md`](CLAUDE.md) tiene lo imprescindible para trabajar en el repo
 (reglas, comandos y trampas conocidas).
-
-Comparativa con otra app similar: [`docs/AUDITORIA-RUMBO.md`](docs/AUDITORIA-RUMBO.md).
-
-**[`CONTEXTO.md`](CONTEXTO.md)** reúne todo el contexto del proyecto —reglas que no se rompen, arquitectura, historial de
-cambios, auditorías realizadas con sus hallazgos, decisiones y pendientes— para poder retomar el trabajo sin la conversación
-original. Si cambias algo importante, actualízalo.

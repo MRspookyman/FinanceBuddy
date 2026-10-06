@@ -291,7 +291,7 @@ class TestJev(unittest.TestCase):
 
     def test_contexto_de_tu_historial_y_privacidad(self):
         self.app.manejar("/api/jev/config", {"clave": CLAVE, "activo": True, "al_importar": False})
-        self.app.alm.set_config("titulares", ["MARTINEZ MEGIAS JAVIER"])
+        self.app.alm.set_config("titulares", ["GARCIA LOPEZ ANA"])
         for conc, cat in (("cena", "Comer fuera"), ("cena", "Comer fuera"), ("copa", "Comer fuera"), ("piso", "Vivienda")):
             self.app.manejar("/api/guardar", {"tipo": "movimiento", "datos": {"fecha": "2026-09-03", "clase": "gasto", "importe": 10, "concepto": conc, "categoria": cat, "cuenta": "Nómina",
                                                                               "ext_texto": f"Bizum a favor de Laura Gil concepto {conc}", "ext_importe": -10, "ext_fecha": "2026-09-03"}})
@@ -302,8 +302,8 @@ class TestJev(unittest.TestCase):
         self.assertIn("SU PARTE", t)
         # Tu nombre y las direcciones no salen, ni en el concepto de una transferencia
         jev.config(self.app.alm)
-        s = jev.saneado("TRANSFERENCIA A FAVOR DE Pepe Gil CONCEPTO Septiembre y fianza, C/linares 4izq, Javier Martinez", -450)
-        self.assertNotIn("Javier", s); self.assertNotIn("linares", s); self.assertIn("fianza", s)
+        s = jev.saneado("TRANSFERENCIA A FAVOR DE Pepe Gil CONCEPTO Septiembre y fianza, C/linares 4izq, Ana Garcia Lopez", -450)
+        self.assertNotIn("Ana", s); self.assertNotIn("Garcia", s); self.assertNotIn("linares", s); self.assertIn("fianza", s)
 
     def test_registro_de_lo_enviado(self):
         self.app.manejar("/api/jev/config", {"clave": CLAVE, "activo": True})

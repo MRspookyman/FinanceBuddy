@@ -189,7 +189,6 @@ function precioMercado(a) {
   return m && m.precio > 0 && toDate(m.fecha) ? { precio: m.precio, fecha: toDate(m.fecha), fuente: m.fuente, moneda: m.moneda, mensual: m.mensual || {} } : null;
 }
 const activos = () => (_activos ??= registros("activo").filter((p) => txt(p.estado).toLowerCase() !== "vendido").map(activoDe));
-const esCripto = (a) => /cripto/i.test(a.clase);
 const claseActivo = (nombre) => ((registros("activo").find((a) => a.nombre === nombre) || {}).clase || "otro");
 // Registro de patrimonio: saldo de cada cuenta y valor de cada activo en una fecha. Se agrupa por tipo de cuenta:
 // Liquidez = corriente + ahorro · «Efectivo bróker» = cuentas del bróker (dinero sin invertir) · Otros = cuentas «otro» + otros.

@@ -140,7 +140,7 @@ button:focus-visible,a:focus-visible,summary:focus-visible,[tabindex]:focus-visi
 }
 /* ── Más vida (sutil): hover suave, entrada de pantalla, barras, check del aviso, subrayado del menú y gráficos ── */
 #menu a,#menu a svg,.fin-ayuda,.fin .fin-link,.fin a.internal-link,.fb-saludo .fb-personalizar,a.fb-chip,.fb-hero .pill,.fin .fin-vermas{transition:color 140ms var(--ease-out),border-color 140ms var(--ease-out)}
-#ayuda,#tema,#discreto,a.fb-alerta,.fin .fb-franja a.r,a.fb-item,.fb-item.click,.fin .fb-menu .ops a,.fin .fin-table tbody tr td{transition:background-color 140ms var(--ease-out),color 140ms var(--ease-out)}
+#ayuda,#tema,#discreto,.fin .fb-franja a.r,a.fb-item,.fb-item.click,.fin .fb-menu .ops a,.fin .fin-table tbody tr td{transition:background-color 140ms var(--ease-out),color 140ms var(--ease-out)}
 .fb-btn.sec{transition:transform .08s,filter .12s,box-shadow 140ms var(--ease-out)}
 /* Al cambiar de pantalla: el Inicio entra en cascada y el resto con un fundido; las barras crecen */
 @keyframes fb-fundido{from{opacity:0}to{opacity:1}}

@@ -14,4 +14,3 @@ Copias/
 *.xlsx
 *.xls
 *.csv
-!pruebas/ejemplos/*.csv

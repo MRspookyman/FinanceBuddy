@@ -37,7 +37,10 @@ function avisos() {
   if (nArch) add("warn", `${nArch} archivo${nArch > 1 ? "s" : ""} en la carpeta Importar sin procesar`, "#importar");
   const K = conciliacion();
   const desc = K ? K.filas.filter((f) => Math.abs(f.dif) > 1) : [];
-  if (desc.length) add("warn", `No cuadra entre el ${K.desde.toFormat("dd/MM")} y el ${K.hasta.toFormat("dd/MM")}: ${desc.map((f) => `${f.nombre} ${eurS(f.dif)}`).join(", ")} · falta o sobra algún movimiento`, "#cerrar");
+  // Con las dos cifras: «+6,50 €» a secas no dice si falta un movimiento o si el saldo que anotaste es de antes
+  if (desc.length) add("warn", `No cuadra entre el ${K.desde.toFormat("dd/MM")} y el ${K.hasta.toFormat("dd/MM")}: `
+    + desc.map((f) => `${f.nombre} ${eurS(f.dif)} (anotaste ${eur(f.real)} y los movimientos dan ${eur(f.esperado)})`).join(", ")
+    + " · falta o sobra algún movimiento, o el saldo que anotaste es de antes", "#cerrar");
   const P = patrimonio();
   // Los cierres se piden desde que se usa la app (primer registro de patrimonio), no desde el historial importado.
   const primerMes = P.length ? keyCal(P[0].fecha) : null;

@@ -388,43 +388,6 @@ function tarjetaGrupo(padre, g) {
     }
   });
 }
-function cabeceraTarjeta(card, p) {
-  const f = p.fila;
-  const top = card.createDiv({ cls: "top" });
-  top.createSpan({ text: `${fmtISO(f.op)} · ${f.concepto || f.texto.slice(0, 40)}` });
-  top.createSpan({ cls: "imp " + (f.importe < 0 ? "neg" : "pos"), text: eurS(f.importe) });
-  card.createDiv({ cls: "txt", text: `${f.texto} · ${p.cuenta}` });
-  card.createDiv({ cls: "duda", text: p.duda });
-}
-async function resolverPendiente(card, p, datos, boton) {
-  boton.disabled = true;
-  const r = await FB.api("/api/resolver", { id: p.id, ...datos });
-  boton.disabled = false;
-  if (!r.ok) { mensaje(card, r.mensaje || "Error", "err"); return; }
-  FB.aviso(r.mensaje);
-  await FB.refrescar();
-}
-function tarjetaInversion(padre, p) {
-  const f = p.fila, card = padre.createDiv({ cls: "fb-card" });
-  cabeceraTarjeta(card, p);
-  const fila = card.createDiv({ cls: "fb-fila" });
-  const sAcc = fila.createEl("select");
-  for (const [v, t] of [["activo", f.importe < 0 ? "Compra de un activo" : "Venta de un activo"], ["interes", f.importe > 0 ? "Intereses o dividendos" : "Comisión"], ["ignorar", f.importe > 0 ? "Traspaso desde mi banco (ya está en el banco)" : "Traspaso a mi banco (ya está en el banco)"]]) { const o = sAcc.createEl("option", { text: t }); o.value = v; }
-  sAcc.value = f.importe > 0 ? "ignorar" : "activo";
-  const sAct = fila.createEl("select"); for (const [v] of opcActivos()) { const o = sAct.createEl("option", { text: v }); o.value = v; }
-  const oN = sAct.createEl("option", { text: "Nuevo activo…" }); oN.value = "__nuevo";
-  if (!opcActivos().length) sAct.value = "__nuevo";
-  const iNuevo = fila.createEl("input", { attr: { type: "text", placeholder: "Nombre del activo (p. ej. Fondo MSCI World)" } });
-  iNuevo.value = C_titulo(sugerirPatron(f.texto));
-  const fila2 = card.createDiv({ cls: "fb-fila" });
-  const lab = fila2.createEl("label"); const chk = lab.createEl("input", { attr: { type: "checkbox" } }); lab.appendText("Recordar:");
-  const iPat = fila2.createEl("input", { attr: { type: "text" } }); iPat.value = f.patron || sugerirPatron(f.texto); chk.checked = true;
-  const bG = fila2.createEl("button", { cls: "fb-btn", text: "Guardar" });
-  const sync = () => { const a = sAcc.value === "activo"; sAct.style.display = a ? "" : "none"; iNuevo.style.display = a && sAct.value === "__nuevo" ? "" : "none"; };
-  sAcc.onchange = sync; sAct.onchange = sync; sync();
-  bG.onclick = () => resolverPendiente(card, p, { accion: sAcc.value, activo: sAct.value === "__nuevo" ? null : sAct.value,
-    nuevo_activo: sAcc.value === "activo" && sAct.value === "__nuevo" ? iNuevo.value : null, recordar: chk.checked, patron: iPat.value }, bG);
-}
 const C_titulo = (s) => String(s).split(" ").map((w) => cap(w)).join(" ");
 const sugerirPatron = (t) => norm(String(t).replace(/^(compra|pago|recibo|adeudo|transferencia|bizum)( en| a favor de| de)?\s+/i, "").replace(/[,].*$/, "").replace(/\s+\d{3,}.*$/, "")).split(" ").slice(0, 3).join(" ");
 

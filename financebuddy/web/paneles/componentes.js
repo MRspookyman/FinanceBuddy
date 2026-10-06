@@ -12,7 +12,6 @@ const colorActivo = (nombre) => {
   return i < 0 ? "var(--ink-3)" : SERIES_REPARTO[i % SERIES_REPARTO.length]; // activos vendidos: gris
 };
 const GOOD = "var(--fin-good)", BAD = "var(--fin-bad)", WARN = "var(--fin-warn)";
-const polar = (v) => (v >= 0 ? GOOD : BAD);
 
 const root = FB.container.createDiv({ cls: "fin" });
 const setVar = (el, k, v) => (el.style.setProperty ? el.style.setProperty(k, v) : (el.style[k] = v));

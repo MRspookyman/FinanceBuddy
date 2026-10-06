@@ -6,8 +6,8 @@ tienes y cómo va tu inversión. Todo en **español** y en **euros**.
 
 Python (biblioteca estándar + `openpyxl`/`xlrd`/`pystray`) · SQLite · interfaz web en JavaScript sin framework ni compilación.
 
-**Este archivo es el que hay que leer siempre.** [`CONTEXTO.md`](CONTEXTO.md) es el historial largo (auditorías, por qué de
-cada decisión, backlog): se consulta por secciones cuando hace falta, no entero. [`README.md`](README.md) es para quien usa la app.
+**Este archivo es el que hay que leer siempre**: reglas, comandos, mapa del código y trampas conocidas.
+[`README.md`](README.md) es para quien usa la app. El porqué de cada decisión está en el historial de git (`git log`).
 
 ## Reglas que no se rompen
 

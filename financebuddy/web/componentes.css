@@ -85,12 +85,8 @@
 .fin-ayuda:hover,.fin-ayuda:focus{color:var(--brand);outline:none}
 .fin-ayuda-t{display:none;position:absolute;z-index:20;left:50%;top:1.6em;transform:translateX(-50%);width:max-content;max-width:260px;padding:9px 12px;border-radius:8px;font-size:.8rem;line-height:1.4;font-weight:400;white-space:normal;text-transform:none;letter-spacing:0;color:var(--ink);background:var(--surface);border:1px solid var(--line);box-shadow:var(--shadow-s)}
 .fin-ayuda:hover .fin-ayuda-t,.fin-ayuda:focus .fin-ayuda-t{display:block}
-.fin .fin-aviso-datos,.fin .fb-aviso-inv{color:var(--ink);background:color-mix(in srgb,var(--amber) 12%,var(--surface));border-left:3px solid var(--amber);padding:8px 12px;border-radius:8px}
-.fin .fb-aviso-inv{margin:-4px 0 12px}
 .fin-filtros{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:14px}
 .fin .fin-search{flex:1 1 260px;min-width:0}
-.fin-avisos{display:flex;flex-direction:column;gap:6px;font-size:.88em}
-.fin-avisos>div{display:flex;align-items:center;gap:8px}
 
 /* ── botones y formularios ── */
 .fb-btn{all:unset;box-sizing:border-box;cursor:pointer;display:inline-block;padding:8px 16px;border-radius:8px;font-size:.9em;font-weight:650;color:var(--on-brand);background:var(--brand);text-align:center;text-decoration:none;transition:transform .08s,filter .12s}
@@ -142,7 +138,6 @@ a.fb-btn,.fin a.fb-btn.internal-link,.fin a.fb-btn.internal-link:hover{color:var
 .fin .fb-seg a.act,.fb-seg button.act{color:var(--ink);background:var(--surface);box-shadow:0 0 0 1px var(--line),0 1px 2px rgba(16,21,28,.08)}
 .fb-seg.mini{margin:0}
 .fin .fb-tipos{margin:-4px 0 6px}
-.fb-expo{margin:14px 0 4px}
 .fin .fb-objetivo-ini{margin:8px 0 0}
 .fb-aportar{margin:0 0 10px}
 .fb-aportar label{font-size:.9em;font-weight:600;color:var(--ink)}
@@ -155,7 +150,6 @@ a.fb-btn,.fin a.fb-btn.internal-link,.fin a.fb-btn.internal-link:hover{color:var
 .fb-suma{margin:10px 0;font-size:.92em;color:var(--ink-2)}
 .fb-suma.ok{color:var(--fin-up)} .fb-suma.mal{color:var(--fin-down)}
 .fin input[aria-invalid=true]:not(:placeholder-shown){border-color:var(--fin-down)}
-.fin .fb-cubre{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0 0 10px}
 
 /* ── accesos en rejilla (ajustes e inicio) ── */
 .fb-accesos{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,230px),1fr));gap:10px}
