@@ -659,6 +659,14 @@ Contrastes calculados sobre los tokens de `estilos.css`, no a ojo.
    vez)». Los grupos se calculan antes del título (el cálculo estaba duplicado y ahora es uno). En el Inicio, «sin revisar
    (4 movimientos **de este mes**)», que es otra cuenta distinta de la insignia del menú.
 
+**Susto durante esta ronda (y arreglado):** al pasar las pruebas, el usuario abrió la app y parecía **sin datos**. No se
+había borrado nada: `test_robustez.test_cambiar_de_carpeta_bien` llama a `/api/carpeta`, que guarda la carpeta elegida en
+`%APPDATA%\FinanceBuddyjustes.json` —único para toda la máquina—, así que cada tanda de pruebas dejaba la app de verdad
+apuntando a una carpeta temporal. Sus datos seguían intactos en `Documentos\FinanceBuddy\datos.db` (261 movimientos de
+mar 2025 a oct 2026). Se restauró el puntero y **`test_robustez.setUp` aparta ahora `rutas.AJUSTES` a la carpeta temporal
+de la prueba**, con un `assertNotEqual` que lo exige; comprobado que tras una tanda completa el archivo real no cambia.
+Era un fallo de siempre, no de estos cambios, pero solo se ve cuando alguien usa la app de verdad en el mismo ordenador.
+
 **Descartado y por qué:** pantalla estrecha (regla 9); el contraste de `--ink-2`/`--ink-3` (medido: 5,35:1 y 4,82:1, pasan);
 el foco visible (parecía roto en `.fin-ayuda:focus{outline:none}`, pero la regla global de `pantallas.css` lleva `!important`
 y gana); los nombres de los campos de formulario (`etiquetar()` los cubre; solo quedan sueltos los `<select>` de «Otra…» de

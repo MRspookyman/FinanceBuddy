@@ -43,6 +43,11 @@ navegador instalado, `run.py` devuelve 3 y el build avisa y sigue.
 **Cuidado con el puerto:** la app real del usuario suele estar abierta en el **8765**. Las pruebas van en otro puerto y con
 carpeta de datos propia, y **nunca** hay que pulsar «Volver a mis datos» ni «Usar otra carpeta» en un servidor de pruebas.
 
+**Y con la carpeta de datos:** cuál es la suya no se guarda dentro de ella, sino en `%APPDATA%\FinanceBuddyjustes.json`,
+que es único para todo. Cualquier cosa que llame a `/api/carpeta` lo reescribe y la app real se queda apuntando ahí (parece
+que no hay datos, aunque estén). Las pruebas lo apartan a una ruta temporal (`test_robustez.setUp`): si escribes una prueba
+que toque carpetas, haz lo mismo.
+
 ## Mapa del código
 
 ```

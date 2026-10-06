@@ -8,8 +8,14 @@ from financebuddy.almacen import Almacen
 class TestCarpetaYBaseDatos(unittest.TestCase):
     def setUp(self):
         self.dir = tempfile.mkdtemp()
+        # Cuál es tu carpeta de datos se guarda fuera de ella, en %APPDATA%\FinanceBuddyjustes.json, y «/api/carpeta» lo
+        # reescribe: sin apartarlo, pasar las pruebas dejaba la app de verdad apuntando a una carpeta temporal y, al abrirla,
+        # parecía que no había datos (estaban en su sitio, pero la app miraba a otro lado).
+        self.ajustes_reales = rutas.AJUSTES
+        rutas.AJUSTES = os.path.join(self.dir, "ajustes.json")
         self.app = servidor.App(self.dir)
     def tearDown(self):
+        rutas.AJUSTES = self.ajustes_reales
         self.app.alm.cerrar(); shutil.rmtree(self.dir, ignore_errors=True)
 
     def test_cambiar_a_una_carpeta_imposible_no_deja_la_app_inservible(self):
@@ -26,6 +32,9 @@ class TestCarpetaYBaseDatos(unittest.TestCase):
         r = self.app.manejar("/api/carpeta", {"carpeta": otra})
         self.assertTrue(r["ok"])
         self.assertEqual(self.app.carpeta.raiz, os.path.abspath(otra))
+        # y la carpeta elegida se recuerda para la próxima vez (en el ajustes.json apartado, no en el del usuario)
+        self.assertEqual(rutas.leer_ajustes().get("datos"), os.path.abspath(otra))
+        self.assertNotEqual(rutas.AJUSTES, self.ajustes_reales)
 
     def test_base_danada_se_reconoce_y_se_recupera_con_una_copia(self):
         self.app.manejar("/api/guardar", {"tipo": "cuenta", "datos": {"nombre": "Mi cuenta"}})
