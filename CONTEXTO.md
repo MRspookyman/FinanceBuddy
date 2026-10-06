@@ -27,7 +27,7 @@
 - **Último gran tema:** las olas de Rumbo. **Nada que salga a internet se ha probado contra el servicio real** (el entorno de
   desarrollo bloquea Jev, Yahoo, Morningstar y CoinGecko): todo se verificó con servidores falsos y hay scripts para que el
   usuario lo compruebe en su PC (`evaluar_jev.py`, `evaluar_precios.py`). GitHub (aviso de versión) sí responde desde el entorno.
-- **Tests:** 109 de Python (`unittest`), 70 de cálculos y 18 pantallas sin errores en navegador. Siempre en verde al cerrar
+- **Tests:** 133 de Python (`unittest`), 84 de cálculos y todas las pantallas sin errores en navegador. Siempre en verde al cerrar
   cada tarea.
 
 ---
@@ -495,6 +495,41 @@ El comparador sigue en el servidor (`precios.comparar`, `/api/precios/comparar`,
 tarjeta **«Tu patrimonio»** del Inicio enseña el total **sin lo ganado con la inversión** (la inversión cuenta por lo metido) y la
 ganancia aparte, en pequeño («+1.345 € de tu inversión»).
 
+### 9.12 Interfaz con más contraste y movimiento, y tres funciones nuevas (6 oct 2026)
+**Interfaz (`estilos.css`, `nucleo.js`):** colores claros más oscuros (ámbar y serie 3), texto ≥ 12 px, objetivos táctiles de 44 px
+con `pointer:coarse`, `prefers-reduced-motion`, curva `--ease-out`, hover suave, feedback al pulsar, entrada del Inicio en cascada y
+fundido en el resto (solo al cambiar de pantalla: `FB._nav`, `#app[data-entra]`), barras que crecen, importes y porcentajes que
+cuentan (`contarCifras`; se omite en modo discreto, con «reducir movimiento» y en `?pruebas`), check en el aviso, subrayado
+deslizante del menú (`#menu::after` con `--ind-x/--ind-w`) y gráficos más vivos. Fuera los nombres CSS antiguos (`--background-*`,
+`--text-*`; `--hover` sustituye a `--background-modifier-hover`). El plan está en `plans/001-micro-movimiento.md`.
+
+**Categoría sugerida al importar** (§10.5, hecho): las filas que `clasificar_fila` deja como `duda` pero que el historial resuelve con
+confianza ≥ umbral se guardan ya como movimiento con la categoría y cuentan en el mes. Llevan `sugerido` (texto con el motivo; vacío
+= confirmada). `clasificar.sugerir_guardable`: fracción de veces que ese comercio fue a esa categoría, limitada por la evidencia
+(1 antecedente → 0,8; 2 → 0,9; 3 o más → sin límite) y, con un solo comercio parecido, por lo parecido que es. `UMBRAL_SUGERIDO = 0,8`
+(`config.sugeridos_umbral`, 0,6 a 1,0; sin control en la interfaz); `config.guardar_sugeridos` (encendido; casilla en Ajustes → General →
+«Importar»). Nunca se sugiere en traspasos, repartos de Bizum ni devoluciones «por el concepto». `clasificar.memoria` ignora los
+`sugerido`; elegir tú la categoría (o guardar el formulario) los confirma (`recategorizar`). Rutas: `importar.guardar_sugeridos`,
+`importar.confirmar_sugeridos`, `/api/confirmar_sugeridos` (con «Deshacer»). UI: panel «Guardados con categoría sugerida» en Por
+revisar (Confirmar los N / Está bien / Cambiar), ficha «Con categoría sugerida» en la vista previa de Importar y «· categoría por
+confirmar» en la lista de Movimientos. El contador del menú sigue contando solo pendientes.
+
+**Reparto objetivo y rebalanceo** (§10.8, hecho): reutiliza `activo.objetivo` (% por activo). Sin objetivos, Inversión solo enseña
+«Definir un reparto ideal ⓘ»; con objetivos, el panel «Tu reparto frente al ideal» (`panelObjetivo`, diferencia en puntos, >5 en
+negrita) y el campo «Si aportas [300] €» (`FB.estado.aportaObj`) con «Tu aportación» y «Quedaría». Solo reparte lo nuevo, sin vender.
+`calculos.js`: `repartoAportacion(filas, importe, banda=5)` (suma exacta en céntimos, por mayores restos, escala si los % no suman 100) y
+`validarObjetivos`. Pantalla `#reparto` (`vistaReparto`, parte de Inversión, suma en vivo, «Repartir a partes iguales») y
+`POST /api/objetivos` (valida 0–100 y suma 100; `{}` quita el reparto). Información, no asesoramiento financiero.
+
+**Fase 4 de Ajustes** (§10.10, hecho salvo lo que se indica): botón «Todos mis datos en Excel» (`exportar.datos_excel`, `POST
+/api/exportar_datos`, con `openpyxl`; hojas Léeme, Movimientos, Cuentas, Saldos, Fijos, Categorías, Reglas, Inversión, Aportaciones,
+Dividendos y comisiones, Objetivos y Recordatorios; el texto nunca es fórmula; es copia para consultar, no se reimporta). Módulo nuevo
+`ordenar.py`: **probar una regla** con lo ya importado (recuento, cuántas cambiarían, muestra de 8, dudas que casan; solo movimientos
+con `ext_texto`; `/api/regla/probar` y `/api/regla/aplicar`, con confirmación y «Deshacer»; aplicar pisa la categoría), **fusionar
+categorías** (vista previa y `config.categorias_fusionadas`; `plantilla.instalar` no la recrea y reapunta sus reglas) y **ocultar
+categorías** (`categoria.oculta`; sigue contando, no sale al elegir). Sugerencias de ocultar las que no se usan. Ajustes → «Tus
+datos» se divide en tres secciones. Pruebas: `pruebas/test_ordenar.py`. Pendiente: probar a mano con clics el panel «Ordenar».
+
 ## 10. Pendiente y backlog (por valor aproximado)
 
 **Inmediato**
@@ -507,11 +542,11 @@ ganancia aparte, en pequeño («+1.345 € de tu inversión»).
 **Producto** (ver también las olas de `docs/AUDITORIA-RUMBO.md`: Ola 1 sin red es lo más barato y visible)
 0. **Probar los precios por internet con los servicios reales** (el usuario en su PC: `python pruebas\evaluar_precios.py`) y arreglar
    en `precios.py` lo que haya cambiado (sobre todo Morningstar, el menos documentado).
-5. **Guardar ya lo importado con la categoría sugerida** (como Copilot/Lunch Money): hoy lo dudoso no cuenta hasta revisarlo.
+5. ~~Guardar ya lo importado con la categoría sugerida~~ (hecho, §9.12; texto original: «como Copilot/Lunch Money»): hoy lo dudoso no cuenta hasta revisarlo.
    Es un cambio de fondo; PR aparte.
 6. ~~Vista «Para la renta»~~ (hecho, Ola 2).
 7. ~~Rentabilidad por periodo~~ (hecho: selector desde el inicio / 1 año / este mes en Inversión).
-8. **Reparto objetivo y rebalanceo:** % ideal por activo y a dónde va la próxima aportación.
+8. ~~Reparto objetivo y rebalanceo~~ (hecho, §9.12): % ideal por activo y a dónde va la próxima aportación.
 9. ~~Dividendos~~ (hecho: registro `cobro`). Mejora posible: usar los precios mensuales para «esfuerzo vs mercado» sin anotar valores.
 10. **Fase 4 del plan original (Ajustes por secciones):** reorganizar Ajustes, ~~día en que empieza tu mes~~ y ~~colchón
     configurable~~ (hechos, §9.10), **exportar datos a Excel**, probar una regla antes de guardarla y
