@@ -453,6 +453,14 @@ a.fb-btn,.fin a.fb-btn.internal-link,.fin a.fb-btn.internal-link:hover{color:var
 .fin .fb-cats button.desc:hover{color:var(--fin-down);border-color:transparent;background:none}
 .fin .fb-cats button[disabled]{opacity:.5;cursor:progress}
 .fin .fb-cats select.otra{height:34px;font-size:.86em;color:var(--ink-2)}
+/* Consejo de categoría nueva: discreto (texto con subrayado), el formulario solo se abre al pulsar */
+.fb-nuevacat{margin-top:10px}
+.fin .fb-nuevacat button.abrir{all:unset;cursor:pointer;font-size:.86em;font-weight:620;color:var(--brand);text-decoration:underline;text-underline-offset:3px;border-radius:4px;transition:color 140ms var(--ease-out)}
+.fin .fb-nuevacat button.abrir:hover{color:var(--ink)}
+.fin .fb-nuevacat button.abrir:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+.fb-nuevacat .mot{font-size:.82em;color:var(--ink-2);margin-top:2px}
+.fb-nuevacat .form{margin-top:8px;padding:10px 12px;border-radius:8px;background:var(--surface-2)}
+.fb-nuevacat .form[hidden]{display:none}
 .fb-opciones{margin-top:12px}
 .fb-cands{display:flex;flex-direction:column;gap:6px;margin-top:12px}.fb-cands .et{font-size:.82em;font-weight:650;color:var(--ink-2)}
 .fin .fb-cands button.fb-cand{all:unset;box-sizing:border-box;cursor:pointer;display:block;padding:9px 13px;border-radius:8px;background:var(--surface-2);border:1px solid transparent;transition:background .12s,border-color .12s,transform 120ms var(--ease-out)}

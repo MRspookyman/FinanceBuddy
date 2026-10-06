@@ -600,6 +600,43 @@ function gastosCandidatos(card, g, sug, hecho) {
     b.onclick = () => hecho({ accion: "guardar", clase: "gasto", categoria: c.cat, reembolsa: c.id }, b);
   }
 }
+// Consejo de categoría nueva (o de volver a mostrar una oculta) cuando ninguna tuya encaja. Es un botón discreto: nada se crea hasta que
+// se confirma. Se puede cambiar el nombre, el emoji y el tipo antes; al confirmar se crea, se asigna este pago y, si sigue marcada la
+// casilla, se recuerda el comercio como regla para los próximos.
+function consejoCategoria(card, g, c, hecho, patronInicial) {
+  const mostrar = c.accion === "mostrar";
+  const caja = card.createDiv({ cls: "fb-nuevacat" });
+  const bAbrir = caja.createEl("button", { cls: "abrir", attr: { type: "button", "aria-expanded": "false" },
+    text: mostrar ? `¿Volver a mostrar la categoría «${c.icono || ""} ${c.nombre}»?` : `¿Crear la categoría «${c.icono || ""} ${c.nombre}»?` });
+  caja.createDiv({ cls: "mot", text: c.motivo });
+  const form = caja.createDiv({ cls: "form" }); form.hidden = true;
+  bAbrir.onclick = () => { form.hidden = !form.hidden; bAbrir.setAttribute("aria-expanded", String(!form.hidden)); if (!form.hidden) iN.focus(); };
+  let nombre = c.nombre, icono = c.icono || "", grupo = c.grupo || "variable", recordar = true, patron = patronInicial || "";
+  const fila = form.createDiv({ cls: "fb-fila" });
+  fila.createSpan({ cls: "fb-et", text: "Nombre" });
+  const iN = fila.createEl("input", { attr: { type: "text", maxlength: "40", "aria-label": "Nombre de la categoría" } }); iN.value = nombre; iN.oninput = () => (nombre = iN.value);
+  if (!mostrar) {
+    fila.createSpan({ cls: "fb-et", text: "Emoji" });
+    const iE = fila.createEl("input", { cls: "mini", attr: { type: "text", maxlength: "8", "aria-label": "Emoji de la categoría" } }); iE.value = icono; iE.oninput = () => (icono = iE.value.trim());
+    const sG = fila.createEl("select", { attr: { "aria-label": "Tipo de gasto" } });
+    for (const [v, t] of [["variable", "Gasto variable"], ["fijo", "Gasto fijo"]]) { const o = sG.createEl("option", { text: t }); o.value = v; }
+    sG.value = grupo; sG.onchange = () => (grupo = sG.value);
+  }
+  if (patronInicial) {
+    const f2 = form.createDiv({ cls: "fb-fila" });
+    const lab = f2.createEl("label"); const chk = lab.createEl("input", { attr: { type: "checkbox" } }); chk.checked = true; chk.onchange = () => (recordar = chk.checked);
+    lab.appendText("Recordar para los próximos los que contengan:");
+    const iP = f2.createEl("input", { attr: { type: "text", "aria-label": "Texto a recordar" } }); iP.value = patron; iP.oninput = () => (patron = iP.value);
+  }
+  const acc = form.createDiv({ cls: "fb-fila" });
+  const bOk = acc.createEl("button", { cls: "fb-btn", attr: { type: "button" }, text: mostrar ? "Mostrarla y usarla" : "Crearla y usarla" });
+  const bNo = acc.createEl("button", { cls: "fb-btn sec", attr: { type: "button" }, text: "Cancelar" });
+  bNo.onclick = () => { form.hidden = true; bAbrir.setAttribute("aria-expanded", "false"); bAbrir.focus(); };
+  bOk.onclick = () => {
+    if (!nombre.trim()) { mensaje(caja, "Escribe el nombre de la categoría.", "err"); return; }
+    hecho({ accion: "guardar", clase: "gasto", categoria: nombre.trim(), categoria_nueva: { nombre: nombre.trim(), icono, grupo, mostrar }, recordar: recordar && !!patron.trim(), patron }, bOk);
+  };
+}
 function tarjetaGrupo(padre, g) {
   const p = g[0], f = p.fila, entra = f.importe > 0, esTr = f.clase === "transferencia";
   const sug = sugDe(g);
@@ -641,6 +678,7 @@ function tarjetaGrupo(padre, g) {
   const bD = chips.createEl("button", { cls: "desc", text: g.length > 1 ? "Descartar todos" : "Descartar" });
   bD.title = "No registrar " + (g.length > 1 ? "estos movimientos" : "este movimiento");
   bD.onclick = () => hecho({ accion: "ignorar" }, bD);
+  if (p.categoria_nueva && !entra && !esTr && !g.reparto) consejoCategoria(card, g, p.categoria_nueva, hecho, patron);
   if (g.reparto) return;  // sin «Opciones»: no hay nada que recordar ni nombre que cambiar
   plegable(card, "Opciones", (c) => {
     const f1 = c.createDiv({ cls: "fb-fila" });

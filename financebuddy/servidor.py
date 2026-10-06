@@ -38,6 +38,7 @@ class App:
         if pend:  # la categoría más probable de cada duda del banco (por tu historial)
             mem = C.memoria(regs.get("movimiento", []))
             activos = regs.get("activo", [])
+            fus = self.alm.config("categorias_fusionadas") or {}
             fijas = {c["nombre"] for c in regs.get("categoria", []) if c.get("grupo") == "fijo"}
             cands = bizums.detalle_candidatos(pend, regs.get("movimiento", []), fijas)  # gastos que un Bizum recibido podría devolver
             for p in pend:
@@ -54,6 +55,14 @@ class App:
                              "motivo": f"Jev · {round(100 * float(j.get('confianza') or 0))} %" + (f" · {j['motivo']}" if j.get("motivo") else ""),
                              "fuente": "jev", "confianza": j.get("confianza")}
                     p["sugerencia"] = s
+                    # Si ninguna categoría tuya encaja: aconsejar crear una típica (por el concepto; si no, la que apunta Jev). Solo aconseja.
+                    if f.get("importe", 0) < 0 and not bizums.es_bizum(f.get("texto")) and (
+                            not s or s["categoria"] in ("Otros", "Otros ingresos") or str(s.get("motivo", "")).startswith("parecido")
+                            or (s.get("fuente") == "jev" and float(s.get("confianza") or 0) < 0.7)):
+                        todas = regs.get("categoria", [])
+                        n = C.proponer_categoria_nueva(f.get("texto", ""), f["importe"], todas, fus) or (
+                            C.consejo_de_jev(j["categoria_nueva"], todas, fus) if j.get("categoria_nueva") and not j.get("categoria") else None)
+                        if n: p["categoria_nueva"] = n
         regs.pop("ignorado", None)
         cfg = self.alm.config(sin="precio_serie:")  # las series de precios (caché) se quedan en el servidor
         cfg["jev"] = jev.config_publica(self.alm)  # la clave nunca sale hacia la página

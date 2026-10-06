@@ -84,6 +84,52 @@ REGLAS = [
     ("pull and", "Compras", "gasto"), ("bershka", "Compras", "gasto"), ("stradivarius", "Compras", "gasto"), ("mango", "Compras", "gasto"),
     ("lefties", "Compras", "gasto"), ("sprinter", "Compras", "gasto"), ("druni", "Cuidado personal", "gasto"), ("primor", "Cuidado personal", "gasto"),
 ]
+# Categorías «típicas» que se pueden ACONSEJAR (nunca se crean solas) cuando un pago no encaja en ninguna de las tuyas
+# (clasificar.proponer_categoria_nueva). nombre/icono/grupo: lo que se crearía; alias: nombres que ya cuentan como esa categoría
+# (si tienes alguno, no se aconseja nada); cubre: categorías de serie donde ese pago ya encaja bien (tampoco se aconseja);
+# palabras: del concepto o del comercio, sin tildes, al principio de palabra. Los nombres de serie se reutilizan tal cual
+# (Mascotas, Regalos, Formación…): si faltan —borradas u ocultas— se aconseja crearlas o volver a mostrarlas.
+CATALOGO = [
+    {"nombre": "Mascotas", "icono": "🐾", "grupo": "variable", "tema": "mascotas", "alias": ["Animales"], "cubre": [],
+     "palabras": ["veterinari", "mascota", "pienso", "perrera", "protectora de animales", "acuario", "peluqueria canina"],
+     "descripcion": "veterinario, comida y cosas para animales"},
+    {"nombre": "Regalos", "icono": "🎁", "grupo": "variable", "tema": "regalos", "alias": ["Detalles"], "cubre": [],
+     "palabras": ["regalo", "floristeria", "flores", "interflora", "jugueteria", "joyeria", "bombones"],
+     "descripcion": "regalos para otras personas"},
+    {"nombre": "Formación", "icono": "🎓", "grupo": "variable", "tema": "estudios", "alias": ["Educación", "Estudios"], "cubre": [],
+     "palabras": ["universidad", "matricula", "academia", "curso", "colegio", "escuela", "autoescuela", "master", "idiomas", "libreria"],
+     "descripcion": "cursos, libros, academias, matrículas"},
+    {"nombre": "Viajes", "icono": "✈️", "grupo": "variable", "tema": "viajes", "alias": ["Vacaciones"], "cubre": [],
+     "palabras": ["hotel", "hostal", "apartamentos turisticos", "vuelo", "aerolinea", "agencia de viajes", "camping", "alojamiento", "excursion"],
+     "descripcion": "vuelos, hoteles, alojamientos, excursiones"},
+    {"nombre": "Salud", "icono": "🩺", "grupo": "variable", "tema": "salud", "alias": ["Farmacia", "Sanidad", "Médico"], "cubre": [],
+     "palabras": ["farmacia", "parafarmacia", "dentista", "dental", "clinica", "fisioterap", "optica", "podolog", "psicolog", "hospital", "ortopedia"],
+     "descripcion": "farmacia, médico, dentista, óptica, fisioterapia"},
+    {"nombre": "Cuidado personal", "icono": "💈", "grupo": "variable", "tema": "cuidado personal", "alias": ["Belleza", "Peluquería"], "cubre": [],
+     "palabras": ["peluqueria", "barberia", "estetica", "manicura", "perfumeria", "spa", "depilacion", "centro de belleza"],
+     "descripcion": "peluquería, cosmética, estética"},
+    {"nombre": "Hogar", "icono": "🛋️", "grupo": "variable", "tema": "la casa", "alias": ["Bricolaje", "Casa"], "cubre": [],
+     "palabras": ["ferreteria", "bricolaje", "muebles", "cerrajer", "fontaner", "electrodomestic", "decoracion", "carpinteria"],
+     "descripcion": "muebles, decoración, bricolaje, electrodomésticos, limpieza"},
+    {"nombre": "Deporte", "icono": "⚽", "grupo": "variable", "tema": "deporte", "alias": ["Deportes", "Gimnasio"], "cubre": [],
+     "palabras": ["polideportivo", "piscina", "club deportivo", "federacion", "crossfit", "yoga", "pilates", "escalada", "running", "deportes"],
+     "descripcion": "cuotas, instalaciones y material deportivo"},
+    {"nombre": "Donaciones", "icono": "🤝", "grupo": "variable", "tema": "donaciones", "alias": ["Donativos", "Solidaridad", "ONG"], "cubre": [],
+     "palabras": ["cruz roja", "unicef", "oxfam", "caritas", "greenpeace", "medicos sin fronteras", "donativo", "donacion", "fundacion", "ong"],
+     "descripcion": "donativos y cuotas a ONG o fundaciones"},
+    {"nombre": "Tecnología", "icono": "💻", "grupo": "variable", "tema": "tecnología", "alias": ["Electrónica", "Informática"], "cubre": ["Compras"],
+     "palabras": ["informatica", "electronica", "ordenador", "smartphone", "apple store", "hardware", "reparacion de moviles"],
+     "descripcion": "ordenadores, móviles y electrónica"},
+    {"nombre": "Ropa", "icono": "👕", "grupo": "variable", "tema": "ropa", "alias": ["Moda", "Vestimenta"], "cubre": ["Compras"],
+     "palabras": ["zapateria", "calzado", "boutique", "lenceria", "textil", "moda", "sastreria"],
+     "descripcion": "ropa y calzado"},
+    {"nombre": "Niños", "icono": "🧒", "grupo": "variable", "tema": "los niños", "alias": ["Hijos", "Infantil"], "cubre": [],
+     "palabras": ["guarderia", "ludoteca", "canguro", "puericultura", "escuela infantil", "panales"],
+     "descripcion": "guardería, material y actividades infantiles"},
+    {"nombre": "Impuestos", "icono": "🏛️", "grupo": "variable", "tema": "impuestos y tasas", "alias": ["Tasas", "Hacienda"], "cubre": [],
+     "palabras": ["ayuntamiento", "agencia tributaria", "hacienda", "tasa", "dgt", "multa", "tributos", "registro civil"],
+     "descripcion": "impuestos, tasas y multas"},
+]
 # Qué entra en cada categoría de serie: se lo explica al asistente Jev (jev.py) para que elija bien. Las tuyas pueden
 # tener su propia descripción (campo «descripcion»).
 DESCRIPCIONES = {

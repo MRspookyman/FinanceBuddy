@@ -29,6 +29,7 @@ SEGURA = 0.85      # desde esta confianza, la sugerencia sale marcada al aceptar
 MINIMA = 0.5       # por debajo no se propone nada
 MAX_GRUPOS = 80    # por importación (cada grupo es una petición de 70–500 ms)
 HILOS = 4
+NUEVA_MINIMA = 0.7  # para aconsejar una categoría nueva hay que estar más seguro que para elegir una existente
 
 class ErrorJev(Exception):
     pass
@@ -269,15 +270,27 @@ def categorias_de(alm):
     ingreso = [(c["nombre"], c.get("descripcion") or DESCRIPCIONES.get(c["nombre"], "")) for c in cats if c.get("grupo") == "ingreso"]
     return gasto, ingreso
 
-def clasificar(clave, texto, importe, gasto, ingreso, url=None, minima=MINIMA, contexto=""):
+def clasificar(clave, texto, importe, gasto, ingreso, url=None, minima=MINIMA, contexto="", nuevas=None):
     """→ {clase: gasto|ingreso|reembolso, categoria, confianza, modelo} o None si Jev no está seguro.
-    `contexto`: lo que se le cuenta de tu historial (Contexto.de)."""
+    `contexto`: lo que se le cuenta de tu historial (Contexto.de).
+    `nuevas`: [{clave, descripcion}] categorías típicas que aún no tienes (clasificar.categorias_nuevas_posibles). Solo para un gasto: si
+    ninguna de las tuyas encaja y Jev ve claro que sería una de ellas, devuelve {categoria: "", categoria_nueva: clave}. Solo sugiere."""
     cg, ng = _opciones(gasto)
     estado = _con_contexto(saneado(texto, importe), contexto)
     if importe < 0:
-        ans, d = preguntar(clave, estado, {"categoria": {"type": "choice", "instructions": "¿En qué categoría de gasto encaja este pago?", "criteria": cg}}, url=url)
+        preg = {"categoria": {"type": "choice", "instructions": "¿En qué categoría de gasto encaja este pago?", "criteria": cg}}
+        if nuevas:  # solo nombres y descripciones del catálogo de la app: nada tuyo
+            crit = {_slug(n["clave"]): f"{n['clave']}: {n['descripcion']}" if n.get("descripcion") else n["clave"] for n in nuevas}
+            crit["ninguna"] = "Ninguna de estas: no hace falta una categoría nueva"
+            preg["nueva"] = {"type": "choice", "instructions": "Si ninguna de tus categorías encaja con este pago, ¿qué categoría nueva sería la adecuada?", "criteria": crit}
+        ans, d = preguntar(clave, estado, preg, url=url)
         a = ans.get("categoria") or {}
         r = {"clase": "gasto", "categoria": ng.get(a.get("choice")), "confianza": float(a.get("confidence") or 0)}
+        if nuevas and (not r["categoria"] or r["confianza"] < minima):
+            nv = ans.get("nueva") or {}
+            elegida = {_slug(n["clave"]): n["clave"] for n in nuevas}.get(nv.get("choice"))
+            if elegida and float(nv.get("confidence") or 0) >= NUEVA_MINIMA:
+                return {"clase": "gasto", "categoria": "", "confianza": 0, "categoria_nueva": elegida, "modelo": d.get("model", MODELO), "tokens": (d.get("usage") or {}).get("input_tokens", 0)}
     else:
         ci, ni = _opciones(ingreso)
         ans, d = preguntar(clave, estado, {
@@ -350,14 +363,15 @@ def revisar(alm, limite=MAX_GRUPOS, url=None):
     grupos = grupos_sin_sugerencia(alm)[:limite]
     if not grupos: return 0, 0, None
     ctx = Contexto(alm)
+    nuevas = C.categorias_nuevas_posibles(alm.todos("categoria"), alm.config("categorias_fusionadas"))
     def uno(g):
         f = g[0]["fila"]
         if f.get("importe", 0) > 0 and bizums.es_bizum(f.get("texto")):  # Bizum recibido: primero, ¿de qué gasto tuyo es?
             r = clasificar_reparto(alm, c["clave"], g, gasto, ingreso, ctx, url=url)
             if r: return r
         return clasificar(c["clave"], f.get("texto", ""), f.get("importe", 0), gasto, ingreso, url=url,
-                          contexto=ctx.de(f.get("texto", ""), f.get("importe", 0), persona=len(g) == 1))
-    res = _lote(uno, grupos)
+                          contexto=ctx.de(f.get("texto", ""), f.get("importe", 0), persona=len(g) == 1), nuevas=nuevas)
+    res =_lote(uno, grupos)
     n, error = 0, None
     with alm.transaccion():
         for g, r, err in res:

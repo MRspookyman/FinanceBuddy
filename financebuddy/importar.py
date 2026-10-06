@@ -466,6 +466,8 @@ def resolver(alm, pid, d):
                 if cat and L.norm(cat[1][0]) == L.norm(nombre): nuevo.update(clase=cat[1][1], isin=cat[0], patrones=list(cat[1][2]))
                 alm.guardar("activo", nuevo)
             d = {**d, "activo": nombre}
+        if p["tipo_import"] == "banco" and d.get("categoria_nueva") and d.get("accion", "guardar") == "guardar":
+            d = {**d, "categoria": _categoria_nueva(alm, d["categoria_nueva"])}
         msg = _resolver_uno(alm, p, d)
         if recordar and d.get("accion") in ("ignorar", "activo", "interes") and p["tipo_import"] == "inversion":
             if d["accion"] == "activo":
@@ -486,6 +488,23 @@ def resolver(alm, pid, d):
             if p["tipo_import"] == "banco" and d.get("clase") == "transferencia" and (q["fila"]["importe"] < 0) != (p["fila"]["importe"] < 0): continue
             _resolver_uno(alm, q, dq); otras += 1
     return msg + (f" · y {otras} más iguales" if otras else "")
+
+def _categoria_nueva(alm, c):
+    """El usuario ha aceptado un consejo de categoría nueva (c: {nombre, icono?, grupo?, mostrar?}): la crea con ese nombre
+    (o, si ya existe, la reutiliza y, si estaba oculta, la vuelve a mostrar). Devuelve el nombre. Nunca duplica ni pisa lo suyo."""
+    nombre = " ".join(str((c or {}).get("nombre") or "").split())
+    if not nombre: raise ValueError("Escribe el nombre de la categoría.")
+    if len(nombre) > 40: raise ValueError("El nombre de la categoría es demasiado largo (máximo 40 letras).")
+    existente = next((x for x in alm.todos("categoria") if x["nombre"].lower() == nombre.lower()), None)
+    if existente:
+        if existente.get("grupo") == "ingreso": raise ValueError(f"«{existente['nombre']}» es una categoría de ingresos: elige otro nombre.")
+        if existente.get("oculta"): alm.guardar("categoria", {**existente, "oculta": False}, existente["id"])
+        return existente["nombre"]
+    grupo = c.get("grupo") if c.get("grupo") in ("variable", "fijo") else "variable"
+    datos = {"nombre": nombre, "grupo": grupo}
+    if str(c.get("icono") or "").strip(): datos["icono"] = str(c["icono"]).strip()
+    alm.guardar("categoria", datos)
+    return nombre
 
 def _resolver_uno(alm, p, d):
     f, cuenta = p["fila"], p["cuenta"]

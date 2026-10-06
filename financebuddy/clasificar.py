@@ -154,6 +154,56 @@ def sugerir_guardable(texto, imp, mem, umbral=UMBRAL_SUGERIDO):
             if r: return r
     return None
 
+# ───────────── aconsejar una categoría nueva ─────────────
+# Cuando un pago no tiene una categoría clara (ni historial ni sugerencia fiable) y ninguna de las tuyas encaja, se puede ACONSEJAR
+# crear una de las «típicas» (plantilla.CATALOGO) por las palabras del concepto. Solo aconseja: crearla es decisión del usuario.
+def _consejo(e, categorias, fusionadas, palabra=""):
+    """El consejo para una entrada del catálogo, o None si ya tienes una categoría que cubre eso.
+    {accion: crear|mostrar, nombre, icono, grupo, clase, motivo}. `mostrar`: la tienes, pero oculta."""
+    ya = {norm(c.get("nombre", "")): c for c in categorias or []}
+    fus = {norm(n) for n in (fusionadas or {})}
+    propios = [e["nombre"]] + list(e.get("alias") or [])
+    if any(norm(n) in fus for n in propios): return None  # la fusionaste en otra: ya está cubierta
+    if any(norm(n) in ya and not ya[norm(n)].get("oculta") for n in propios + list(e.get("cubre") or [])): return None
+    oculta = next((ya[norm(n)] for n in propios if norm(n) in ya), None)
+    base = {"clase": "gasto", "icono": e["icono"], "grupo": e["grupo"], "fuente": "local"}
+    donde = f"«{palabra}» " if palabra else "Esto "
+    if oculta:
+        return {**base, "accion": "mostrar", "nombre": oculta["nombre"], "icono": oculta.get("icono") or e["icono"], "grupo": oculta.get("grupo") or e["grupo"],
+                "motivo": f"{donde}parece de {e['tema']} y tienes la categoría «{oculta['nombre']}» oculta."}
+    return {**base, "accion": "crear", "nombre": e["nombre"],
+            "motivo": f"{donde}parece de {e['tema']} y no tienes ninguna categoría para eso."}
+
+def proponer_categoria_nueva(texto, importe, categorias, fusionadas=None):
+    """Solo gastos. {accion: crear|mostrar, nombre, icono, grupo, clase, motivo, fuente} o None. `categorias`: todas, también las ocultas."""
+    if importe >= 0: return None
+    from .plantilla import CATALOGO
+    t = limpio(texto)
+    mejor = None
+    for e in CATALOGO:
+        ps = [p for p in e["palabras"] if casa(p, t)]
+        if not ps: continue
+        puntos = (len(ps), max(len(p) for p in ps))
+        if mejor is None or puntos > mejor[0]: mejor = (puntos, e, max(ps, key=len))
+    if not mejor: return None
+    return _consejo(mejor[1], categorias, fusionadas, mejor[2])
+
+def categorias_nuevas_posibles(categorias, fusionadas=None):
+    """Las del catálogo que se podrían aconsejar ahora (para ofrecérselas a Jev como lista cerrada): [{nombre, descripcion, clave…}]."""
+    from .plantilla import CATALOGO
+    out = []
+    for e in CATALOGO:
+        c = _consejo(e, categorias, fusionadas)
+        if c: out.append({**c, "descripcion": e.get("descripcion", ""), "clave": e["nombre"]})
+    return out
+
+def consejo_de_jev(clave, categorias, fusionadas=None):
+    """Lo que Jev ha sugerido (el nombre de una de las opciones que se le dieron) → consejo, o None si ya no procede."""
+    from .plantilla import CATALOGO
+    e = next((e for e in CATALOGO if e["nombre"] == clave), None)
+    c = _consejo(e, categorias, fusionadas) if e else None
+    return {**c, "fuente": "jev", "motivo": c["motivo"].replace("Esto parece", "Jev cree que esto parece")} if c else None
+
 # Categorías que no se reparten con amigos: un Bizum recibido no es «tu parte» de un recibo o de una suscripción.
 NO_COMPARTIDAS = {"Suscripciones", "Comisiones", "Efectivo", "Apuestas", "Seguros", "Suministros"}
 
