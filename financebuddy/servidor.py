@@ -303,7 +303,12 @@ class App:
             tipo = d.get("tipo")
             if tipo not in modelo.EDITABLES: raise ValueError("Tipo no editable.")
             id = int(d["id"]) if d.get("id") else None
-            return {"ok": True, "id": a.guardar(tipo, d.get("datos") or {}, id)}
+            datos = dict(d.get("datos") or {})
+            if tipo == "movimiento" and id:  # quitar a mano el gasto que devuelve un Bizum: que no se vuelva a enlazar solo
+                viejo = a.obtener("movimiento", id) or {}
+                if datos.get("reembolsa"): datos.pop("sin_gasto", None)
+                elif viejo.get("reembolsa") or viejo.get("sin_gasto"): datos["sin_gasto"] = True
+            return {"ok": True, "id": a.guardar(tipo, datos, id)}
         if ruta == "/api/borrar":
             if d.get("tipo") not in modelo.EDITABLES: raise ValueError("Tipo no editable.")
             a.borrar(d["tipo"], int(d["id"])); return {"ok": True}

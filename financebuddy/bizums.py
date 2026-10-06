@@ -69,7 +69,7 @@ def casar(imp, fecha, gastos, recibidos, fijas=()):
     return max(cerca, key=lambda c: c["gasto"]["importe"]) if cerca else None
 
 def repartos(pendientes):
-    """Los Bizums recibidos iguales (≥ 2) del mismo día que esperan en «Por revisar» son un solo reparto, de un solo gasto.
+    """Los Bizums recibidos iguales (≥ 2) del mismo día o del siguiente (como en candidatos) que esperan en «Por revisar» son un solo reparto, de un solo gasto.
     → {id de la duda: clave del reparto} (solo los que forman parte de uno)."""
     bz = sorted((p for p in pendientes if p.get("tipo_import") == "banco" and (p.get("fila") or {}).get("importe", 0) > 0
                  and es_bizum(p["fila"].get("texto")) and p["fila"].get("clase") != "transferencia"),
@@ -77,7 +77,7 @@ def repartos(pendientes):
     grupos, out = [], {}
     for p in bz:
         f = p["fila"]
-        g = next((g for g in grupos if g[0]["fila"]["op"] == f["op"] and p.get("cuenta") == g[0].get("cuenta")
+        g = next((g for g in grupos if abs((_dia(g[0]["fila"]["op"]) - _dia(f["op"])).days) <= 1 and p.get("cuenta") == g[0].get("cuenta")
                   and abs(g[0]["fila"]["importe"] - f["importe"]) <= tolerancia(f["importe"])), None)
         if g: g.append(p)
         else: grupos.append([p])
@@ -154,7 +154,7 @@ def enlazar(alm):
     fijas = {n for n, g in grupos.items() if g == "fijo"}
     n = 0
     for m in sorted(recibidos, key=lambda x: (x["fecha"], x["id"])):
-        if m.get("reembolsa") or not m.get("categoria"): continue
+        if m.get("reembolsa") or m.get("sin_gasto") or not m.get("categoria"): continue
         imp = float(m["importe"])
         mismos = [_gasto(g) for g in gastos.values() if g.get("categoria") == m["categoria"] and g["id"] != m["id"]]
         c = casar(imp, m["fecha"], mismos, cuentas_bizum, fijas)

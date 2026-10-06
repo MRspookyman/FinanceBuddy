@@ -27,7 +27,7 @@
 - **Último gran tema:** las olas de Rumbo. **Nada que salga a internet se ha probado contra el servicio real** (el entorno de
   desarrollo bloquea Jev, Yahoo, Morningstar y CoinGecko): todo se verificó con servidores falsos y hay scripts para que el
   usuario lo compruebe en su PC (`evaluar_jev.py`, `evaluar_precios.py`). GitHub (aviso de versión) sí responde desde el entorno.
-- **Tests:** 150 de Python (`unittest`), 84 de cálculos y todas las pantallas sin errores en navegador. Siempre en verde al cerrar
+- **Tests:** 153 de Python (`unittest`), 84 de cálculos y todas las pantallas sin errores en navegador. Siempre en verde al cerrar
   cada tarea.
 
 ---
@@ -545,10 +545,11 @@ nombre, emoji y tipo editables y casilla «Recordar…» (regla + resolver los i
 `categoria_nueva` (`importar._categoria_nueva`, misma transacción: «Deshacer» lo revierte todo). Nunca se crea nada sin pulsar.
 Pruebas: `pruebas/test_categoria_nueva.py`. Sin probar con clics el formulario desplegable ni con la API real de Jev.
 
-**Auditoría de Bizums (solo lectura, sin cambios):** (1) no hay marca de «este Bizum no tiene gasto»: `bizums.enlazar` se ejecuta al
+**Auditoría de Bizums** (hecha en solo lectura; después se arreglaron (1) y (2), ver «Arreglado» abajo): (1) no hay marca de «este Bizum no tiene gasto»: `bizums.enlazar` se ejecuta al
 abrir y podría volver a enlazar lo que se desenlazó; (2) `repartos()` agrupa por día exacto y `candidatos()` usa ±1 día; (3) `VENTANA`
 fija en 10 días; (4) la tolerancia del 2 % es holgada en importes grandes; (5) gastos «Otros» o sin categoría nunca son candidatos;
 (6) `enlazar` es O(Bizums × gastos); (7) pocas pruebas directas de `enlazar`/`previos`.
+**Arreglado:** (1) `movimiento.sin_gasto`: al quitar a mano el gasto de un Bizum (`/api/guardar`) se marca y `bizums.enlazar` ya no lo vuelve a enlazar; elegir otro gasto lo desmarca. (2) `bizums.repartos` agrupa con ±1 día, como `candidatos`. Pruebas: `pruebas/test_bizums.py` y una en `test_servidor.py`.
 
 ## 10. Pendiente y backlog (por valor aproximado)
 

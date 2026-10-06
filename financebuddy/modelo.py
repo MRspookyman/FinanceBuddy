@@ -16,8 +16,9 @@ CAMPOS = {
     "movimiento": {"fecha": "fecha*", "clase": ("gasto", "ingreso", "reembolso", "transferencia"), "categoria": "texto",
                    "importe": "num+*", "cuenta": "texto", "concepto": "texto*", "recurrente": "texto", "destino": "texto",
                    "origen": "texto", "nota": "texto", "ext_texto": "texto", "ext_importe": "num", "ext_fecha": "fecha",
-                   "reembolsa": "int", "sugerido": "texto"},  # sugerido: por qué se eligió sola la categoría (vacío = confirmada);
-                                                               # reembolsa: id del gasto que devuelve este reembolso (Bizums, bizums.py)
+                   "reembolsa": "int", "sugerido": "texto", "sin_gasto": "bool"},  # sugerido: por qué se eligió sola la categoría (vacío = confirmada);
+                                                               # reembolsa: id del gasto que devuelve este reembolso (Bizums, bizums.py);
+                                                               # sin_gasto: quitaste el enlace a mano, que no se vuelva a enlazar solo
     # Dinero que te da (dividendo, cupón) o te cobra (comisión, custodia) un activo, sin cambiar sus participaciones: importe siempre
     # positivo, el tipo dice el sentido. Cuenta para la rentabilidad del activo y entra/sale del efectivo de su bróker.
     "cobro": {"fecha": "fecha*", "activo": "texto*", "tipo": ("dividendo", "comision"), "importe": "num+*", "cuenta": "texto", "nota": "texto",

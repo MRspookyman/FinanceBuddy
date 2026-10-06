@@ -198,6 +198,21 @@ class TestFlujo(unittest.TestCase):
             self.api("/api/config", {"por_pagina": dado})
             self.assertEqual(self.app.datos()["config"]["por_pagina"], esperado)
 
+    def test_quitar_a_mano_el_gasto_de_un_bizum_no_se_vuelve_a_enlazar(self):
+        from financebuddy import bizums
+        g = self.api("/api/guardar", {"tipo": "movimiento", "datos": {"fecha": "2026-09-10", "clase": "gasto", "categoria": "Supermercado", "importe": 40, "concepto": "Super"}})["id"]
+        b = self.api("/api/guardar", {"tipo": "movimiento", "datos": {"fecha": "2026-09-11", "clase": "reembolso", "categoria": "Supermercado", "importe": 20,
+                                                                     "concepto": "Parte de Ana", "ext_texto": "Bizum de Ana"}})["id"]
+        bizums.enlazar(self.app.alm)
+        m = self.app.alm.obtener("movimiento", b)
+        self.assertEqual(m.get("reembolsa"), g)
+        m.pop("reembolsa"); self.api("/api/guardar", {"tipo": "movimiento", "id": b, "datos": m})  # el formulario guarda sin el enlace
+        bizums.enlazar(self.app.alm)
+        m = self.app.alm.obtener("movimiento", b)
+        self.assertTrue(m.get("sin_gasto")); self.assertFalse(m.get("reembolsa"))
+        m["reembolsa"] = g; self.api("/api/guardar", {"tipo": "movimiento", "id": b, "datos": m})  # volver a elegirlo lo desmarca
+        self.assertFalse(self.app.alm.obtener("movimiento", b).get("sin_gasto"))
+
     def test_subida_rechaza_otros_formatos(self):
         r = self.api("/api/importar/subir", {"nombre": "virus.exe", "contenido": ""})
         self.assertFalse(r["ok"])
