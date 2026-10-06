@@ -1,5 +1,5 @@
 # Prueba de extremo a extremo de la API (lo que hace la página) y de la seguridad del servidor.
-import base64, datetime, http.client, json, os, shutil, sys, tempfile, threading, unittest
+import base64, datetime, http.client, json, os, shutil, sys, tempfile, threading, unittest, urllib.parse
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from financebuddy import servidor
 from pruebas.test_importar import FILAS, excel_santander
@@ -252,6 +252,15 @@ class TestSeguridad(unittest.TestCase):
     def test_ruta_fuera_de_web(self):
         self.assertEqual(self.pedir("GET", "/web/../../servidor.py")[0], 404)
         self.assertEqual(self.pedir("GET", "/web/%2e%2e/%2e%2e/servidor.py")[0], 404)
+        self.assertEqual(self.pedir("GET", "/web/..%5c..%5cservidor.py")[0], 404)
+
+    def test_no_sirve_archivos_de_fuera_por_su_ruta_entera(self):
+        """Una ruta absoluta dentro de /web/ servía CUALQUIER archivo del ordenador (incluida la base de datos) sin clave."""
+        secreto = os.path.join(self.dir, "secreto.txt")
+        with open(secreto, "w", encoding="utf-8") as fh: fh.write("esto no sale de aquí")
+        for ruta in (secreto, secreto.replace("\\", "/"), self.app.carpeta.db):
+            self.assertEqual(self.pedir("GET", "/web/" + urllib.parse.quote(ruta))[0], 404, ruta)
+        self.assertEqual(self.pedir("GET", "/web/icono.svg")[0], 200)  # lo de la carpeta web sí se sirve
     def test_pagina(self):
         s, b = self.pedir("GET", "/")
         self.assertEqual(s, 200); self.assertIn(self.app.token.encode(), b)

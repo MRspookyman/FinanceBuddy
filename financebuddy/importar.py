@@ -342,7 +342,7 @@ def importar_archivo(alm, carpeta, ruta, tipo=None, cuenta=None, perfil_nombre=N
     tipo = tipo or tipo_de(ruta, alm, carpeta)
     if tipo is None:
         raise NecesitaPerfil({"archivo": os.path.basename(ruta), "tipo": None, **L.muestra_para_configurar(L.filas_crudas(ruta))})
-    if not simulando: alm.copia(carpeta.copias)
+    if not simulando: alm.copia(carpeta.copias, extra=alm.config("copia_extra"))
     r = {"banco": importar_banco, "inversion": importar_inversion, "operaciones": OP.importar}[tipo](alm, ruta, cuenta, perfil_nombre)
     if r.get("ok") and r.get("tipo") != "operaciones":
         t = emparejar_traspasos(alm)

@@ -1,7 +1,13 @@
 # Base de datos: un archivo SQLite con una tabla de registros (JSON por registro, ver modelo.py) y la configuración.
-import datetime, glob, json, os, shutil, sqlite3, threading
+import datetime, glob, json, os, re, shutil, sqlite3, threading
 from contextlib import contextmanager
 from . import modelo
+
+class BaseDañada(Exception):
+    """El archivo datos.db no es una base de datos (o está corrupto). Se arregla restaurando una copia."""
+    def __init__(self, ruta, causa):
+        super().__init__(f"El archivo de datos está dañado y no se puede abrir ({causa}).")
+        self.ruta, self.causa = ruta, causa
 
 ESQUEMA = """
 CREATE TABLE IF NOT EXISTS registros(id INTEGER PRIMARY KEY, tipo TEXT NOT NULL, datos TEXT NOT NULL, creado TEXT, modificado TEXT);
@@ -11,15 +17,49 @@ CREATE TABLE IF NOT EXISTS config(clave TEXT PRIMARY KEY, valor TEXT);
 VERSION_ESQUEMA = 1
 COPIAS_MAX = 30
 
+RE_COPIA = re.compile(r"datos (\d{4}-\d{2}-\d{2})(?: (\d{6}))?")
+
+def _cuando(p):
+    """Cuándo se hizo una copia, por su nombre («datos 2026-10-06.db» = ese día a las 00:00; «datos 2026-10-06 173000 manual.db»).
+    Ordenar por el nombre tal cual no vale: «datos 2026-10-06 173000 manual.db» va ANTES que «datos 2026-10-06.db» (el espacio
+    es menor que el punto) y se tomaba la copia vieja por la nueva."""
+    m = RE_COPIA.match(os.path.basename(p))
+    if m: return (m.group(1), m.group(2) or "000000")
+    t = datetime.datetime.fromtimestamp(os.path.getmtime(p))
+    return (t.strftime("%Y-%m-%d"), t.strftime("%H%M%S"))
+
+def copias_de(carpeta):
+    """Las copias de seguridad de una carpeta, de la más antigua a la más reciente."""
+    return sorted(glob.glob(os.path.join(carpeta, "datos *.db")), key=_cuando)
+
+def ultima_copia(carpeta):
+    """La copia de seguridad más reciente de una carpeta Copias, o None."""
+    copias = copias_de(carpeta)
+    return copias[-1] if copias else None
+
+def restaurar_archivo(db, copia):
+    """Aparta el datos.db dañado («datos.db.roto …») y deja la copia en su lugar. → ruta del archivo apartado."""
+    roto = f"{db}.roto {datetime.datetime.now():%Y-%m-%d %H%M%S}"
+    os.replace(db, roto)
+    for sufijo in ("-wal", "-shm"):
+        try: os.remove(db + sufijo)
+        except OSError: pass
+    shutil.copy2(copia, db)
+    return roto
+
 class Almacen:
     def __init__(self, ruta):
         self.ruta = ruta
         self.con = sqlite3.connect(ruta, check_same_thread=False, isolation_level=None)
-        self.con.execute("PRAGMA journal_mode=WAL")
         self.lock = threading.RLock()
         self._tx = 0
-        self.con.executescript(ESQUEMA)
-        if self.config("version_esquema") is None: self.set_config("version_esquema", VERSION_ESQUEMA)
+        try:
+            self.con.execute("PRAGMA journal_mode=WAL")
+            self.con.executescript(ESQUEMA)
+            if self.config("version_esquema") is None: self.set_config("version_esquema", VERSION_ESQUEMA)
+        except sqlite3.DatabaseError as e:  # no es una base de datos, o está corrupta: hay que restaurar una copia
+            self.con.close()
+            raise BaseDañada(ruta, str(e))
         self.con.execute("DELETE FROM registros WHERE tipo='composicion'")  # informes X-Ray de versiones anteriores
 
     # ───── transacciones (anidables: solo la más externa hace COMMIT) ─────
@@ -149,8 +189,10 @@ class Almacen:
             self.con.executemany("INSERT INTO registros(id,tipo,datos) VALUES(?,?,?)", regs)
             self.con.executemany("INSERT INTO config(clave,valor) VALUES(?,?)", cfg)
 
-    def copia(self, carpeta, motivo="diaria", forzar=False):
-        """Copia datos.db en carpeta/datos AAAA-MM-DD[ motivo].db (una al día salvo `forzar`). Guarda las últimas 30."""
+    def copia(self, carpeta, motivo="diaria", forzar=False, extra=None):
+        """Copia datos.db en carpeta/datos AAAA-MM-DD[ motivo].db (una al día salvo `forzar`). Guarda las últimas 30.
+        `extra`: segunda carpeta (otro disco, un USB, una carpeta sincronizada) donde dejar la misma copia; si no se puede
+        (el USB no está puesto), no se interrumpe nada: se apunta el motivo en `copia_extra_error` para enseñarlo en Ajustes."""
         os.makedirs(carpeta, exist_ok=True)
         hoy = datetime.date.today().isoformat()
         if not forzar and glob.glob(os.path.join(carpeta, f"datos {hoy}*.db")): return None
@@ -160,10 +202,38 @@ class Almacen:
             dst = sqlite3.connect(destino)
             self.con.backup(dst)
             dst.close()
-        for viejo in sorted(glob.glob(os.path.join(carpeta, "datos *.db")))[:-COPIAS_MAX]:
+        self._limpiar_copias(carpeta)
+        if extra: self._copia_extra(destino, str(extra))
+        return destino
+
+    def _limpiar_copias(self, carpeta):
+        for viejo in copias_de(carpeta)[:-COPIAS_MAX]:
             try: os.remove(viejo)
             except OSError: pass
-        return destino
+
+    def _copia_extra(self, origen, carpeta):
+        try:
+            os.makedirs(carpeta, exist_ok=True)
+            shutil.copy2(origen, os.path.join(carpeta, os.path.basename(origen)))
+            self._limpiar_copias(carpeta)
+            self.set_config("copia_extra_error", None)
+        except OSError as e:
+            self.set_config("copia_extra_error", {"carpeta": carpeta, "motivo": getattr(e, "strerror", None) or str(e),
+                                                  "cuando": datetime.date.today().isoformat()})
+
+    def usos(self, tipo, reg):
+        """Cuántos registros apuntan a este por su nombre (modelo.REFERENCIAS) → [(tipo, nº)]. Para avisar antes de borrar."""
+        nombre = (reg or {}).get("nombre")
+        if not nombre or tipo not in modelo.REFERENCIAS: return []
+        cuenta = {}
+        for t, campo in modelo.REFERENCIAS[tipo]:
+            n = 0
+            for r in self.todos(t):
+                if campo.endswith("[]"): n += nombre in (r.get(campo[:-2]) or [])
+                elif campo.endswith("*"): n += nombre in (r.get(campo[:-1]) or {})
+                else: n += r.get(campo) == nombre
+            if n: cuenta[t] = cuenta.get(t, 0) + n
+        return sorted(cuenta.items(), key=lambda x: -x[1])
 
     def cerrar(self):
         with self.lock: self.con.close()

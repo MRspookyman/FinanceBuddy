@@ -13,6 +13,29 @@ ACENTOS = ["salvia", "violeta", "azul", "verde", "coral", "rosa", "grafito"]  # 
 def leer(p):
     with io.open(p, "rb") as fh: return fh.read()
 
+def _dentro_de(base, rel):
+    """Ruta de `rel` dentro de `base`, o None si se sale de ahí (`..`, una ruta absoluta o una unidad: `C:\\…`).
+    La página solo puede pedir archivos de la carpeta web; cualquier otra cosa no existe para ella."""
+    if os.path.isabs(rel) or os.path.splitdrive(rel)[0] or rel.startswith(("\\", "/")): return None
+    base = os.path.realpath(base)
+    p = os.path.realpath(os.path.join(base, rel))
+    return p if p == base or p.startswith(base + os.sep) else None
+
+# Lo que se pierde al borrar algo que se está usando (se enseña antes de borrar, con el recuento real)
+PLURAL = {"movimiento": "movimientos", "recurrente": "fijos", "aportacion": "operaciones de inversión", "cobro": "dividendos y comisiones",
+          "regla": "reglas", "objetivo": "objetivos", "perfil": "formatos de archivo", "activo": "activos", "patrimonio": "registros de saldos",
+          "cuenta": "cuentas", "categoria": "categorías", "pendiente": "cosas por revisar", "operacion": "órdenes", "cierre": "cierres de mes"}
+CONSECUENCIA = {
+    "cuenta": "Sus movimientos se quedarían sin cuenta y su saldo dejaría de salir en «Actualizar saldos» (el patrimonio que anotaste no cambia).",
+    "categoria": "Esos movimientos se quedarían sin categoría: contarían como «Sin clasificar». Si lo que quieres es juntarla con otra, en Ajustes → Categorías puedes fusionarla u ocultarla.",
+    "recurrente": "Sus movimientos dejarían de contar como gasto fijo y no se tendrían en cuenta en la previsión.",
+    "activo": "Sus operaciones se quedarían sin activo y dejarían de contar en tu inversión.",
+}
+
+def _aviso_borrar(tipo, reg, usos):
+    lista = " y ".join(", ".join(f"{n} {PLURAL.get(t, t)}" for t, n in usos).rsplit(", ", 1))
+    return f"«{modelo.nombre_de(tipo, reg)}» se está usando en {lista}. " + (CONSECUENCIA.get(tipo) or "Lo que apunta a esto se quedaría sin ello.")
+
 class App:
     """Estado del servidor: carpeta de datos abierta, base de datos y clave de la sesión."""
     def __init__(self, raiz, hoy=None, pruebas=False):
@@ -25,12 +48,20 @@ class App:
         self.abrir(raiz)
 
     def abrir(self, raiz):
+        """Abre una carpeta de datos. Si algo falla (carpeta imposible, base dañada), la app se queda con la que ya tenía
+        abierta: así un error al cambiar de carpeta no deja la app inservible."""
+        carpeta = rutas.Carpeta(raiz)
+        alm = Almacen(carpeta.db)
+        try:
+            plantilla.instalar(alm)
+            alm.copia(carpeta.copias, extra=alm.config("copia_extra"))
+            bizums.enlazar(alm)  # une los Bizums recibidos con su gasto (también en datos de versiones anteriores)
+        except BaseException:
+            alm.cerrar(); raise
+        anterior = getattr(self, "alm", None)
         self.deshacer = None
-        self.carpeta = rutas.Carpeta(raiz)
-        self.alm = Almacen(self.carpeta.db)
-        plantilla.instalar(self.alm)
-        self.alm.copia(self.carpeta.copias)
-        bizums.enlazar(self.alm)  # une los Bizums recibidos con su gasto (también en datos de versiones anteriores)
+        self.carpeta, self.alm = carpeta, alm
+        if anterior is not None: anterior.cerrar()
 
     # ───── datos para la página ─────
     def datos(self):
@@ -136,7 +167,12 @@ class App:
                 if h: r.update(jev_hallazgos=h, mensaje=r["mensaje"] + f" · ✨ Jev cree que {h} comercio{'s' if h > 1 else ''} {'están' if h > 1 else 'está'} en otra categoría")
             return {**r, "archivo": nombre}
         except IM.NecesitaPerfil as e:
-            propuesta = jev.mapear_columnas(self.alm, e.info.get("cabecera") or [], e.info.get("ejemplos") or []) if jev.config(self.alm)["activo"] else {}
+            # Qué columna es cada cosa: primero lo que se ve en el propio archivo (sin internet) y, si falta algo y Jev está
+            # activado, lo que él propone. Así un banco nuevo se importa en un clic aunque no haya asistente.
+            propuesta = dict(e.info.get("columnas_probables") or {})
+            if jev.config(self.alm)["activo"]:
+                for k, v in (jev.mapear_columnas(self.alm, e.info.get("cabecera") or [], e.info.get("ejemplos") or []) or {}).items():
+                    propuesta.setdefault(k, v)
             return {"ok": False, "necesita": "perfil", "archivo": nombre, **e.info, "tipo": tipo or e.info.get("tipo"), "propuesta": propuesta}
         except IM.NecesitaCuenta as e:
             return {"ok": False, "necesita": "cuenta", **e.info}
@@ -263,14 +299,19 @@ class App:
     def cambiar_carpeta(self, d):
         nueva = os.path.abspath(os.path.expandvars(str(d.get("carpeta") or "").strip().strip('"')))
         if not nueva or len(nueva) < 4: raise ValueError("Escribe una carpeta válida.")
-        self.alm.cerrar()
-        self.abrir(nueva)
+        try:
+            self.abrir(nueva)
+        except Exception as e:  # la carpeta de antes sigue abierta: solo hay que contar qué ha pasado
+            raise ValueError(f"No se ha podido usar «{nueva}»: {rutas.motivo(e)}. Sigues con {self.carpeta.raiz}.")
         a = rutas.leer_ajustes(); a["datos"] = nueva; rutas.guardar_ajustes(a)
         return {"ok": True, "mensaje": f"Usando la carpeta {nueva}"}
 
+    def copia(self, motivo="diaria", forzar=False):
+        """Copia de seguridad en la carpeta Copias y, si la has configurado, también en la carpeta extra (otro disco o un USB)."""
+        return self.alm.copia(self.carpeta.copias, motivo, forzar=forzar, extra=self.alm.config("copia_extra"))
+
     def modo_ejemplo(self, activar):
         """Cambia a una carpeta temporal con datos inventados (o vuelve a la carpeta de datos del usuario)."""
-        self.alm.cerrar()
         if activar:
             from . import ejemplo
             raiz = os.path.join(tempfile.gettempdir(), "FinanceBuddy-ejemplo")
@@ -286,7 +327,7 @@ class App:
         nombre = os.path.basename(str(d.get("copia") or ""))
         origen = os.path.join(self.carpeta.copias, nombre)
         if not nombre.endswith(".db") or not os.path.exists(origen): raise ValueError("No encuentro esa copia.")
-        self.alm.copia(self.carpeta.copias, "antes de restaurar", forzar=True)
+        self.copia("antes de restaurar", forzar=True)
         import sqlite3
         src = sqlite3.connect(origen)
         with self.alm.lock:
@@ -295,7 +336,9 @@ class App:
         return {"ok": True, "mensaje": f"Restaurada la copia «{nombre}»."}
 
     def copias(self):
-        return sorted((n for n in os.listdir(self.carpeta.copias) if n.endswith(".db")), reverse=True)
+        """Las copias para el desplegable de «Restaurar una copia», de la más nueva a la más vieja."""
+        from .almacen import copias_de
+        return [os.path.basename(p) for p in reversed(copias_de(self.carpeta.copias))]
 
     def manejar(self, ruta, d):
         """API de escritura. Devuelve un dict JSON."""
@@ -312,6 +355,10 @@ class App:
             return {"ok": True, "id": a.guardar(tipo, datos, id)}
         if ruta == "/api/borrar":
             if d.get("tipo") not in modelo.EDITABLES: raise ValueError("Tipo no editable.")
+            reg = a.obtener(d["tipo"], int(d["id"]))
+            usos = a.usos(d["tipo"], reg) if reg else []
+            if usos and not d.get("confirmar"):  # hay cosas que apuntan a este registro: antes de borrar, que se vea qué pasa
+                return {"ok": False, "necesita_confirmar": True, "mensaje": _aviso_borrar(d["tipo"], reg, usos)}
             a.borrar(d["tipo"], int(d["id"])); return {"ok": True}
         if ruta == "/api/objetivos":  # reparto objetivo: {id de activo: %}. Vacío = quitar el objetivo de todos. Si hay alguno, suman 100.
             a_ver = d.get("objetivos") or {}
@@ -423,15 +470,30 @@ class App:
             if k: a.set_config("avisos_descartados", list(dict.fromkeys((a.config("avisos_descartados") or []) + [k]))[-200:])
             return {"ok": True}
         if ruta == "/api/carpeta": return self.cambiar_carpeta(d)
+        if ruta == "/api/copia_extra":  # segunda carpeta donde dejar las copias (USB, otro disco); vacío = solo la de siempre
+            carpeta = os.path.expandvars(str(d.get("carpeta") or "").strip().strip('"'))
+            if not carpeta:
+                a.set_config("copia_extra", None); a.set_config("copia_extra_error", None)
+                return {"ok": True, "mensaje": "Las copias se guardan solo en la carpeta Copias."}
+            carpeta = os.path.abspath(carpeta)
+            if os.path.normcase(carpeta) == os.path.normcase(self.carpeta.copias):
+                raise ValueError("Esa es la carpeta de copias de siempre: elige otro sitio (un USB u otro disco).")
+            a.set_config("copia_extra", carpeta)
+            self.copia("segunda carpeta", forzar=True)
+            fallo = a.config("copia_extra_error")
+            if fallo: return {"ok": False, "mensaje": f"No se ha podido guardar la copia en {carpeta}: {fallo['motivo']}. Lo he dejado apuntado igualmente: se intentará en cada copia."}
+            return {"ok": True, "mensaje": f"Hecho: cada copia se guardará también en {carpeta}"}
         if ruta == "/api/ejemplo": return self.modo_ejemplo(bool(d.get("activar")))
         if ruta == "/api/abrir_carpeta":
             os.startfile(self.carpeta.importar if d.get("que") != "datos" else self.carpeta.raiz); return {"ok": True}
         if ruta == "/api/copia":
-            p = a.copia(self.carpeta.copias, "manual", forzar=True); return {"ok": True, "mensaje": f"Copia guardada: {os.path.basename(p)}"}
+            p = self.copia("manual", forzar=True)
+            extra = a.config("copia_extra_error")
+            return {"ok": True, "mensaje": f"Copia guardada: {os.path.basename(p)}" + (f" · la copia en {extra['carpeta']} ha fallado: {extra['motivo']}" if extra else "")}
         if ruta == "/api/restaurar": return self.restaurar(d)
         if ruta == "/api/vaciar":  # borra todos los datos (se hace una copia antes)
             if d.get("confirmar") != "BORRAR": raise ValueError("Escribe BORRAR para confirmar.")
-            a.copia(self.carpeta.copias, "antes de vaciar", forzar=True)
+            self.copia("antes de vaciar", forzar=True)
             with a.transaccion():
                 a.con.execute("DELETE FROM registros"); a.con.execute("DELETE FROM config")
             plantilla.instalar(a)
@@ -473,14 +535,13 @@ class Manejador(http.server.BaseHTTPRequestHandler):
                     partes.append(src)
                 return self._enviar(200, json.dumps({"modulos": MODULOS, "fuentes": partes}, ensure_ascii=False))
             if u.path.startswith("/web/"):
-                rel = os.path.normpath(urllib.parse.unquote(u.path[5:]))
-                p = os.path.join(rutas.WEB, rel)
-                if rel.startswith("..") or not os.path.isfile(p): return self._enviar(404, "No existe", "text/plain")
+                p = _dentro_de(rutas.WEB, urllib.parse.unquote(u.path[5:]))
+                if not p or not os.path.isfile(p): return self._enviar(404, "No existe", "text/plain")
                 tipo = mimetypes.guess_type(p)[0] or "application/octet-stream"
                 if tipo.startswith("text/") or tipo.endswith("javascript"): tipo += "; charset=utf-8"
                 return self._enviar(200, leer(p), tipo)
-            if u.path == "/pruebas.js" and app.pruebas:
-                p = os.path.join(os.path.dirname(rutas.PAQUETE), "pruebas", "pruebas_calculos.js")
+            if u.path in ("/pruebas.js", "/flujos.js") and app.pruebas:  # solo con --pruebas: cálculos y flujos con clics
+                p = os.path.join(os.path.dirname(rutas.PAQUETE), "pruebas", "pruebas_calculos.js" if u.path == "/pruebas.js" else "pruebas_flujos.js")
                 return self._enviar(200, leer(p), "text/javascript; charset=utf-8")
             if not self._autorizado(): return self._json({"error": "no autorizado"}, 403)
             with app.lock:

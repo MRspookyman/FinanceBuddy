@@ -25,6 +25,15 @@ def documentos():
 def carpeta_por_defecto():
     return os.path.join(documentos(), "FinanceBuddy")
 
+def motivo(e):
+    """El porqué de un error del sistema de archivos, en español y sin jerga («no existe», «no tienes permiso»…)."""
+    import errno
+    codigos = {errno.ENOENT: "esa ruta no existe", errno.EACCES: "Windows no te deja escribir ahí", errno.EPERM: "Windows no te deja escribir ahí",
+               errno.ENOSPC: "no queda espacio en el disco", errno.EROFS: "ese disco es de solo lectura", errno.ENOTDIR: "hay un archivo donde esperaba una carpeta",
+               errno.EEXIST: "ya existe algo con ese nombre", errno.ENAMETOOLONG: "la ruta es demasiado larga", errno.EINVAL: "la ruta no es válida"}
+    if isinstance(e, OSError): return codigos.get(e.errno) or (getattr(e, "strerror", None) or str(e)).rstrip(".").lower()
+    return str(e).rstrip(".")
+
 def leer_ajustes():
     try:
         with io.open(AJUSTES, encoding="utf-8") as fh: return json.load(fh)
