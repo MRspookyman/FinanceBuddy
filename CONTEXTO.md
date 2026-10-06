@@ -27,7 +27,7 @@
 - **Último gran tema:** las olas de Rumbo. **Nada que salga a internet se ha probado contra el servicio real** (el entorno de
   desarrollo bloquea Jev, Yahoo, Morningstar y CoinGecko): todo se verificó con servidores falsos y hay scripts para que el
   usuario lo compruebe en su PC (`evaluar_jev.py`, `evaluar_precios.py`). GitHub (aviso de versión) sí responde desde el entorno.
-- **Tests:** 133 de Python (`unittest`), 84 de cálculos y todas las pantallas sin errores en navegador. Siempre en verde al cerrar
+- **Tests:** 150 de Python (`unittest`), 84 de cálculos y todas las pantallas sin errores en navegador. Siempre en verde al cerrar
   cada tarea.
 
 ---
@@ -529,6 +529,26 @@ con `ext_texto`; `/api/regla/probar` y `/api/regla/aplicar`, con confirmación y
 categorías** (vista previa y `config.categorias_fusionadas`; `plantilla.instalar` no la recrea y reapunta sus reglas) y **ocultar
 categorías** (`categoria.oculta`; sigue contando, no sale al elegir). Sugerencias de ocultar las que no se usan. Ajustes → «Tus
 datos» se divide en tres secciones. Pruebas: `pruebas/test_ordenar.py`. Pendiente: probar a mano con clics el panel «Ordenar».
+
+### 9.13 Registros por página, categoría nueva aconsejada y auditoría de Bizums (6 oct 2026)
+**Registros por página:** `config.por_pagina` (10 a 200; 40 de serie; Ajustes → General → «Tu mes y tu colchón»); `porPagina()` en
+`componentes.js` es el valor por defecto de `paginacion()` y de Movimientos. Las listas de «Por revisar» (10, 20, 25) llevan su tamaño.
+
+**Aconsejar una categoría nueva** al resolver pendientes: `clasificar.proponer_categoria_nueva` (local, por palabras del concepto, solo
+gastos que no sean Bizum ni traspaso) con el catálogo `plantilla.CATALOGO` (13 entradas: Mascotas, Regalos, Formación, Viajes, Salud,
+Cuidado personal, Hogar, Deporte, Donaciones, Tecnología, Ropa, Niños, Impuestos; no cambia `VERSION`). No aconseja si ya hay una
+categoría visible con ese nombre, alias o «cubre», ni si está en `config.categorias_fusionadas`; si solo existe oculta, aconseja
+«volver a mostrarla». El servidor lo pone en `pendiente.categoria_nueva` cuando no hay sugerencia buena. Con Jev: segunda pregunta
+`nueva` (`jev.NUEVA_MINIMA = 0,7`, solo si la categoría existente falla con < 0,5; solo nombres del catálogo, sin datos del usuario),
+guardada en `pendiente.jev.categoria_nueva`; el consejo local tiene prioridad. UI: botón «¿Crear la categoría «X»?» en la ficha, con
+nombre, emoji y tipo editables y casilla «Recordar…» (regla + resolver los iguales). Se reutiliza `/api/resolver` con
+`categoria_nueva` (`importar._categoria_nueva`, misma transacción: «Deshacer» lo revierte todo). Nunca se crea nada sin pulsar.
+Pruebas: `pruebas/test_categoria_nueva.py`. Sin probar con clics el formulario desplegable ni con la API real de Jev.
+
+**Auditoría de Bizums (solo lectura, sin cambios):** (1) no hay marca de «este Bizum no tiene gasto»: `bizums.enlazar` se ejecuta al
+abrir y podría volver a enlazar lo que se desenlazó; (2) `repartos()` agrupa por día exacto y `candidatos()` usa ±1 día; (3) `VENTANA`
+fija en 10 días; (4) la tolerancia del 2 % es holgada en importes grandes; (5) gastos «Otros» o sin categoría nunca son candidatos;
+(6) `enlazar` es O(Bizums × gastos); (7) pocas pruebas directas de `enlazar`/`previos`.
 
 ## 10. Pendiente y backlog (por valor aproximado)
 
