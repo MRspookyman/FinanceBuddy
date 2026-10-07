@@ -83,11 +83,13 @@ function totalesFijos(regs, hoyISO) {
 // movs: como los de movimientos() ({ p, fecha, clase, categoria, importe, concepto, cuenta, recurrente, auto, previsto, pendiente }).
 const esReciente = (m, hoyF, dias) => !m.auto && !m.previsto && !m.pendiente && m.clase === "gasto" && !m.recurrente && hoyF.diff(m.fecha, "days").days <= dias;
 // Comisiones de los últimos `dias`. Las que son el pago de un fijo dado de alta no: esas ya las esperas.
-const comisionesRecientes = (movs, hoyF, dias = 45) => movs.filter((m) => esReciente(m, hoyF, dias) && m.categoria === "Comisiones");
+// 90 días y no menos: el primer extracto que se importa suele traer un trimestre, y lo que haya en él tiene que verse
+// (cada aviso se quita con su × y no vuelve, así que un plazo largo no los hace pesados).
+const comisionesRecientes = (movs, hoyF, dias = 90) => movs.filter((m) => esReciente(m, hoyF, dias) && m.categoria === "Comisiones");
 // Posibles cobros repetidos: dos gastos del mismo comercio, por el mismo importe (desde 5 €) y en la misma cuenta, con dos días
 // de diferencia como mucho. Solo «posibles»: dos compras iguales también pasan. Fuera los Bizums y las partes de un dividido.
 const comercioDe = (m) => norm((m.p && m.p.ext_texto) || m.concepto || "").replace(/[^a-zñ ]+/g, " ").replace(/\s+/g, " ").trim();
-function cobrosRepetidos(movs, hoyF, dias = 45) {
+function cobrosRepetidos(movs, hoyF, dias = 90) {
   const g = movs.filter((m) => esReciente(m, hoyF, dias) && m.importe >= 5 && !(m.p && m.p.parte_de) && comercioDe(m) && !comercioDe(m).includes("bizum")).sort((a, b) => a.fecha - b.fecha);
   const out = [], usados = new Set();
   for (let i = 0; i < g.length; i++) {
@@ -114,7 +116,7 @@ function avisos() {
   for (const x of fijosSinCobrar()) add("info", `${x.nombre} no aparece en tus movimientos desde el ${x.ultima.toFormat("dd/MM")} · si ya no lo ${x.clase === "ingreso" ? "cobras" : "pagas"}, desactívalo: sigue contando cada mes`, `#editar/recurrente/${x.id}`, `sincobrar:${x.id}:${x.ultima.toISODate()}`);
   // Lo que trae el extracto y conviene mirar: una comisión (se puede reclamar o evitar) y un cobro que parece repetido.
   // Cada uno lleva el movimiento en su clave: quitado con su ×, no vuelve.
-  for (const m of comisionesRecientes(movimientos(), hoy).slice(-3)) add("warn", `Te han cobrado una comisión: ${m.concepto} · ${eur(m.importe, 2)} el ${m.fecha.toFormat("dd/MM")}`, `#editar/movimiento/${m.p.id}`, `comision:${m.p.id}`);
+  for (const m of comisionesRecientes(movimientos(), hoy).sort((a, b) => a.fecha - b.fecha).slice(-3)) add("warn", `Te han cobrado una comisión: ${m.concepto} · ${eur(m.importe, 2)} el ${m.fecha.toFormat("dd/MM")}`, `#editar/movimiento/${m.p.id}`, `comision:${m.p.id}`);
   for (const { a, b } of cobrosRepetidos(movimientos(), hoy).slice(-3)) add("info", `Posible cobro repetido: ${b.concepto} · dos de ${eur(b.importe, 2)} (el ${a.fecha.toFormat("dd/MM")} y el ${b.fecha.toFormat("dd/MM")}) · si son dos compras de verdad, quita este aviso`, `#editar/movimiento/${b.p.id}`, `repetido:${a.p.id}:${b.p.id}`);
   if (faltaSegundaCopia(DB.config, DB.info, registros("movimiento").length)) add("info", "Tus copias de seguridad están en el mismo disco que tus datos: si ese disco falla, se pierden las dos cosas · guárdalas también en otro sitio (un USB, otro disco)", "#ajustes/datos", "copias:mismodisco");
   const nArch = ((DB.info || {}).archivos || []).length;

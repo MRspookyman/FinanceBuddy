@@ -234,12 +234,12 @@ const mv = (id, fecha, concepto, importe, mas = {}) => ({ p: { id, ext_texto: `C
 const REP = F.cobrosRepetidos([mv(1, "2026-09-20", "Tienda Sol", 39.9), mv(2, "2026-09-21", "Tienda Sol", 39.9), mv(3, "2026-09-21", "Tienda Sol", 12), mv(4, "2026-09-25", "Tienda Sol", 39.9),
   mv(5, "2026-09-10", "Café", 2.5), mv(6, "2026-09-10", "Café", 2.5), mv(7, "2026-09-12", "Luz", 48, { recurrente: "Luz" }), mv(8, "2026-09-12", "Luz", 48, { recurrente: "Luz" }),
   mv(9, "2026-09-15", "Bizum a Ana", 20), mv(10, "2026-09-15", "Bizum a Ana", 20), mv(11, "2026-09-18", "Súper", 30, { p: { parte_de: 11 } }), mv(12, "2026-09-18", "Súper", 30, { p: { parte_de: 11 } }),
-  mv(13, "2026-06-01", "Viejo", 50), mv(14, "2026-06-01", "Viejo", 50)], d0("2026-09-30"));
-caso("Cobro repetido: mismo comercio, importe y cuenta en dos días; no los cafés, los fijos, los Bizums, lo dividido ni lo de hace meses",
-  REP.length === 1 && REP[0].a.p.id === 1 && REP[0].b.p.id === 2, JSON.stringify(REP.map((x) => [x.a.p.id, x.b.p.id])));
-const COM = F.comisionesRecientes([mv(20, "2026-09-25", "Comisión mantenimiento", 12, { categoria: "Comisiones" }), mv(21, "2026-07-01", "Comisión vieja", 12, { categoria: "Comisiones" }),
-  mv(22, "2026-09-26", "Cuota tarjeta", 30, { categoria: "Comisiones", recurrente: "Cuota tarjeta" }), mv(23, "2026-09-27", "Tienda", 12)], d0("2026-09-30"));
-caso("Comisiones: avisa de la reciente; no de la de hace tres meses ni de la que ya tienes como fijo", COM.length === 1 && COM[0].p.id === 20, JSON.stringify(COM.map((m) => m.p.id)));
+  mv(13, "2026-05-01", "Viejo", 50), mv(14, "2026-05-01", "Viejo", 50), mv(15, "2026-07-10", "Del trimestre", 25), mv(16, "2026-07-11", "Del trimestre", 25)], d0("2026-09-30"));
+caso("Cobro repetido: mismo comercio, importe y cuenta en dos días, también el de hace casi tres meses; no los cafés, los fijos, los Bizums, lo dividido ni lo de hace cinco meses",
+  JSON.stringify(REP.map((x) => [x.a.p.id, x.b.p.id])) === "[[15,16],[1,2]]", JSON.stringify(REP.map((x) => [x.a.p.id, x.b.p.id])));
+const COM = F.comisionesRecientes([mv(20, "2026-09-25", "Comisión mantenimiento", 12, { categoria: "Comisiones" }), mv(21, "2026-05-01", "Comisión vieja", 12, { categoria: "Comisiones" }),
+  mv(22, "2026-09-26", "Cuota tarjeta", 30, { categoria: "Comisiones", recurrente: "Cuota tarjeta" }), mv(23, "2026-09-27", "Tienda", 12), mv(24, "2026-07-18", "Comisión del trimestre", 6, { categoria: "Comisiones" })], d0("2026-09-30"));
+caso("Comisiones: avisa de las del último trimestre; no de la de hace cinco meses ni de la que ya tienes como fijo", JSON.stringify(COM.map((m) => m.p.id)) === "[20,24]", JSON.stringify(COM.map((m) => m.p.id)));
 caso("Copias en un solo disco: avisa con datos de verdad y sin segunda carpeta; no en el ejemplo, ni sin datos, ni si ya la hay",
   F.faltaSegundaCopia({}, { ejemplo: false }, 10) && !F.faltaSegundaCopia({ copia_extra: "E:\\Copias" }, {}, 10) && !F.faltaSegundaCopia({}, { ejemplo: true }, 10) && !F.faltaSegundaCopia({}, {}, 0));
 caso("El ejemplo no tiene comisiones, cobros repetidos ni aviso de copias", !F.avisos().some((a) => /^comision:|^repetido:|^copias:/.test(String(a.clave).replace("inicio:", ""))),
