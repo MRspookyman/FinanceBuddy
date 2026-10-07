@@ -1,7 +1,7 @@
 # Servidor local de la app: sirve las pantallas (web/) y una API JSON sobre la base de datos.
 # Solo escucha en 127.0.0.1 y cada arranque genera una clave que la página envía en la cabecera X-FB-Token.
 import base64, calendar, datetime, http.server, io, json, mimetypes, os, re, secrets, socketserver, tempfile, threading, traceback, urllib.parse
-from . import VERSION, actualizaciones, bizums, cartera, clasificar as C, detectar, exportar, importar as IM, jev, modelo, ordenar, plantilla, precios, rutas, secreto
+from . import VERSION, actualizaciones, autoarranque, bizums, cartera, clasificar as C, detectar, exportar, importar as IM, jev, modelo, ordenar, plantilla, precios, rutas, secreto
 from .almacen import Almacen
 
 mimetypes.add_type("font/woff2", ".woff2")
@@ -35,7 +35,7 @@ CONSECUENCIA = {
 # Rutas que no cambian nada tuyo (consultas, descargas, copias): tras ellas, lo último que se podía deshacer sigue valiendo.
 # Cualquier otra escritura lo anula: «Deshacer» repone la foto ENTERA de antes y se llevaría por delante lo hecho después.
 NO_ANULAN_DESHACER = {"/api/parecidos", "/api/detectar", "/api/jev/enviado", "/api/jev/probar", "/api/jev/categoria", "/api/categoria/uso",
-                      "/api/plantilla", "/api/exportar_datos", "/api/regla/probar", "/api/abrir_carpeta", "/api/copia",
+                      "/api/plantilla", "/api/exportar_datos", "/api/regla/probar", "/api/abrir_carpeta", "/api/copia", "/api/arranque",
                       "/api/actualizaciones/comprobar", "/api/precios/actualizar", "/api/precios/estado", "/api/precios/buscar", "/api/precios/comparar"}
 
 def _aviso_borrar(tipo, reg, usos):
@@ -114,7 +114,7 @@ class App:
         cfg["actualizaciones"] = actualizaciones.para_la_pagina(self.alm)
         return {"registros": regs, "pendientes": pend, "config": cfg,
                 "info": {"version": VERSION, "carpeta": self.carpeta.raiz, "hoy": self.hoy, "ejemplo": self.ejemplo,
-                         "deshacer": self.deshacer_que if self.deshacer else "",
+                         "deshacer": self.deshacer_que if self.deshacer else "", "arranque": autoarranque.estado(self.fija),
                          "archivos": [{"nombre": os.path.basename(p), "tipo": t} for p, t in IM.archivos_pendientes(self.carpeta)]}}
 
     # ───── acciones ─────
@@ -535,6 +535,9 @@ class App:
             fallo = a.config("copia_extra_error")
             if fallo: return {"ok": False, "mensaje": f"No se ha podido guardar la copia en {carpeta}: {fallo['motivo']}. Lo he dejado apuntado igualmente: se intentará en cada copia."}
             return {"ok": True, "mensaje": f"Hecho: cada copia se guardará también en {carpeta}"}
+        if ruta == "/api/arranque":  # que Windows abra la app (en la bandeja) al iniciar sesión; no toca tus datos
+            e = autoarranque.poner(bool(d.get("activar")), self.fija)
+            return {"ok": True, "arranque": e, "mensaje": "FinanceBuddy se abrirá con Windows, en la bandeja" if e["activo"] else "FinanceBuddy ya no se abre con Windows"}
         if ruta == "/api/ejemplo": return self.modo_ejemplo(bool(d.get("activar")))
         if ruta == "/api/abrir_carpeta":
             os.startfile(self.carpeta.importar if d.get("que") != "datos" else self.carpeta.raiz); return {"ok": True}

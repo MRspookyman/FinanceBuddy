@@ -30,9 +30,9 @@ Python (biblioteca estándar + `openpyxl`/`xlrd`/`pystray`) · SQLite · interfa
 
 ```bat
 python -m financebuddy --ejemplo --sin-navegador --puerto 8830 --hoy 2026-09-30   :: app con datos inventados
-python -m unittest discover -s pruebas -p "test_*.py" -t .     :: 206 pruebas de Python
-python pruebas\run.py --tests                                  :: 20 pantallas sin errores + 106 pruebas de cálculos
-python pruebas\run.py --flujos                                 :: 19 flujos con clics de verdad
+python -m unittest discover -s pruebas -p "test_*.py" -t .     :: 212 pruebas de Python
+python pruebas\run.py --tests                                  :: 20 pantallas sin errores + 110 pruebas de cálculos
+python pruebas\run.py --flujos                                 :: 21 flujos con clics de verdad
 python pruebas\run.py --capturas                               :: capturas en claro y oscuro (%TEMP%\fb-pruebas)
 python pruebas\evaluar_jev.py / evaluar_precios.py             :: contra los servicios reales (lo ejecuta el usuario)
 build.bat                                                      :: pasa TODO lo anterior y genera dist\FinanceBuddy\
@@ -60,7 +60,7 @@ navegador ──GET /api/datos──▶ servidor.py ──▶ almacen.py ──�
 
 | Capa | Archivos |
 |---|---|
-| Arranque | `__main__.py` (cuadros de Windows si algo falla, recuperar una base dañada), `rutas.py`, `recordar.py` (avisos de Windows desde la bandeja: opcionales, apagados de serie y sin internet) |
+| Arranque | `__main__.py` (cuadros de Windows si algo falla, recuperar una base dañada), `rutas.py`, `recordar.py` (avisos de Windows desde la bandeja: opcionales, apagados de serie y sin internet), `autoarranque.py` (que Windows abra la app en la bandeja al iniciar sesión: opcional y apagado de serie) |
 | API | `servidor.py` (`App.datos()` calcula también las sugerencias de cada duda) |
 | Datos | `almacen.py` (tabla `registros(id, tipo, datos JSON)` + `config`), `modelo.py` (`CAMPOS` define y valida cada tipo) |
 | Importación | `importar.py`, `lectura.py`, `clasificar.py`, `operaciones.py`, `cartera.py`, `detectar.py`, `ordenar.py` |
@@ -92,6 +92,11 @@ Para añadir algo: `modelo.CAMPOS` **y** `FORMS` (`web/paneles/formularios.js`) 
 - Un activo deja de verse de dos formas: `estado: vendido` (lo marca el usuario: `activos()` ya no lo devuelve) o «vendido del
   todo» (`vendidoDelTodo`: sus participaciones suman cero). En los dos casos sus aportaciones siguen contando en la renta
   (`fifoVentas` hereda el coste por los traspasos): borrar un fondo de origen deja sin emparejar los traspasos del de destino.
+- `autoarranque` escribe en el registro del usuario de Windows (`HKCU\…\Run`), y solo desde el `.exe` con los datos de siempre
+  (ni desde el código fuente ni con `App.fija`). Sus pruebas cambian `autoarranque.CLAVE` por una rama que Windows no ejecuta:
+  una prueba nueva que lo toque tiene que hacer lo mismo, o dejaría algo arrancando en el Windows de quien la pase.
+- Los avisos de Windows apuntan en `config.avisos_windows_dichos` cuándo se dijo cada cosa (un recordatorio, una vez al día;
+  «toca importar», una vez a la semana): así reiniciar no los repite. El hilo que los mira escribe en la base por su cuenta.
 - «Gasto variable» deja fuera las categorías de grupo fijo. Lo que haya en ellas sin ser el pago de un fijo dado de alta es
   `gastoFijoSuelto`: la previsión y el colchón lo suman aparte. Si añades otro cálculo de «lo que sale al mes», cuenta las tres cosas.
 - En el Inicio van a la vista dos avisos `warn`; el resto y los `info`, plegados en «y N avisos más» (`repartirAvisos`).

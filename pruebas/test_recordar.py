@@ -47,5 +47,28 @@ class TestRecordar(unittest.TestCase):
         h.una_vez()
         self.assertEqual(dichos, ["ITV · mañana", "ITV · hoy"])
 
+    def test_lo_de_importar_una_vez_a_la_semana_y_reiniciar_no_lo_repite(self):
+        class App: pass
+        app = App(); app.alm = self.a; app.hoy = "2026-10-04"
+        self.a.guardar("movimiento", {"fecha": "2026-09-25", "clase": "gasto", "importe": 10, "concepto": "Pan", "cuenta": "Nómina"})
+        self.a.set_config("avisos_windows", True)
+        dichos, parar = [], threading.Event()
+        parar.set()
+        h = recordar.vigilar(app, dichos.append, parar)
+        h.join(2)
+        h.una_vez()
+        self.assertEqual(dichos, ["Llevas 9 días sin importar el extracto de tu banco"])
+        for dia in ("2026-10-05", "2026-10-08", "2026-10-10"):  # los días siguientes no insiste
+            app.hoy = dia; h.una_vez()
+        self.assertEqual(len(dichos), 1)
+        # Otra app (cerrar y abrir, o reiniciar el ordenador) tampoco lo repite: cuándo se dijo está apuntado en la base
+        h2 = recordar.vigilar(app, dichos.append, parar)
+        h2.join(2)
+        h2.una_vez()
+        self.assertEqual(len(dichos), 1)
+        app.hoy = "2026-10-11"  # a la semana, sí
+        h2.una_vez()
+        self.assertEqual(dichos[1:], ["Llevas 16 días sin importar el extracto de tu banco"])
+
 if __name__ == "__main__":
     unittest.main()

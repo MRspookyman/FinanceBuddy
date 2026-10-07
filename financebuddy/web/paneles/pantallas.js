@@ -20,5 +20,5 @@ if (input && input.exponer) {
     fechaDatos, presupuestoSemana, planReparto, cuentas, proyectar, resumenCategorias, ritmoMes, evolucionInversion, aportacionesMes, constancia, interesesBroker, saludInversion, posicion, valorInfo,
     hitosPatrimonio, mesesHasta50, tamañoCompras, fifoVentas, cobros, usaMercado, generarResumen,
     repartirAvisos, ritmoObjetivo, siguienteFecha, cuantoFalta, totalesFijos, fijosSinCobrar, cuotaAhorro, rentaPorAño, csvRenta, recordatorios, hoy,
-    gastoFijoSuelto, cierreVale, cierres };
+    gastoFijoSuelto, cierreVale, cierres, comisionesRecientes, cobrosRepetidos, faltaSegundaCopia };
 }

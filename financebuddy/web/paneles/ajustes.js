@@ -61,12 +61,22 @@ function vistaAjustes() {
   lS.appendText("Guardar ya lo importado con la categoría sugerida (por confirmar)");
   cS.onchange = () => guardarAjuste("/api/config", { guardar_sugeridos: cS.checked });
 
-  const pW = panel(g, "Avisos de Windows", null, "Con la app en marcha (su icono en la bandeja), Windows te enseña un aviso cuando se acerca un recordatorio o llevas más de una semana sin importar el extracto. Cada cosa, una vez al día. No sale nada a internet.");
+  const pW = panel(g, "Avisos de Windows", null, "Con la app en marcha (su icono en la bandeja), Windows te enseña un aviso cuando se acerca un recordatorio o llevas más de una semana sin importar el extracto. Cada recordatorio, una vez al día; lo de importar, una vez a la semana. No sale nada a internet.");
   const lW = pW.createEl("label", { cls: "fb-fila" });
   const cW = lW.createEl("input", { attr: { type: "checkbox" } }); cW.checked = cfg.avisos_windows === true;
   lW.appendText("Avisarme de los recordatorios y de cuándo toca importar");
   cW.onchange = () => guardarAjuste("/api/config", { avisos_windows: cW.checked });
-  pW.createDiv({ cls: "fin-note", text: "Apagado de serie. El primer aviso llega al poco de abrir la app." });
+  // Para que lleguen sin tener que abrirla: que la abra Windows al iniciar sesión, en la bandeja y sin navegador (autoarranque.py)
+  const AR = (DB.info || {}).arranque || {};
+  const lA = pW.createEl("label", { cls: "fb-fila" });
+  const cA = lA.createEl("input", { attr: { type: "checkbox" } }); cA.checked = !!AR.activo; cA.disabled = !AR.disponible;
+  lA.appendText("Abrir FinanceBuddy al iniciar Windows (en la bandeja, sin abrir el navegador)");
+  cA.onchange = async () => {
+    const r = await FB.api("/api/arranque", { activar: cA.checked });
+    FB.aviso(r.mensaje || (r.ok ? "Guardado ✓" : "No se ha podido cambiar"), !r.ok);
+    await FB.refrescar();
+  };
+  pW.createDiv({ cls: "fin-note", text: "Las dos cosas, apagadas de serie. " + (AR.disponible ? "Con la segunda, los avisos llegan aunque no hayas abierto la app; se quita aquí o en el Administrador de tareas de Windows (Aplicaciones de inicio)." : AR.motivo || "") });
 
   apariencia(panel(g, "Apariencia"));
   const pT = panel(g, "Tú", null, "Tu nombre tal y como sale en el banco. Con él, el dinero que mueves entre cuentas a tu nombre se reconoce como traspaso y no como gasto o ingreso.");

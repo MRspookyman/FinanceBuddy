@@ -1,9 +1,10 @@
 # Arranque de FinanceBuddy: abre la carpeta de datos, levanta el servidor local y abre el navegador.
 #
-# Uso: FinanceBuddy.exe  |  python -m financebuddy [--datos CARPETA] [--puerto N] [--sin-navegador]
+# Uso: FinanceBuddy.exe  |  python -m financebuddy [--datos CARPETA] [--puerto N] [--sin-navegador] [--bandeja]
 #                                                  [--ejemplo] [--hoy AAAA-MM-DD] [--pruebas]
 #   --ejemplo  usa una carpeta temporal con datos ficticios (para probar la app sin tocar tus datos)
 #   --hoy      fija la fecha de «hoy» (pruebas)
+#   --bandeja  arranca en la bandeja sin abrir el navegador (así la abre Windows al iniciar sesión: autoarranque.py)
 #
 # Si algo impide arrancar (la carpeta de datos no se puede abrir, el archivo está dañado, el puerto está ocupado por otro
 # programa), se explica en un cuadro de Windows: el .exe no tiene consola y antes se cerraba sin decir nada.
@@ -24,9 +25,10 @@ def decir(texto, titulo="FinanceBuddy", preguntar=False):
     except Exception:
         return False  # fuera de Windows (o sin interfaz): sin cuadro, el mensaje ya ha salido por consola
 
-def _bandeja(url, srv, app=None):
+def _bandeja(url, srv, app=None, espera=20):
     """Icono en la bandeja de Windows: se ve que la app sigue en marcha y se puede abrir o cerrar desde ahí (opcional: sin pystray, no pasa nada).
-    Con `app`, el icono enseña además los avisos de Windows (recordar.py), si el usuario los ha activado en Ajustes."""
+    Con `app`, el icono enseña además los avisos de Windows (recordar.py), si el usuario los ha activado en Ajustes.
+    `espera`: segundos hasta el primer aviso."""
     try:
         import pystray
         from PIL import Image
@@ -39,7 +41,7 @@ def _bandeja(url, srv, app=None):
         ic.run_detached()
         if app is not None:
             from . import recordar
-            recordar.vigilar(app, lambda texto: ic.notify(texto, "FinanceBuddy"))
+            recordar.vigilar(app, lambda texto: ic.notify(texto, "FinanceBuddy"), espera=espera)
     except Exception:
         pass
 
@@ -95,9 +97,10 @@ def main(argv=None):
     ap = argparse.ArgumentParser(prog="FinanceBuddy")
     ap.add_argument("--datos"); ap.add_argument("--puerto", type=int, default=8765)
     ap.add_argument("--sin-navegador", action="store_true"); ap.add_argument("--ejemplo", action="store_true")
-    ap.add_argument("--hoy"); ap.add_argument("--pruebas", action="store_true")
+    ap.add_argument("--hoy"); ap.add_argument("--pruebas", action="store_true"); ap.add_argument("--bandeja", action="store_true")
     a = ap.parse_args(argv)
     AUTOMATICO = a.sin_navegador
+    abrir = not a.sin_navegador and not a.bandeja  # --bandeja: la ha abierto Windows al iniciar sesión; el navegador, cuando lo pidas tú
     url = f"http://127.0.0.1:{a.puerto}/"
     # Primero el puerto y después los datos: si ya hay una FinanceBuddy abierta, esta no tiene que tocar su base de datos
     # (dos programas escribiendo a la vez en ella: el segundo se quedaba esperando y acababa en un cuadro de error).
@@ -107,7 +110,7 @@ def main(argv=None):
         # Ya hay una FinanceBuddy abierta en ese puerto: solo abrir el navegador
         try:
             urllib.request.urlopen(url, timeout=2)
-            if not a.sin_navegador: webbrowser.open(url)
+            if abrir: webbrowser.open(url)
             return 0
         except Exception:
             decir(f"El puerto {a.puerto} lo está usando otro programa, así que FinanceBuddy no puede abrirse.\n\n"
@@ -124,8 +127,12 @@ def main(argv=None):
         srv.server_close(); return 1
     servidor.Manejador.app = app
     print(f"FinanceBuddy en {url} · datos en {raiz}")
-    if not a.sin_navegador: threading.Timer(0.5, lambda: webbrowser.open(url)).start()
-    if not a.sin_navegador: _bandeja(url, srv, None if a.ejemplo else app)
+    if abrir: threading.Timer(0.5, lambda: webbrowser.open(url)).start()
+    if not a.sin_navegador:
+        from . import autoarranque, recordar
+        autoarranque.al_dia(app.fija)
+        # Si la has abierto tú, lo que toca ya lo ves en el Inicio: el primer aviso, a las horas. Si la ha abierto Windows, enseguida.
+        _bandeja(url, srv, None if a.ejemplo else app, espera=20 if a.bandeja else recordar.CADA)
     try: srv.serve_forever()
     except KeyboardInterrupt: pass
     return 0

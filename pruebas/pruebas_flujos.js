@@ -410,5 +410,26 @@ return (async () => {
     if (!(await hasta(() => (regs("activo").find((x) => x.id === a.id) || {}).estado !== "vendido"))) return "no vuelve a la cartera";
   });
 
+  // 20. Una comisión del banco se avisa en el Inicio, con el movimiento a un clic
+  await caso("Inicio: avisa de una comisión que te han cobrado", async () => {
+    const r = await FB.api("/api/guardar", { tipo: "movimiento", datos: { fecha: "2026-09-28", clase: "gasto", categoria: "Comisiones", importe: 12, concepto: "Comisión de mantenimiento", cuenta: "Cuenta nómina" } });
+    if (!r.ok) return "no se guarda la comisión: " + r.mensaje;
+    await FB.recargar();
+    if (!(await ir("#inicio"))) return "no se abre el Inicio";
+    const fila = await hasta(() => todos(".fb-franja a").find((e) => plano(e).includes("Te han cobrado una comisión: Comisión de mantenimiento · 12,00 € el 28/09")));
+    if (!fila) return "el Inicio no avisa de la comisión: " + plano(app().querySelector(".fb-franja") || app()).slice(0, 300);
+    if (fila.getAttribute("href") !== `#editar/movimiento/${r.id}`) return "el aviso no lleva al movimiento: " + fila.getAttribute("href");
+  });
+
+  // 21. Ajustes: arrancar con Windows solo se puede activar en la app instalada con tus datos (aquí, de pruebas, sale apagado y dice por qué)
+  await caso("Ajustes: «abrir al iniciar Windows» está, y en una app de pruebas no se deja tocar", async () => {
+    if (!(await ir("#ajustes"))) return "no se abre Ajustes";
+    const fila = await hasta(() => todos("label.fb-fila").find((e) => plano(e).includes("Abrir FinanceBuddy al iniciar Windows")));
+    if (!fila) return "no está la opción";
+    const c = fila.querySelector("input[type=checkbox]");
+    if (!c || !c.disabled || c.checked) return "en una app de pruebas debería salir apagada y sin poder marcarse";
+    if (!plano(fila.parentElement).includes("No se puede cambiar con datos de ejemplo")) return "no dice por qué no se puede: " + plano(fila.parentElement).slice(-200);
+  });
+
   return casos;
 })();

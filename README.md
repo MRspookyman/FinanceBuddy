@@ -158,8 +158,16 @@ frente a tu media de los meses anteriores, y en el Inicio, el ritmo de gasto del
 **Lo que viene** (*Inicio*): «Tus próximos meses» enseña cuánto tendrás en tus cuentas al acabar cada uno de los próximos doce
 meses: cuenta tus fijos, tus aportaciones, lo que sueles gastar de verdad (tu media, no tu límite) y también los gastos fijos
 que no tienes dados de alta (un seguro, un recibo que no llega cada mes), y te dice cuánto es cada cosa; los avisos se quitan con su **×** (vuelven a salir cuando cambia lo que los provoca: otro mes, otra subida); cada objetivo con fecha dice cuánto apartar al mes; los recordatorios pueden **repetirse** (cada año, cada 3 meses o cada
-mes) y con «Hecho» pasan solos a su siguiente fecha. En *Fijos* ves lo que suman al mes y al año. Y si quieres, *Ajustes →
-Avisos de Windows* te avisa de los recordatorios y de cuándo toca importar aunque no abras la app (apagado de serie, sin internet).
+mes) y con «Hecho» pasan solos a su siguiente fecha. En *Fijos* ves lo que suman al mes y al año.
+
+**Avisos** (*Inicio*): además de lo de siempre, la app te dice si **te han cobrado una comisión**, si un **cobro parece repetido**
+(mismo comercio e importe en dos días) y si tus **copias de seguridad están solo en el mismo disco** que tus datos. Cada uno se
+quita con su × y no vuelve.
+
+**Avisos de Windows** (*Ajustes*, apagados de serie y sin internet): con la app en marcha, Windows te avisa de los recordatorios
+(una vez al día) y de cuándo toca importar (una vez a la semana). Para que lleguen sin tener que abrirla, activa también *Abrir
+FinanceBuddy al iniciar Windows*: arranca en la bandeja, sin abrir el navegador. Se quita ahí mismo o en el Administrador de
+tareas de Windows (*Aplicaciones de inicio*).
 
 Cerrar la pestaña del navegador no cierra la app: para cerrarla, clic derecho en su icono de la bandeja → *Cerrar FinanceBuddy* (o *Ajustes → General → Cerrar FinanceBuddy*). Si la vuelves a abrir, se reutiliza la que ya estaba en marcha.
 
@@ -254,6 +262,7 @@ financebuddy/
   bizums.py        Bizums recibidos: casar con el gasto que devuelven (aritmética de repartos) y enlazarlo
   secreto.py       cifra las claves de Jev y CoinGecko con la protección de datos de Windows
   recordar.py      avisos de Windows desde el icono de la bandeja (opcional): recordatorios y días sin importar
+  autoarranque.py  que Windows abra la app en la bandeja al iniciar sesión (opcional)
   jev.py           asistente opcional Jev (TypeSafe AI): dudas del banco y del bróker, repaso de categorías, apuntar, fijos y formatos nuevos
   plantilla.py     categorías, reglas y formatos de serie
   ejemplo.py       datos de ejemplo

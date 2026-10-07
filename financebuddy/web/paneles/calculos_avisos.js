@@ -79,6 +79,30 @@ function totalesFijos(regs, hoyISO) {
   for (const k of ["gasto", "ingreso", "aportacion"]) out[k].mes = out[k].año / 12;
   return out;
 }
+// ───────────── lo que conviene mirar en lo que acaba de llegar del banco ─────────────
+// movs: como los de movimientos() ({ p, fecha, clase, categoria, importe, concepto, cuenta, recurrente, auto, previsto, pendiente }).
+const esReciente = (m, hoyF, dias) => !m.auto && !m.previsto && !m.pendiente && m.clase === "gasto" && !m.recurrente && hoyF.diff(m.fecha, "days").days <= dias;
+// Comisiones de los últimos `dias`. Las que son el pago de un fijo dado de alta no: esas ya las esperas.
+const comisionesRecientes = (movs, hoyF, dias = 45) => movs.filter((m) => esReciente(m, hoyF, dias) && m.categoria === "Comisiones");
+// Posibles cobros repetidos: dos gastos del mismo comercio, por el mismo importe (desde 5 €) y en la misma cuenta, con dos días
+// de diferencia como mucho. Solo «posibles»: dos compras iguales también pasan. Fuera los Bizums y las partes de un dividido.
+const comercioDe = (m) => norm((m.p && m.p.ext_texto) || m.concepto || "").replace(/[^a-zñ ]+/g, " ").replace(/\s+/g, " ").trim();
+function cobrosRepetidos(movs, hoyF, dias = 45) {
+  const g = movs.filter((m) => esReciente(m, hoyF, dias) && m.importe >= 5 && !(m.p && m.p.parte_de) && comercioDe(m) && !comercioDe(m).includes("bizum")).sort((a, b) => a.fecha - b.fecha);
+  const out = [], usados = new Set();
+  for (let i = 0; i < g.length; i++) {
+    if (usados.has(g[i])) continue;
+    for (let j = i + 1; j < g.length && g[j].fecha.diff(g[i].fecha, "days").days <= 2; j++) {
+      const a = g[i], b = g[j];
+      if (usados.has(b) || Math.abs(a.importe - b.importe) > 0.005 || a.cuenta !== b.cuenta || comercioDe(a) !== comercioDe(b)) continue;
+      out.push({ a, b }); usados.add(b); break;
+    }
+  }
+  return out;
+}
+// Las copias de seguridad están solo en la carpeta de los datos: si ese disco falla, se pierden las dos cosas.
+const faltaSegundaCopia = (config, info, nMovs) => !(config || {}).copia_extra && !(info || {}).ejemplo && nMovs > 0;
+
 function avisos() {
   // `clave`: qué aviso es y de cuándo. Con la × del Inicio se guarda en config.avisos_descartados y ese aviso no vuelve a salir;
   // como la clave lleva el mes o el dato que lo provoca, sí avisa otra vez cuando cambia (otro mes, otra subida, otro saldo).
@@ -88,6 +112,11 @@ function avisos() {
   if (nPend) add("warn", `${nPend} movimiento${nPend > 1 ? "s" : ""} por revisar: la app no ha sabido clasificarlo${nPend > 1 ? "s" : ""} sola`, "#revisar");
   for (const x of subidasFijos()) add("warn", `${x.nombre} ha subido: de ${eur(x.antes, 2)} a ${eur(x.ahora, 2)}`, "#gestionar/recurrente", `subida:${x.nombre}:${x.ahora}`);
   for (const x of fijosSinCobrar()) add("info", `${x.nombre} no aparece en tus movimientos desde el ${x.ultima.toFormat("dd/MM")} · si ya no lo ${x.clase === "ingreso" ? "cobras" : "pagas"}, desactívalo: sigue contando cada mes`, `#editar/recurrente/${x.id}`, `sincobrar:${x.id}:${x.ultima.toISODate()}`);
+  // Lo que trae el extracto y conviene mirar: una comisión (se puede reclamar o evitar) y un cobro que parece repetido.
+  // Cada uno lleva el movimiento en su clave: quitado con su ×, no vuelve.
+  for (const m of comisionesRecientes(movimientos(), hoy).slice(-3)) add("warn", `Te han cobrado una comisión: ${m.concepto} · ${eur(m.importe, 2)} el ${m.fecha.toFormat("dd/MM")}`, `#editar/movimiento/${m.p.id}`, `comision:${m.p.id}`);
+  for (const { a, b } of cobrosRepetidos(movimientos(), hoy).slice(-3)) add("info", `Posible cobro repetido: ${b.concepto} · dos de ${eur(b.importe, 2)} (el ${a.fecha.toFormat("dd/MM")} y el ${b.fecha.toFormat("dd/MM")}) · si son dos compras de verdad, quita este aviso`, `#editar/movimiento/${b.p.id}`, `repetido:${a.p.id}:${b.p.id}`);
+  if (faltaSegundaCopia(DB.config, DB.info, registros("movimiento").length)) add("info", "Tus copias de seguridad están en el mismo disco que tus datos: si ese disco falla, se pierden las dos cosas · guárdalas también en otro sitio (un USB, otro disco)", "#ajustes/datos", "copias:mismodisco");
   const nArch = ((DB.info || {}).archivos || []).length;
   if (nArch) add("warn", `${nArch} archivo${nArch > 1 ? "s" : ""} en la carpeta Importar sin procesar`, "#importar", `archivos:${nArch}:${hoy.toISODate()}`);
   const K = conciliacion();

@@ -36,6 +36,12 @@ class TestFlujo(unittest.TestCase):
         # Repetir la vista previa con lo ya importado: todo «ya estaba»
         self.assertEqual(self.api("/api/importar/descartar", {"archivo": r["archivo"]})["ok"], False)  # ya está en Procesados
 
+    def test_arrancar_con_windows_solo_se_ofrece_en_la_app_instalada(self):
+        e = self.app.datos()["info"]["arranque"]
+        self.assertEqual((e["disponible"], e["activo"]), (False, False))  # estas pruebas no son el .exe
+        with self.assertRaises(ValueError) as err: self.api("/api/arranque", {"activar": True})
+        self.assertIn("app instalada", str(err.exception))
+
     def test_la_vista_previa_ensena_las_filas_que_no_se_han_podido_leer(self):
         self.api("/api/bienvenida", {"cuentas": [{"nombre": "Nómina", "tipo": "corriente", "saldo": 1000}]})
         csv = "Fecha;Concepto;Importe;Categoría\n01/09/2026;Mercadona;-23,45;Supermercado\n05/09/2026;Kiosko;-3,2O;Otros\n"  # la plantilla de la app, rellenada a mano

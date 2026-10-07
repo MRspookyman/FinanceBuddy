@@ -149,6 +149,20 @@ class TestCarpetaYBaseDatos(unittest.TestCase):
         finally:
             srv.shutdown(); srv.server_close()
 
+    def test_abierta_por_windows_va_a_la_bandeja_sin_abrir_el_navegador(self):
+        srv = servidor.crear(self.app, 8795)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        abiertos, real = [], arranque.webbrowser.open
+        arranque.webbrowser.open = abiertos.append
+        try:
+            self.assertEqual(arranque.main(["--puerto", "8795", "--bandeja"]), 0)  # ya hay una en marcha: no hace nada más
+            self.assertEqual(abiertos, [])
+            self.assertEqual(arranque.main(["--puerto", "8795"]), 0)  # abierta a mano: enseña la que ya estaba
+            self.assertEqual(abiertos, ["http://127.0.0.1:8795/"])
+        finally:
+            arranque.webbrowser.open = real
+            srv.shutdown(); srv.server_close()
+
 class TestBorrarEnUso(unittest.TestCase):
     def setUp(self):
         self.dir = tempfile.mkdtemp()
