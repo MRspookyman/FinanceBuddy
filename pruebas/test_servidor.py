@@ -36,6 +36,16 @@ class TestFlujo(unittest.TestCase):
         # Repetir la vista previa con lo ya importado: todo «ya estaba»
         self.assertEqual(self.api("/api/importar/descartar", {"archivo": r["archivo"]})["ok"], False)  # ya está en Procesados
 
+    def test_la_vista_previa_ensena_las_filas_que_no_se_han_podido_leer(self):
+        self.api("/api/bienvenida", {"cuentas": [{"nombre": "Nómina", "tipo": "corriente", "saldo": 1000}]})
+        csv = "Fecha;Concepto;Importe;Categoría\n01/09/2026;Mercadona;-23,45;Supermercado\n05/09/2026;Kiosko;-3,2O;Otros\n"  # la plantilla de la app, rellenada a mano
+        r = self.api("/api/importar/subir", {"nombre": "plantilla.csv", "tipo": "banco", "contenido": base64.b64encode(csv.encode("utf-8")).decode(), "previa": True})
+        self.assertEqual(r["necesita"], "cuenta")
+        v = self.api("/api/importar/reintentar", {"archivo": r["archivo"], "tipo": "banco", "cuenta": "Nómina", "perfil": r["perfil"], "previa": True, "subido": True})
+        self.assertEqual(v["previa"]["movimientos"]["n"], 1)
+        self.assertEqual([(x["fila"], x["que"], x["valor"]) for x in v["previa"]["ilegibles"]], [(3, "el importe", "-3,2O")])
+        self.assertEqual(self.app.alm.todos("movimiento"), [])  # la vista previa no guarda nada
+
     def test_anotar_saldos_a_mitad_de_mes_no_cierra_el_mes(self):
         self.api("/api/bienvenida", {"cuentas": [{"nombre": "Nómina", "tipo": "corriente", "saldo": 1000}]})
         r = self.api("/api/cierre", {"fecha": "2026-10-06", "mes": "2026-10", "saldos": {"Nómina": 900}, "notas": "a medias"})

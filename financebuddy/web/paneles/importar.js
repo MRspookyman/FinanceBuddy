@@ -63,6 +63,16 @@ function vistaImportar() {
 // ¿Se enseña antes lo que se va a importar? (se recuerda en este navegador; sí de serie)
 const quierePrevia = () => { try { return localStorage.getItem("fb-previa") !== "0"; } catch (_) { return true; } };
 const guardarPrevia = (v) => { try { localStorage.setItem("fb-previa", v ? "1" : "0"); } catch (_) {} };
+// Filas que parecían un movimiento y no se han podido leer (una fecha o un importe que la app no entiende): se enseñan tal como
+// vienen en el archivo para corregirlas ahí. No bloquea: lo demás se importa. `hecho`: ya se ha importado (no es la vista previa).
+function filasSinLeer(card, lista, hecho) {
+  if (!lista || !lista.length) return;
+  const n = lista.length;
+  const m = mensaje(card, `${n} fila${n > 1 ? "s" : ""} no se ${n > 1 ? "han" : "ha"} podido leer${hecho ? "" : ` y no se importará${n > 1 ? "n" : ""}`}:\n`
+    + lista.slice(0, 8).map((f) => `· fila ${f.fila}: no entiendo ${f.que} «${f.valor}»${f.texto ? ` (${f.texto})` : ""}`).join("\n") + (n > 8 ? `\n…y ${n - 8} más` : "")
+    + "\nCorrígelo en el archivo y vuelve a importarlo: lo que ya esté importado no se duplica.", "err");
+  m.setAttribute("role", "alert");
+}
 // Vista previa: lo que pasaría al importar (el mismo código, en una simulación que se deshace) con totales para comparar con tu banco.
 function tarjetaPrevia(card, r) {
   const V = r.previa, M = V.movimientos, A = V.aportaciones;
@@ -75,6 +85,7 @@ function tarjetaPrevia(card, r) {
   if (V.sugeridos) t.push({ l: "Con categoría sugerida", v: String(V.sugeridos), s: "se guardan ya, por confirmar" });
   t.push({ l: "Ya estaban", v: String(V.existentes), s: "se omiten, no se duplican" }, { l: "Por revisar", v: String(V.dudas.n), t: V.dudas.n ? "neg" : "" });
   tiles(card, t);
+  filasSinLeer(card, V.ilegibles);
   if (V.activos_nuevos.length) card.createDiv({ cls: "fin-note", text: `Se crearían los activos: ${V.activos_nuevos.join(", ")}.` });
   if (V.categorias.length) card.createDiv({ cls: "fin-note", text: "Más gasto: " + V.categorias.map((c) => `${c.categoria} ${eur(c.total, 0)}`).join(" · ") });
   if (V.muestra.length) plegable(card, `Ver los últimos ${V.muestra.length} movimientos`, (c) => tabla(c, [{ t: "Fecha" }, { t: "Concepto" }, { t: "Categoría", opt: true }, { t: "Importe", num: true }],
@@ -99,6 +110,7 @@ function resultadoImport(padre, r) {
   if (r.ok && r.previa) { tarjetaPrevia(card, r); return; }
   if (r.ok) {
     mensaje(card, r.mensaje || "Importado", "ok");
+    filasSinLeer(card, r.ilegibles, true);
     cuadreExtracto(card, r);
     if (r.sugeridas) enlace(card, `Ver o confirmar las ${r.sugeridas} categoría${r.sugeridas > 1 ? "s" : ""} sugerida${r.sugeridas > 1 ? "s" : ""} →`, "#revisar");
     if (r.dudas) enlace(card, `Revisar ${r.dudas} movimiento${r.dudas > 1 ? "s" : ""} →`, "#revisar");

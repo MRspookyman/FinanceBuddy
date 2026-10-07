@@ -5,18 +5,34 @@ def norm(s):
     s = unicodedata.normalize("NFD", str(s if s is not None else "").lower())
     return re.sub(r"\s+", " ", "".join(c for c in s if unicodedata.category(c) != "Mn")).strip()
 
+def _texto_de(datos):
+    """Los bytes de un archivo de texto → str. El «Texto Unicode» de Excel (UTF-16) se reconoce por su marca o por sus ceros."""
+    if datos[:2] in (b"\xff\xfe", b"\xfe\xff"): return datos.decode("utf-16", "replace")
+    if datos[:2000].count(b"\x00") > len(datos[:2000]) // 4:  # sin marca: uno de cada dos bytes es un cero
+        return datos.decode("utf-16-le" if datos[1:2] == b"\x00" else "utf-16-be", "replace")
+    for enc in ("utf-8-sig", "cp1252", "latin-1"):
+        try: return datos.decode(enc)
+        except UnicodeDecodeError: pass
+
 def filas_crudas(ruta):
-    """Todas las filas del archivo como listas de celdas (primera hoja si es Excel)."""
+    """Todas las filas del archivo como listas de celdas (primera hoja si es Excel). Manda lo que el archivo es por dentro, no
+    su extensión: hay bancos que llaman .xls a un .xlsx, a un texto con tabuladores o a una página web."""
     ext = os.path.splitext(ruta)[1].lower()
-    if ext in (".xlsx", ".xlsm"):
+    with io.open(ruta, "rb") as fh: datos = fh.read()
+    if datos[:4] == b"PK\x03\x04":  # un .xlsx (por dentro es un zip)
         import openpyxl
-        wb = openpyxl.load_workbook(ruta, data_only=True, read_only=True)
-        filas = [list(r) for r in wb.worksheets[0].iter_rows(values_only=True)]
-        wb.close()
+        try:
+            wb = openpyxl.load_workbook(io.BytesIO(datos), data_only=True, read_only=True)
+            filas = [list(r) for r in wb.worksheets[0].iter_rows(values_only=True)]
+            wb.close()
+        except Exception:
+            raise ValueError("No se puede leer como Excel: es otro tipo de archivo o está dañado. Ábrelo y guárdalo como .xlsx o CSV.")
         return filas
-    if ext == ".xls":
+    if datos[:4] == b"\xd0\xcf\x11\xe0":  # un .xls de los de antes
         import xlrd
-        sh = xlrd.open_workbook(ruta).sheet_by_index(0)
+        try: sh = xlrd.open_workbook(file_contents=datos).sheet_by_index(0)
+        except Exception:
+            raise ValueError("No se puede leer este Excel: puede que esté protegido con contraseña o dañado. Ábrelo y guárdalo como .xlsx o CSV.")
         out = []
         for i in range(sh.nrows):
             fila = []
@@ -25,15 +41,33 @@ def filas_crudas(ruta):
                 fila.append(xlrd.xldate_as_datetime(c.value, 0) if c.ctype == xlrd.XL_CELL_DATE else c.value)
             out.append(fila)
         return out
-    if ext not in (".csv", ".txt"): raise ValueError(f"Formato no admitido ({ext}): usa Excel (.xlsx, .xls) o CSV.")
-    with io.open(ruta, "rb") as fh: datos = fh.read()
-    texto = None
-    for enc in ("utf-8-sig", "cp1252", "latin-1"):
-        try: texto = datos.decode(enc); break
-        except UnicodeDecodeError: pass
-    muestra = "\n".join(texto.splitlines()[:40])
+    if ext not in (".csv", ".txt", ".xls", ".xlsx", ".xlsm"): raise ValueError(f"Formato no admitido ({ext}): usa Excel (.xlsx, .xls) o CSV.")
+    if not datos.strip(b"\xef\xbb\xbf\xff\xfe\x00 \t\r\n"): raise ValueError("El archivo está vacío.")
+    if datos[:600].lstrip(b"\xef\xbb\xbf\xff\xfe\x00 \t\r\n")[:1] == b"<":
+        raise ValueError("Este archivo no es un Excel de verdad: es una página web (o un XML) guardada con otro nombre; algunos bancos lo descargan así. "
+                         "Ábrelo con Excel y guárdalo como .xlsx, o descarga el extracto en CSV.")
+    texto = _texto_de(datos).replace("\r\n", "\n").replace("\r", "\n")
+    muestra = "\n".join(texto.split("\n")[:40])
     sep = max([";", "\t", ","], key=lambda s: muestra.count(s))
     return list(csv.reader(io.StringIO(texto), delimiter=sep))
+
+# Fechas que no salen con un formato fijo: con hora detrás (con o sin segundos y zona: «2026-09-30T10:15:23Z»), con el año
+# de dos cifras o con el mes escrito («30 sep 2026», «30 de septiembre de 2026», «Sep 30, 2026»). Siempre la celda entera.
+# No se intenta el orden americano (09/30/2026) ni «20260930»: son ambiguos y un número cualquiera pasaría por fecha.
+_HORA = r"(?:[ t,]+\d{1,2}:\d{2}(?::\d{2}(?:[.,]\d+)?)?\s*(?:z|utc|gmt|[+-]\d{2}(?::?\d{2})?)?)?"
+RE_FECHAS = [(re.compile(p + _HORA), orden) for p, orden in (  # orden: en qué grupo están el año, el mes y el día
+    (r"(\d{4})-(\d{1,2})-(\d{1,2})", (1, 2, 3)),
+    (r"(\d{1,2})[/.\-](\d{1,2})[/.\-](\d{4}|\d{2})", (3, 2, 1)),
+    (r"(\d{1,2})[ /.\-]+(?:de )?([a-z]{3,10})\.?[ /.\-,]+(?:de )?(\d{4})", (3, 2, 1)),
+    (r"([a-z]{3,10})\.? (\d{1,2}),? (\d{4})", (3, 1, 2)))]
+NOMBRES_MES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
+               "january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"]
+
+def _mes(t):
+    """«9», «sep», «sept», «septiembre», «september» → 9. None si no es un mes («martes» no es marzo)."""
+    if t.isdigit(): return int(t)
+    if t in ("set", "setiembre"): t = "septiembre"
+    return next((i % 12 + 1 for i, n in enumerate(NOMBRES_MES) if n.startswith(t)), None)
 
 def fecha(v):
     if isinstance(v, datetime.datetime): return v.date().isoformat()
@@ -44,13 +78,27 @@ def fecha(v):
     for f in ("%d/%m/%Y", "%d-%m-%Y", "%Y-%m-%d", "%d/%m/%y", "%d-%m-%y", "%d.%m.%Y", "%Y/%m/%d", "%Y-%m-%d %H:%M:%S", "%d/%m/%Y %H:%M:%S", "%d/%m/%Y %H:%M"):
         try: return datetime.datetime.strptime(s, f).date().isoformat()
         except ValueError: pass
+    t = norm(s)
+    for patron, (a, m, d) in RE_FECHAS:
+        x = patron.fullmatch(t)
+        if not x: continue
+        año, mes = int(x.group(a)), _mes(x.group(m))
+        if año < 100: año += 2000 if año < 69 else 1900
+        try: return datetime.date(año, mes, int(x.group(d))).isoformat()
+        except (TypeError, ValueError): return None
     return None
+
+def con_cifras(v):
+    """¿La celda trae algo con cifras? Una fila con cifras donde va la fecha y donde va el importe era un movimiento; una línea
+    en blanco, un rótulo o un total sin fecha, no."""
+    return v is not None and not isinstance(v, bool) and bool(re.search(r"\d", str(v)))
 
 def numero(v):
     """1.234,56 · -12,30 · 1,234.56 · 1234.5 · «12,30 €» → float. None si no es un número."""
     if isinstance(v, bool) or v is None: return None
     if isinstance(v, (int, float)): return float(v)
     s = str(v).strip().replace("€", "").replace("EUR", "").replace("\xa0", "").replace(" ", "")
+    s = s.replace("−", "-").replace("–", "-")  # el menos tipográfico («−») y la raya corta, al copiar de la web del banco
     neg = s.startswith("(") and s.endswith(")")
     s = s.strip("()")
     if not s or not re.fullmatch(r"[+-]?[\d.,]+-?", s): return None

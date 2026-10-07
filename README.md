@@ -177,6 +177,14 @@ Importar dos veces el mismo periodo **no duplica nada**: cada movimiento se reco
   - vale el importe con signo, o columnas separadas de cargo y abono (Debe/Haber);
   - el saldo es opcional, pero recomendado;
   - a partir de ahí ese banco queda guardado como un formato y se reconoce solo.
+- **Nada se pierde sin avisar**: si la app no entiende la fecha o el importe de una fila (un «12,5O», un 31 de febrero), la
+  vista previa te la enseña tal como viene en el archivo, con su número de fila y el motivo, y lo demás se importa. La corriges
+  en el archivo y lo vuelves a importar: lo que ya estaba no se duplica.
+- **Manda lo que el archivo es, no cómo se llama**: un `.xlsx` guardado como `.xls`, un texto con tabuladores o un CSV en UTF-16
+  se leen igual. Si el «Excel» de tu banco es en realidad una página web, la app te lo dice y te explica qué hacer (abrirlo
+  con Excel y guardarlo como `.xlsx`).
+- **Fechas**: además de las habituales, entiende las que llevan hora y zona (`2026-09-30T10:15:23Z`), el año con dos cifras o
+  el mes escrito («30 sep 2026»). No intenta adivinar el orden americano (mes/día/año).
 - **Sin preguntar de qué cuenta es**: si el extracto trae el IBAN, la app lo recuerda (sus 4 últimas cifras) y la próxima vez lo importa en su cuenta sola.
 - **Tus traspasos**: si el extracto trae el titular, el dinero que mueves a tu nombre se reconoce como traspaso (no como gasto o ingreso). Y si la salida de una cuenta y la entrada en otra (mismo importe, ±3 días) están en extractos distintos, se emparejan solas.
 - **Inversión**: las compras se asignan a cada activo por el texto con el que aparecen en el extracto. La primera vez te propone crear el activo (con nombre y tipo) y con un clic guarda todas sus compras.

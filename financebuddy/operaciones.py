@@ -22,19 +22,24 @@ def dias(a, b):
 def clave(o): return o["isin"] or L.norm(o["texto"])
 
 # ───────────── leer el archivo ─────────────
-def leer(ruta, alm, perfil_nombre=None):
+def leer(ruta, alm, perfil_nombre=None, info=None):
     """→ (perfil, operaciones, descartadas). Operación: {fecha, isin, texto, importe (≥0 o None), part (≥0 o None),
-    signo (+1 compra, −1 venta, None si el archivo no lo dice)}. Se descartan las órdenes canceladas o rechazadas."""
+    signo (+1 compra, −1 venta, None si el archivo no lo dice)}. Se descartan las órdenes canceladas o rechazadas.
+    info (dict): recibe en `ilegibles` las filas con una fecha que no se entiende (como importar.leer), para avisarlo."""
     crudas = L.filas_crudas(ruta)
     perfiles = [p for p in alm.todos("perfil") if p.get("tipo") == "operaciones" and (not perfil_nombre or p["nombre"] == perfil_nombre)]
     rec = L.reconocer(crudas, perfiles)
     if not rec: raise ValueError("No reconozco las columnas de este archivo de operaciones.")
     perfil, i, idx = rec
-    ops, descartadas = [], 0
-    for f in crudas[i + 1:]:
+    ops, descartadas, raras = [], 0, []
+    if info is not None: info["ilegibles"] = raras
+    for n, f in enumerate(crudas[i + 1:], i + 2):
         cel = lambda k: f[idx[k]] if k in idx and idx[k] < len(f) else None
         fecha = L.fecha(cel("fecha"))
-        if not fecha: continue
+        if not fecha:
+            if L.con_cifras(cel("fecha")) and (L.con_cifras(cel("importe")) or L.con_cifras(cel("participaciones"))):
+                raras.append({"fila": n, "que": "la fecha", "valor": L.texto(cel("fecha")), "texto": L.texto(cel("activo")) or L.texto(cel("isin"))})
+            continue
         if "estado" in idx and not L.norm(cel("estado")).startswith(ESTADOS_OK): descartadas += 1; continue
         imp, part = L.numero(cel("importe")), L.numero(cel("participaciones"))
         if not imp and not part: descartadas += 1; continue
@@ -43,6 +48,8 @@ def leer(ruta, alm, perfil_nombre=None):
         m = RE_ISIN.search(L.texto(cel("isin")).upper() + " " + L.texto(cel("activo")).upper())
         ops.append({"fecha": fecha, "isin": m.group(0) if m else "", "texto": L.texto(cel("activo")) or (m.group(0) if m else ""),
                     "importe": round(abs(imp), 2) if imp else None, "part": abs(part) if part else None, "signo": signo})
+    if not ops and not descartadas and raras:
+        raise ValueError(f"No se ha podido leer ninguna fila: no entiendo la fecha «{raras[0]['valor']}» (fila {raras[0]['fila']}).")
     if not ops and not descartadas: raise ValueError("El archivo no tiene operaciones.")
     return perfil, sorted(ops, key=lambda o: o["fecha"]), descartadas
 
@@ -222,7 +229,9 @@ def resolver_conocidos(alm):
 
 # ───────────── importar ─────────────
 def importar(alm, ruta, cuenta=None, perfil_nombre=None):
-    perfil, ops, descartadas = leer(ruta, alm, perfil_nombre)
+    from .importar import aviso_ilegibles
+    info = {}
+    perfil, ops, descartadas = leer(ruta, alm, perfil_nombre, info)
     cuentas = alm.todos("cuenta")
     brokers = [c["nombre"] for c in cuentas if c.get("tipo") == "broker"]
     cuenta = cuenta or perfil.get("cuenta") or (brokers[0] if len(brokers) == 1 else None)
@@ -265,5 +274,5 @@ def importar(alm, ruta, cuenta=None, perfil_nombre=None):
     fechas = [o["fecha"] for o in ops] or ["", ""]
     return {"ok": True, "tipo": "operaciones", "cuenta": cuenta, "perfil": perfil["nombre"], "filas": len(ops) + descartadas,
             "nuevas": n["nueva"], "existentes": n["existente"], "dudas": 0, "desde": min(fechas), "hasta": max(fechas),
-            "activos_nuevos": nuevos_activos,
-            "mensaje": f"Operaciones ({cuenta}): " + " · ".join(p for p in partes if p)}
+            "activos_nuevos": nuevos_activos, "ilegibles": info["ilegibles"],
+            "mensaje": f"Operaciones ({cuenta}): " + " · ".join(p for p in partes if p) + aviso_ilegibles(info["ilegibles"], primera=True)}

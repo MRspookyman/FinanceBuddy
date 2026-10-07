@@ -167,6 +167,53 @@ class TestBanco(Base):
         self.assertEqual(r["nuevas"], 2)
         self.assertEqual(sorted((m["clase"], m["importe"]) for m in self.movs()), [("gasto", 23.1), ("ingreso", 1500.0)])
 
+    def test_las_filas_que_no_se_leen_se_avisan_y_lo_demas_se_importa(self):
+        ruta = os.path.join(self.c.banco, "a_mano.csv")
+        escribir(ruta, "utf-8", "Fecha;Concepto;Importe\n01/09/2026;Mercadona;-23,45\n2026-09-03T10:15:00Z;Lidl;-9,90\n05/09/2026;Kiosko;-3,2O\n31/02/2026;Farmacia;-7,00\n\nTotal;;-43,55\n")
+        IM.crear_perfil(self.a, "Banco Z", "banco", {"fecha": "Fecha", "concepto": "Concepto", "importe": "Importe"}, "Nómina")
+        r = self.importar(ruta)
+        self.assertEqual((r["ok"], r["nuevas"] + r["dudas"]), (True, 2))  # la fecha con «T» se entiende: son dos movimientos
+        # Las dos que no: un importe con una O por un cero y un día que no existe. La línea en blanco y el total no son movimientos.
+        self.assertEqual([(x["fila"], x["que"], x["valor"], x["texto"]) for x in r["ilegibles"]], [(4, "el importe", "-3,2O", "Kiosko"), (5, "la fecha", "31/02/2026", "Farmacia")])
+        self.assertIn("⚠ 2 filas no se han podido leer (la primera, la fila 4: no entiendo el importe «-3,2O»)", r["mensaje"])
+
+    def test_con_saldo_una_fila_ilegible_no_cuadra_y_el_error_dice_cual(self):
+        ruta = os.path.join(self.c.banco, "con_saldo.csv")
+        escribir(ruta, "utf-8", "Fecha;Concepto;Importe;Saldo\n03/09/2026;Lidl;-10,00;956,55\n02/09/2026;Kiosko;-1O,00;966,55\n01/09/2026;Mercadona;-23,45;976,55\n")
+        IM.crear_perfil(self.a, "Banco S", "banco", {"fecha": "Fecha", "concepto": "Concepto", "importe": "Importe", "saldo": "Saldo"}, "Nómina")
+        r = self.importar(ruta)
+        self.assertFalse(r["ok"])
+        self.assertIn("no cuadran", r["mensaje"]); self.assertIn("en la fila 3 no entiendo el importe «-1O,00»", r["mensaje"])
+        self.assertEqual(self.movs(), [])
+        # y si no se lee ninguna, se dice por qué en vez de «el archivo no tiene movimientos»
+        escribir(ruta, "utf-8", "Fecha;Concepto;Importe;Saldo\n2026/9;Lidl;-10,00;956,55\n")
+        with self.assertRaises(ValueError) as e: self.importar(ruta)
+        self.assertIn("no entiendo la fecha «2026/9» (fila 2)", str(e.exception))
+
+    def test_manda_lo_que_el_archivo_es_por_dentro_no_su_extension(self):
+        import openpyxl
+        IM.crear_perfil(self.a, "Banco X", "banco", {"fecha": "Fecha", "concepto": "Concepto", "importe": "Importe"}, "Nómina")
+        en = lambda nombre: os.path.join(self.c.banco, nombre)
+        # un .xlsx al que el banco llama .xls
+        wb = openpyxl.Workbook(); ws = wb.active
+        ws.append(["Fecha", "Concepto", "Importe"]); ws.append([datetime.datetime(2026, 9, 1), "Mercadona", -23.45])
+        wb.save(en("a.xlsx")); os.replace(en("a.xlsx"), en("a.xls"))
+        # el «Texto Unicode» de Excel (UTF-16 con tabuladores) y un texto con tabuladores llamado .xls
+        escribir(en("b.csv"), "utf-16", "Fecha\tConcepto\tImporte\n02/09/2026\tMercadona\t-11,10\n")
+        escribir(en("c.xls"), "cp1252", "Fecha\tConcepto\tImporte\n03/09/2026\tMercadona\t-12,20\n")
+        for nombre in ("a.xls", "b.csv", "c.xls"):
+            r = self.importar(en(nombre))
+            self.assertEqual((r["ok"], r["nuevas"]), (True, 1), nombre)
+        self.assertEqual(sorted(m["importe"] for m in self.movs()), [11.1, 12.2, 23.45])
+        # lo que no se puede leer se dice claro, no con el error de la librería
+        escribir(en("d.xls"), "utf-8", "<html><body><table><tr><td>Fecha</td><td>Concepto</td><td>Importe</td></tr></table></body></html>")
+        with io.open(en("e.xlsx"), "wb") as fh: fh.write(b"")
+        with io.open(en("f.xls"), "wb") as fh: fh.write(b"\xd0\xcf\x11\xe0" + b"\x00" * 600)
+        with io.open(en("g.xlsx"), "wb") as fh: fh.write(b"PK\x03\x04" + b"no es un excel")
+        for nombre, texto in (("d.xls", "no es un Excel de verdad"), ("e.xlsx", "está vacío"), ("f.xls", "protegido con contraseña o dañado"), ("g.xlsx", "No se puede leer como Excel")):
+            with self.assertRaises(ValueError) as e: self.importar(en(nombre))
+            self.assertIn(texto, str(e.exception), nombre)
+
 class TestAprender(Base):
     """Lo que la app aprende sola: tu historial, los grupos de «Por revisar» y los cambios de categoría."""
     def test_limpia_tarjetas_enmascaradas(self):
@@ -587,6 +634,12 @@ class TestOperaciones(Base):
         self.assertEqual(self.aps(), [("2026-05-26", "iShares Physical Gold", -74.59, -1.0), ("2026-06-25", "Fidelity Physical Bitcoin", 303.41, 57.0)])
         self.assertEqual(self.a.todos("operacion"), [])
 
+    def test_una_orden_con_la_fecha_ilegible_se_avisa(self):
+        ruta = self.archivo("ordenes.csv", "Fecha;Tipo;Activo;Estado;Títulos\n24/06/2026;Compra;FIDELITY PHYSICAL BITCOIN ET;Finalizada;57\n2026-13-45;Compra;ISHARES PHYSICAL GOLD ETC;Finalizada;2\n")
+        r = IM.importar_archivo(self.a, self.c, ruta, None, "Bróker")
+        self.assertEqual([(x["fila"], x["valor"]) for x in r["ilegibles"]], [(3, "2026-13-45")])
+        self.assertIn("⚠ 1 fila no se ha podido leer (la fila 3: no entiendo la fecha «2026-13-45»)", r["mensaje"])
+
 class TestCartera(Base):
     """Arreglos a mano de la cartera (cartera.py) y sugerencias del bróker que no inventan activos."""
     CUENTA = ("Fecha de operación;Fecha valor;Concepto;Importe\n"
@@ -721,6 +774,15 @@ class TestLectura(unittest.TestCase):
     def test_fechas(self):
         for txt in ("05/09/2026", "2026-09-05", "05-09-2026", "05/09/26", datetime.date(2026, 9, 5)):
             self.assertEqual(L.fecha(txt), "2026-09-05")
+    def test_fechas_con_hora_con_zona_o_con_el_mes_escrito(self):
+        for txt in ("2026-09-05T10:15:23Z", "2026-09-05T10:15:23.160+02:00", "2026-09-05 10:15", "05/09/2026, 10:15", "05.09.26", "5 sep 2026", "5 de Septiembre de 2026",
+                    "05-sept.-2026", "Sep 5, 2026", "September 5 2026"):
+            self.assertEqual(L.fecha(txt), "2026-09-05", txt)
+        # Lo ambiguo o imposible sigue sin ser una fecha: orden americano, todo junto, un día que no existe, un rótulo con cifras
+        for txt in ("09/30/2026", "20260905", "31/02/2026", "5 martes 2026", "30/09/2026 | 10:00:00", "Saldo a 30/09/2026", "12,50", "1.234,56"):
+            self.assertIsNone(L.fecha(txt), txt)
+    def test_el_signo_menos_tipografico(self):
+        self.assertEqual((L.numero("−12,30"), L.numero("–1.234,56 €"), L.numero("–")), (-12.3, -1234.56, None))
 
 if __name__ == "__main__":
     unittest.main()

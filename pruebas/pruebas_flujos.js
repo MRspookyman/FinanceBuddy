@@ -363,5 +363,30 @@ return (async () => {
     if (!(await hasta(() => regs("cierre").some((x) => x.mes === "2026-09" && x.fecha === "2026-09-30")))) return "con los saldos del día 30 no se cierra septiembre";
   });
 
+  // 18. Importar: lo que no se sabe leer no se pierde en silencio. La plantilla de la app rellenada a mano, con un importe mal
+  // escrito (una O por un cero) y un día que no existe: la vista previa enseña esas filas con su motivo y no cuenta el total del pie.
+  await caso("Importar: la vista previa enseña las filas que no se han podido leer", async () => {
+    const csv = "Fecha;Concepto;Importe;Categoría\n01/09/2026;Papelería de prueba;-7,10;Compras\n2026-09-03T10:15:00Z;Abono de prueba;25,00;\n05/09/2026;Kiosko de prueba;-3,2O;Otros\n31/02/2026;Fecha imposible;-1,00;Otros\n\nTotal;;13,70;\n";
+    const antes = regs("movimiento").length;
+    FB.soltados = [new File([csv], "prueba-filas.csv", { type: "text/csv" })];
+    if (!(await ir("#importar"))) return "no se abre Importar";
+    const tarjeta = () => porTexto(".fb-card", "prueba-filas.csv");
+    if (!(await hasta(tarjeta))) return "no sale el resultado de subir el archivo";
+    if (!tarjeta().classList.contains("fb-previa")) {  // la primera vez pregunta de qué cuenta es
+      const boton = await hasta(() => tarjeta() && porTexto("button", "Importar", tarjeta()));
+      if (!boton) return "no pregunta la cuenta ni enseña la vista previa: " + plano(tarjeta()).slice(0, 200);
+      boton.click();
+    }
+    if (!(await hasta(() => tarjeta() && tarjeta().classList.contains("fb-previa")))) return "no llega a la vista previa: " + plano(tarjeta() || app()).slice(0, 300);
+    const aviso = tarjeta().querySelector(".fb-msg.err");
+    if (!aviso) return "la vista previa no avisa de las filas sin leer: " + plano(tarjeta()).slice(0, 300);
+    const t = plano(aviso);
+    for (const x of ["2 filas no se han podido leer y no se importarán", "fila 4: no entiendo el importe «-3,2O» (Kiosko de prueba)", "fila 5: no entiendo la fecha «31/02/2026» (Fecha imposible)"]) if (!t.includes(x)) return `falta «${x}» en el aviso: ${t}`;
+    if (t.includes("Total") || t.includes("fila 3")) return "cuenta como ilegible el total del pie o la fecha con hora: " + t;
+    if (regs("movimiento").length !== antes) return "la vista previa ha guardado movimientos";
+    porTexto("button", "No importar", tarjeta()).click();
+    if (!(await hasta(() => !tarjeta()))) return "al descartar, la tarjeta sigue ahí";
+  });
+
   return casos;
 })();

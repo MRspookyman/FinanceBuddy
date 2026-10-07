@@ -18,7 +18,8 @@ EXTENSIONES = (".xlsx", ".xls", ".xlsm", ".csv", ".txt")
 # ───────────── lectura con perfil ─────────────
 def leer(ruta, alm, tipo=None, perfil_nombre=None, info=None):
     """→ (perfil, filas normalizadas). tipo: banco | inversion | None (se deduce del formato).
-    info (dict): se rellena con lo que dice la cabecera del archivo (iban, titular)."""
+    info (dict): se rellena con lo que dice la cabecera del archivo (iban, titular) y con las filas que parecían un movimiento
+    y no se han podido leer (`ilegibles`: [{fila, que, valor, texto}]), para avisarlo en vez de saltárselas en silencio."""
     crudas = L.filas_crudas(ruta)
     perfiles = alm.todos("perfil")
     if perfil_nombre: perfiles = [p for p in perfiles if p["nombre"] == perfil_nombre]
@@ -27,16 +28,21 @@ def leer(ruta, alm, tipo=None, perfil_nombre=None, info=None):
         raise NecesitaPerfil({"archivo": os.path.basename(ruta), "tipo": tipo, **L.muestra_para_configurar(crudas)})
     perfil, i, idx = rec
     if info is not None: info.update(L.datos_cabecera(crudas[:i]))
-    filas = []
-    for f in crudas[i + 1:]:
+    filas, raras = [], []
+    for n, f in enumerate(crudas[i + 1:], i + 2):  # n: la fila tal como se ve al abrir el archivo (la primera es la 1)
         cel = lambda k: f[idx[k]] if k in idx and idx[k] < len(f) else None
         op = L.fecha(cel("fecha"))
-        if not op: continue
-        if "importe" in idx: imp = L.numero(cel("importe"))
+        crudo = [cel("importe")] if "importe" in idx else [cel("cargo"), cel("abono")]
+        if "importe" in idx: imp = L.numero(crudo[0])
         else:
-            cargo, abono = L.numero(cel("cargo")), L.numero(cel("abono"))
+            cargo, abono = L.numero(crudo[0]), L.numero(crudo[1])
             imp = None if cargo is None and abono is None else (abono or 0) - abs(cargo or 0)
-        if imp is None: continue
+        if not op or imp is None:
+            # Con cifras donde va la fecha y donde va el importe, era un movimiento (una línea en blanco o un total sin fecha, no)
+            if L.con_cifras(cel("fecha")) and any(L.con_cifras(x) for x in crudo):
+                raras.append({"fila": n, "que": "el importe" if op else "la fecha", "texto": L.texto(cel("concepto")),
+                              "valor": L.texto(next(x for x in crudo if L.con_cifras(x)) if op else cel("fecha"))})
+            continue
         texto = L.texto(cel("concepto")) or "Movimiento"
         fila = {"op": op, "texto": texto, "importe": round(imp, 2)}
         if "categoria" in idx and L.texto(cel("categoria")): fila["cat_archivo"] = L.texto(cel("categoria"))  # la plantilla de FinanceBuddy
@@ -46,8 +52,20 @@ def leer(ruta, alm, tipo=None, perfil_nombre=None, info=None):
             s = L.numero(cel("saldo"))
             if s is not None: fila["saldo"] = round(s, 2)
         filas.append(fila)
+    if info is not None: info["ilegibles"] = raras
+    if not filas and raras:
+        raise ValueError(f"No se ha podido leer ninguna fila: no entiendo {raras[0]['que']} «{raras[0]['valor']}» (fila {raras[0]['fila']}). "
+                         "Comprueba que las columnas elegidas son las correctas.")
     if not filas: raise ValueError("El archivo no tiene movimientos (o las columnas elegidas no son las correctas).")
     return perfil, filas
+
+def aviso_ilegibles(raras, primera=False):
+    """Para el mensaje de una importación: « · ⚠ 2 filas no se han podido leer» (vacío si se leyeron todas). `primera`: dice cuál."""
+    n = len(raras or [])
+    if not n: return ""
+    r = raras[0]
+    return (f" · ⚠ {n} fila{'s' if n > 1 else ''} no se {'han' if n > 1 else 'ha'} podido leer"
+            + (f" ({'la primera, ' if n > 1 else ''}la fila {r['fila']}: no entiendo {r['que']} «{r['valor']}»)" if primera else ""))
 
 def categoria_del_archivo(f, grupos):
     """La plantilla de FinanceBuddy trae la categoría que el usuario eligió en un desplegable con SUS categorías: manda sobre las
@@ -127,8 +145,12 @@ def importar_banco(alm, ruta, cuenta=None, perfil_nombre=None):
     if not cuenta or not any(c["nombre"] == cuenta for c in cuentas):
         raise NecesitaCuenta({"archivo": os.path.basename(ruta), "tipo": "banco", "perfil": perfil["nombre"],
                               "cuentas": [c["nombre"] for c in cuentas if c.get("tipo") != "broker"]})
+    raras = info.get("ilegibles") or []
     filas, error = ordenar_y_comprobar_saldos(filas)
-    if error: return {"ok": False, "mensaje": error}
+    if error:  # una fila que no se ha podido leer rompe la cadena de saldos: decir cuál es, que es lo que hay que arreglar
+        if raras: error += (f" Hay {len(raras)} fila{'s' if len(raras) > 1 else ''} que no se {'han' if len(raras) > 1 else 'ha'} podido leer: "
+                            f"en la fila {raras[0]['fila']} no entiendo {raras[0]['que']} «{raras[0]['valor']}». Corrígelo en el archivo y vuelve a importarlo.")
+        return {"ok": False, "mensaje": error}
     reglas = C.ordenar_reglas(alm.todos("regla"))
     recs = alm.todos("recurrente")
     mem = C.memoria(alm.todos("movimiento"))
@@ -175,10 +197,12 @@ def importar_banco(alm, ruta, cuenta=None, perfil_nombre=None):
     aprendidas = sum(1 for f in nuevas if f.get("aprendido"))
     return {"ok": True, "tipo": "banco", "cuenta": cuenta, "perfil": perfil["nombre"], "filas": len(filas), "nuevas": len(nuevas),
             "existentes": existentes, "dudas": len(dudas), "aprendidas": aprendidas, "sugeridas": sugeridas, "desde": filas[-1]["op"], "hasta": filas[0]["op"],
+            "ilegibles": raras,
             "mensaje": f"{cuenta}: {len(nuevas)} movimientos nuevos" + (f" ({aprendidas} clasificados por lo que ya sabía de ti)" if aprendidas else "")
                        + (f", {sugeridas} con categoría sugerida por confirmar" if sugeridas else "")
                        + (f", {len(dudas)} por revisar" if dudas else "")
-                       + (f" ({existentes} ya estaban)" if existentes else "") + f" · del {fmt(filas[-1]['op'])} al {fmt(filas[0]['op'])}"}
+                       + (f" ({existentes} ya estaban)" if existentes else "") + f" · del {fmt(filas[-1]['op'])} al {fmt(filas[0]['op'])}"
+                       + aviso_ilegibles(raras, primera=True)}
 
 def guardar_sugeridos(alm, filas, mem):
     """Ajuste «Guardar ya lo importado con la categoría sugerida» (config guardar_sugeridos, encendido de serie): las filas con duda
@@ -275,10 +299,10 @@ def importar_inversion(alm, ruta, cuenta=None, perfil_nombre=None):
     n = len(nuevas_ap) + len(nuevos_mov) + len(nuevos_cobro)
     ops = sorted(f["op"] for f in filas)
     return {"ok": True, "tipo": "inversion", "cuenta": cuenta, "perfil": perfil["nombre"], "filas": len(filas), "nuevas": n,
-            "existentes": existentes, "dudas": len(dudas), "desde": ops[0], "hasta": ops[-1],
+            "existentes": existentes, "dudas": len(dudas), "desde": ops[0], "hasta": ops[-1], "ilegibles": info.get("ilegibles") or [],
             "mensaje": f"{cuenta}: {len(nuevas_ap)} compras/ventas y {len(nuevos_mov)} intereses nuevos" + (f", {len(nuevos_cobro)} dividendos" if nuevos_cobro else "") + (f", {len(dudas)} por revisar" if dudas else "")
                        + (f" ({existentes} ya estaban)" if existentes else "") + (f" · {ignoradas} traspasos ignorados" if ignoradas else "")
-                       + (f" · {con_titulos} completadas con sus títulos" if con_titulos else "")}
+                       + (f" · {con_titulos} completadas con sus títulos" if con_titulos else "") + aviso_ilegibles(info.get("ilegibles"), primera=True)}
 
 def cat_intereses(alm):
     return "Intereses" if any(c["nombre"] == "Intereses" for c in alm.todos("categoria")) else "Otros ingresos"

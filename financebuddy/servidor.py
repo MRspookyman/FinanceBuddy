@@ -143,6 +143,7 @@ class App:
                             "gastos": round(sum(m["importe"] for m in movs if m["clase"] == "gasto"), 2), "traspasos": sum(1 for m in movs if m["clase"] == "transferencia")},
             "aportaciones": {"n": len(aps), "compras": round(sum(a["importe"] for a in aps if a["importe"] > 0), 2), "ventas": round(-sum(a["importe"] for a in aps if a["importe"] < 0), 2)},
             "sugeridos": sum(1 for m in movs if m.get("sugerido")), "activos_nuevos": [a["nombre"] for a in acts], "existentes": r.get("existentes", 0),
+            "ilegibles": r.get("ilegibles") or [],  # filas que parecían un movimiento y no se han podido leer: se enseñan, no se callan
             "dudas": {"n": len(pend), "muestra": [{"fecha": p["fila"]["op"], "texto": p["fila"].get("texto", ""), "importe": p["fila"].get("importe", 0)}
                                                    for p in sorted(pend, key=lambda p: p["fila"]["op"], reverse=True)[:6]]},
             "desde": min(fechas) if fechas else None, "hasta": max(fechas) if fechas else None,

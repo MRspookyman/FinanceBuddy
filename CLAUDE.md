@@ -30,9 +30,9 @@ Python (biblioteca estándar + `openpyxl`/`xlrd`/`pystray`) · SQLite · interfa
 
 ```bat
 python -m financebuddy --ejemplo --sin-navegador --puerto 8830 --hoy 2026-09-30   :: app con datos inventados
-python -m unittest discover -s pruebas -p "test_*.py" -t .     :: 199 pruebas de Python
+python -m unittest discover -s pruebas -p "test_*.py" -t .     :: 206 pruebas de Python
 python pruebas\run.py --tests                                  :: 20 pantallas sin errores + 106 pruebas de cálculos
-python pruebas\run.py --flujos                                 :: 17 flujos con clics de verdad
+python pruebas\run.py --flujos                                 :: 18 flujos con clics de verdad
 python pruebas\run.py --capturas                               :: capturas en claro y oscuro (%TEMP%\fb-pruebas)
 python pruebas\evaluar_jev.py / evaluar_precios.py             :: contra los servicios reales (lo ejecuta el usuario)
 build.bat                                                      :: pasa TODO lo anterior y genera dist\FinanceBuddy\
@@ -84,6 +84,11 @@ Para añadir algo: `modelo.CAMPOS` **y** `FORMS` (`web/paneles/formularios.js`) 
   enlazado a mano no se deja juntar.
 - Un mes está cerrado solo si su `cierre` lleva saldos de su último día o de después (`App.cierre` en el servidor y `cierreVale`
   en `datos.js`, que además ignora los cierres de mitad de mes que guardaban versiones anteriores). Anotar saldos otro día no cierra nada.
+- `lectura.filas_crudas` decide por lo que el archivo es por dentro (firma de zip o de Excel antiguo, el `<` de una página web,
+  la marca UTF-16), no por su extensión. Y `lectura.fecha` también sirve para reconocer qué columna es la fecha: un formato
+  nuevo tiene que casar la celda entera y no ser ambiguo (ni orden americano ni «20260930»).
+- Una fila con cifras donde va la fecha y donde va el importe que no se puede leer no se salta en silencio: va a `ilegibles`
+  (`importar.leer`, `operaciones.leer`) y la vista previa la enseña con su número de fila y el motivo. Otro lector de archivos, igual.
 - «Gasto variable» deja fuera las categorías de grupo fijo. Lo que haya en ellas sin ser el pago de un fijo dado de alta es
   `gastoFijoSuelto`: la previsión y el colchón lo suman aparte. Si añades otro cálculo de «lo que sale al mes», cuenta las tres cosas.
 - En el Inicio van a la vista dos avisos `warn`; el resto y los `info`, plegados en «y N avisos más» (`repartirAvisos`).
