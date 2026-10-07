@@ -211,4 +211,21 @@ caso("Renta en CSV: coma decimal, punto y coma, y el bruto del dividendo (81 + 1
   CSV.includes('05/03/2026;"Fondo; raro";1,500000;1234,50;1000,00;234,50') && CSV.includes("01/06/2026;ETF;Dividendo;81,00;19,00;100,00"), CSV);
 caso("Recordatorios: el del ejemplo no se repite", F.recordatorios().every((r) => !r.repetir || r.repetir === "no"));
 
+// Gastos fijos sin dar de alta: lo que hay en una categoría fija sin enlazar a un fijo, menos lo que se atribuye a los fijos
+// de esa categoría que ese mes tocaban y no tienen su pago. Un agosto de mentira: 120 € de comunidad (− 20 € que devuelven)
+// con el alquiler pagado; 60 € de suministros con la luz pagada pero no «Internet y móvil» (35 €: se le atribuyen); 15 € de
+// suscripciones con el gimnasio (29,90 €) solo previsto (se le atribuyen todos) y un seguro de 310 € que en agosto no es el anual.
+const sueltos = (key) => F.gastoFijoSuelto({ key, real: [
+  { gasto: 700, categoria: "Vivienda", recurrente: "Alquiler" }, { gasto: 120, categoria: "Vivienda", recurrente: "" }, { gasto: -20, categoria: "Vivienda", recurrente: "" },
+  { gasto: 48, categoria: "Suministros", recurrente: "Luz" }, { gasto: 60, categoria: "Suministros", recurrente: "" },
+  { gasto: 29.9, categoria: "Suscripciones", recurrente: "Gimnasio", auto: true }, { gasto: 15, categoria: "Suscripciones", recurrente: "" },
+  { gasto: 310, categoria: "Seguros", recurrente: "" }, { gasto: 50, categoria: "Supermercado", recurrente: "" }] });
+caso("Gastos fijos sin dar de alta: 100 € de comunidad + 25 € de suministros + 310 € de un seguro = 435 €", cerca(sueltos("2026-08"), 435), sueltos("2026-08"));
+caso("…y en marzo ese seguro es el anual que ya está como fijo: no se cuenta dos veces (125 €)", cerca(sueltos("2027-03"), 125), sueltos("2027-03"));
+caso("Previsión del ejemplo: todo lo fijo está dado de alta, así que no añade gastos fijos sueltos",
+  PV.sueltoEst === 0 && PV.nMesesSuelto === 4 && PV.filas.every((f) => f.suelto === 0 && cerca(f.salidas, f.fijos + f.suelto + f.variable + f.tr + f.apoBanco)), [PV.sueltoEst, PV.nMesesSuelto]);
+caso("Un cierre vale si sus saldos son del último día de su mes o de después; con saldos de mitad de mes, no",
+  F.cierreVale({ mes: "2026-10", fecha: "2026-10-31" }) && F.cierreVale({ mes: "2026-10", fecha: "2026-11-03" }) && F.cierreVale({ mes: "2026-10" }) && !F.cierreVale({ mes: "2026-10", fecha: "2026-10-06" }));
+caso("Los cuatro cierres del ejemplo (de fin de mes) cuentan", F.cierres().length === 4, F.cierres().length);
+
 return casos;

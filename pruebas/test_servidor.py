@@ -36,6 +36,19 @@ class TestFlujo(unittest.TestCase):
         # Repetir la vista previa con lo ya importado: todo «ya estaba»
         self.assertEqual(self.api("/api/importar/descartar", {"archivo": r["archivo"]})["ok"], False)  # ya está en Procesados
 
+    def test_anotar_saldos_a_mitad_de_mes_no_cierra_el_mes(self):
+        self.api("/api/bienvenida", {"cuentas": [{"nombre": "Nómina", "tipo": "corriente", "saldo": 1000}]})
+        r = self.api("/api/cierre", {"fecha": "2026-10-06", "mes": "2026-10", "saldos": {"Nómina": 900}, "notas": "a medias"})
+        self.assertTrue(r["ok"]); self.assertFalse(r["cerrado"]); self.assertIn("Saldos del 06/10/2026", r["mensaje"])
+        self.assertEqual(self.app.alm.todos("cierre"), [])
+        ultimo = self.app.alm.todos("patrimonio")[-1]
+        self.assertEqual((ultimo["fecha"], ultimo["saldos"]["Nómina"], ultimo["nota"]), ("2026-10-06", 900, "a medias"))  # los saldos se guardan, y la nota no se pierde
+        # Con los saldos del último día del mes (o de después) sí se cierra; y anotar luego otros de mitad de mes no toca el cierre
+        self.assertTrue(self.api("/api/cierre", {"fecha": "2026-10-31", "mes": "2026-10", "saldos": {"Nómina": 800}})["cerrado"])
+        self.assertTrue(self.api("/api/cierre", {"fecha": "2026-12-02", "mes": "2026-11", "saldos": {"Nómina": 700}})["cerrado"])
+        self.assertFalse(self.api("/api/cierre", {"fecha": "2026-10-20", "mes": "2026-10", "saldos": {"Nómina": 850}})["cerrado"])
+        self.assertEqual(sorted((c["mes"], c["fecha"]) for c in self.app.alm.todos("cierre")), [("2026-10", "2026-10-31"), ("2026-11", "2026-12-02")])
+
     def test_primer_extracto_da_el_saldo_inicial_y_se_puede_deshacer(self):
         self.api("/api/guardar", {"tipo": "cuenta", "datos": {"nombre": "Nómina", "tipo": "corriente", "extracto": True}})
         ruta = os.path.join(self.dir, "x.xlsx"); excel_santander(ruta, FILAS)

@@ -30,9 +30,9 @@ Python (biblioteca estándar + `openpyxl`/`xlrd`/`pystray`) · SQLite · interfa
 
 ```bat
 python -m financebuddy --ejemplo --sin-navegador --puerto 8830 --hoy 2026-09-30   :: app con datos inventados
-python -m unittest discover -s pruebas -p "test_*.py" -t .     :: 196 pruebas de Python
-python pruebas\run.py --tests                                  :: 20 pantallas sin errores + 101 pruebas de cálculos
-python pruebas\run.py --flujos                                 :: 15 flujos con clics de verdad
+python -m unittest discover -s pruebas -p "test_*.py" -t .     :: 199 pruebas de Python
+python pruebas\run.py --tests                                  :: 20 pantallas sin errores + 106 pruebas de cálculos
+python pruebas\run.py --flujos                                 :: 17 flujos con clics de verdad
 python pruebas\run.py --capturas                               :: capturas en claro y oscuro (%TEMP%\fb-pruebas)
 python pruebas\evaluar_jev.py / evaluar_precios.py             :: contra los servicios reales (lo ejecuta el usuario)
 build.bat                                                      :: pasa TODO lo anterior y genera dist\FinanceBuddy\
@@ -79,7 +79,13 @@ Para añadir algo: `modelo.CAMPOS` **y** `FORMS` (`web/paneles/formularios.js`) 
 - `movimiento.importe` es **siempre positivo**; el signo lo da `clase`.
 - Un movimiento dividido son varios con el mismo `parte_de` (`importar.dividir`): comparten la huella del extracto y quedan fuera de
   «cambiar todo el comercio», de aplicar reglas, del repaso de Jev y de lo que aprende el historial. Si añades otra operación en
-  bloque sobre movimientos, sáltate los que tengan `parte_de`.
+  bloque sobre movimientos, sáltate los que tengan `parte_de`. Una parte no cambia de importe, fecha, cuenta ni tipo, ni se borra
+  sola (`importar.comprobar_parte`, `/api/borrar`): antes hay que juntarla. Los Bizums no se enlazan solos a una parte, y con uno
+  enlazado a mano no se deja juntar.
+- Un mes está cerrado solo si su `cierre` lleva saldos de su último día o de después (`App.cierre` en el servidor y `cierreVale`
+  en `datos.js`, que además ignora los cierres de mitad de mes que guardaban versiones anteriores). Anotar saldos otro día no cierra nada.
+- «Gasto variable» deja fuera las categorías de grupo fijo. Lo que haya en ellas sin ser el pago de un fijo dado de alta es
+  `gastoFijoSuelto`: la previsión y el colchón lo suman aparte. Si añades otro cálculo de «lo que sale al mes», cuenta las tres cosas.
 - En el Inicio van a la vista dos avisos `warn`; el resto y los `info`, plegados en «y N avisos más» (`repartirAvisos`).
   Cada aviso lleva una `clave` con el mes o el dato que lo provoca: la × la guarda en `config.avisos_descartados` y no vuelve a salir
   hasta que eso cambia. Un aviso nuevo sin clave no se puede quitar.

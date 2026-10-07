@@ -120,7 +120,9 @@ function vistaEditar() {
   if (tipo === "movimiento" && reg && ["gasto", "ingreso", "reembolso"].includes(reg.clase)) cambioCategoria(root, reg, volver);
   if (tipo === "movimiento" && reg && reg.id) panelReembolsos(root, reg);
   if (tipo === "movimiento" && reg && reg.id) panelDividir(root, reg);
-  formulario(root, tipo, reg, { volver });
+  // Una parte de un movimiento dividido es un trozo de un cargo del banco: lo que es del cargo entero no se cambia aquí ni se borra
+  formulario(root, tipo, reg, tipo === "movimiento" && reg && reg.parte_de
+    ? { volver, fijos: ["fecha", "clase", "importe", "cuenta"], motivoFijos: "Es del cargo entero: para cambiarlo, vuelve a juntar el movimiento", sinBorrar: true } : { volver });
   if (tipo === "aportacion" && reg && reg.id) {
     const x = [reg.supuesta ? "La orden no decía si era compra o venta: se tomó como compra. Si fue una venta, pon el importe y las participaciones en negativo." : "",
       reg.ext_texto ? `Del extracto: «${reg.ext_texto}» (${eurS(num(reg.ext_importe))}, ${fmtISO(reg.ext_fecha)}).` : "", reg.orden ? "Viene del archivo de órdenes del bróker." : "",
@@ -139,6 +141,11 @@ function panelDividir(padre, reg) {
     const partes = movs.filter((m) => m.parte_de === reg.parte_de).sort((a, b) => a.id - b.id), total = sum(partes.map((m) => num(m.importe)));
     const p = panel(padre, "Es parte de un movimiento dividido", { text: `${partes.length} partes · ${eur(total)}` }, "Este movimiento se dividió en varias categorías. Cada parte cuenta en la suya; entre todas suman el importe entero.");
     filasDato(p, partes.map((m) => ({ l: `${catIcono(m.categoria)} ${m.categoria}${m.id === reg.id ? " (esta)" : ""}`, s: m.nota || "", v: eur(num(m.importe)), ruta: m.id === reg.id ? null : `#editar/movimiento/${m.id}` })));
+    p.createDiv({ cls: "fin-note", text: "El importe, la fecha, la cuenta y el tipo son los del cargo entero: para cambiarlos o borrar el movimiento, vuelve a juntarlo." });
+    if (movs.some((m) => m.reembolsa && partes.some((x) => x.id === m.reembolsa))) {  // al juntar se borran partes: el Bizum se quedaría sin su gasto
+      p.createDiv({ cls: "fin-note", text: "Te han devuelto parte de este gasto: para volver a juntarlo, quita antes el enlace de esos Bizums." });
+      return;
+    }
     const b = p.createDiv({ cls: "fb-fila" }).createEl("button", { cls: "fb-btn sec", text: "Volver a juntar", attr: { type: "button" } });
     b.onclick = async () => {
       const r = await FB.api("/api/movimiento/juntar", { id: reg.id });

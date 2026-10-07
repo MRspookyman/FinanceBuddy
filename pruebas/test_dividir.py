@@ -1,6 +1,6 @@
 # Dividir un movimiento en varias categorías y volver a juntarlo (datos inventados).
 import shutil, tempfile, unittest
-from financebuddy import clasificar, importar, plantilla, rutas, servidor
+from financebuddy import bizums, clasificar, importar, plantilla, rutas, servidor
 from financebuddy.almacen import Almacen
 
 EXT = {"ext_texto": "COMPRA TARJ. HIPERMERCADO SOL", "ext_importe": -87.4, "ext_fecha": "2026-09-10"}
@@ -82,6 +82,52 @@ class TestDividir(unittest.TestCase):
         self.assertEqual(self.a.obtener("movimiento", self.id)["categoria"], "Supermercado")
         mem = clasificar.memoria(self.a.todos("movimiento"))
         self.assertEqual({cat for c in mem.values() for (_, cat) in c}, {"Compras"})
+
+    def test_un_bizum_no_se_enlaza_solo_a_una_parte_y_con_uno_enlazado_no_se_junta(self):
+        self.dividir()
+        hogar = self.partes()[1]
+        bizum = lambda cat, imp, texto: self.a.guardar("movimiento", {"fecha": "2026-09-10", "clase": "reembolso", "categoria": cat, "importe": imp, "concepto": "Bizum", "cuenta": "Nómina",
+                                                                     "ext_texto": texto, "ext_importe": imp, "ext_fecha": "2026-09-10"})
+        de_la_parte = bizum("Hogar", 12.7, "BIZUM DE ANA SARTEN")  # la mitad de la parte de Hogar: sin dividir, se enlazaría
+        cine = self.a.guardar("movimiento", {"fecha": "2026-09-10", "clase": "gasto", "categoria": "Ocio", "importe": 40, "concepto": "Cine", "cuenta": "Nómina"})
+        del_cine = bizum("Ocio", 20, "BIZUM DE LUIS CINE")
+        self.assertEqual(bizums.enlazar(self.a), 1)  # solo el del cine, que no está dividido
+        self.assertEqual(self.a.obtener("movimiento", del_cine).get("reembolsa"), cine)
+        self.assertIsNone(self.a.obtener("movimiento", de_la_parte).get("reembolsa"))
+        # Si lo enlazas tú con una parte, juntar se niega: borraría la parte y el Bizum se quedaría sin su gasto
+        m = self.a.obtener("movimiento", de_la_parte)
+        self.a.guardar("movimiento", {**{k: v for k, v in m.items() if k != "id"}, "reembolsa": hogar["id"]}, de_la_parte)
+        with self.assertRaises(ValueError) as e: importar.juntar(self.a, self.id)
+        self.assertIn("Bizums", str(e.exception))
+        self.assertEqual(len(self.partes()), 2)
+
+    def test_una_parte_no_cambia_de_importe_fecha_ni_cuenta_ni_se_borra_sola(self):
+        self.a.cerrar()
+        app = servidor.App(self.dir, fija=True)
+        try:
+            app.manejar("/api/movimiento/dividir", {"id": self.id, "partes": [{"importe": 62, "categoria": "Supermercado"}, {"importe": 25.4, "categoria": "Hogar"}]})
+            hogar = next(m for m in app.alm.todos("movimiento") if m["categoria"] == "Hogar")
+            datos = {k: v for k, v in hogar.items() if k != "id"}
+            for cambio in ({"importe": 40}, {"fecha": "2026-08-02"}, {"cuenta": "Ahorro"}, {"clase": "ingreso"}):
+                with self.assertRaises(ValueError) as e: app.manejar("/api/guardar", {"tipo": "movimiento", "id": hogar["id"], "datos": {**datos, **cambio}})
+                self.assertIn("vuelve a juntarlo", str(e.exception))
+            with self.assertRaises(ValueError) as e: app.manejar("/api/borrar", {"tipo": "movimiento", "id": hogar["id"]})
+            self.assertIn("vuelve a juntarlo", str(e.exception))
+            # Lo suyo sí se cambia (categoría y nota), aunque la página mande el importe como texto y no mande la huella del extracto
+            suyo = {k: v for k, v in datos.items() if not k.startswith("ext_") and k != "parte_de"}
+            self.assertTrue(app.manejar("/api/guardar", {"tipo": "movimiento", "id": hogar["id"], "datos": {**suyo, "importe": "25,40", "categoria": "Compras", "nota": "sartén"}})["ok"])
+            m = app.alm.obtener("movimiento", hogar["id"])
+            self.assertEqual((m["categoria"], m["nota"], m["importe"], m["parte_de"], m["ext_importe"]), ("Compras", "sartén", 25.4, self.id, -87.4))
+            self.assertEqual(round(sum(x["importe"] for x in app.alm.todos("movimiento")), 2), 87.4)
+            # Un movimiento cualquiera no se hace «parte» por el formulario
+            otro = app.manejar("/api/guardar", {"tipo": "movimiento", "datos": {"fecha": "2026-09-12", "clase": "gasto", "categoria": "Ocio", "importe": 9, "concepto": "Cine", "parte_de": self.id}})["id"]
+            self.assertIsNone(app.alm.obtener("movimiento", otro).get("parte_de"))
+            # Y después de volver a juntarlo, se borra como cualquiera
+            app.manejar("/api/movimiento/juntar", {"id": hogar["id"]})
+            self.assertTrue(app.manejar("/api/borrar", {"tipo": "movimiento", "id": self.id})["ok"])
+        finally:
+            app.alm.cerrar()
+            self.a = Almacen(rutas.Carpeta(self.dir).db)
 
     def test_por_la_api_se_puede_deshacer(self):
         self.a.cerrar()

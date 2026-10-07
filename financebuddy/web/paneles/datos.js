@@ -229,7 +229,10 @@ const recordatorios = () => registros("recordatorio").map((p) => ({
   p, nombre: p.nombre, fecha: toDate(p.fecha), avisar: hasNum(p.avisar_dias) ? num(p.avisar_dias) : 14,
   estado: txt(p.estado).toLowerCase() || "pendiente", texto: txt(p.texto), repetir: txt(p.repetir).toLowerCase(),
 })).filter((r) => r.fecha);
-const cierres = () => registros("cierre");
+// Un mes está cerrado si sus saldos son de su último día o de después. Un cierre con saldos de mitad de mes (versiones
+// anteriores lo guardaban al anotar «los saldos de hoy») no cuenta: ese mes se sigue pidiendo al acabar.
+const cierreVale = (c) => !c.fecha || !mesDT(c.mes).isValid || String(c.fecha).slice(0, 10) >= mesDT(c.mes).endOf("month").toISODate();
+const cierres = () => registros("cierre").filter(cierreVale);
 // Transferencias según el tipo de la otra cuenta.
 const esABroker = (m) => m.clase === "transferencia" && tipoCuenta(m.destino) === "broker";
 const esAAhorro = (m) => m.clase === "transferencia" && tipoCuenta(m.destino) === "ahorro";

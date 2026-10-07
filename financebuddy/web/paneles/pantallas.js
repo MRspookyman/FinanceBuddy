@@ -19,5 +19,6 @@ if (input && input.exponer) {
     movimientos, aportaciones, objetivos, patrimonio, avisos, categorias, grupoDe, limiteVar, mesesHasta, mesAnterior, hoyKey,
     fechaDatos, presupuestoSemana, planReparto, cuentas, proyectar, resumenCategorias, ritmoMes, evolucionInversion, aportacionesMes, constancia, interesesBroker, saludInversion, posicion, valorInfo,
     hitosPatrimonio, mesesHasta50, tamañoCompras, fifoVentas, cobros, usaMercado, generarResumen,
-    repartirAvisos, ritmoObjetivo, siguienteFecha, cuantoFalta, totalesFijos, fijosSinCobrar, cuotaAhorro, rentaPorAño, csvRenta, recordatorios, hoy };
+    repartirAvisos, ritmoObjetivo, siguienteFecha, cuantoFalta, totalesFijos, fijosSinCobrar, cuotaAhorro, rentaPorAño, csvRenta, recordatorios, hoy,
+    gastoFijoSuelto, cierreVale, cierres };
 }

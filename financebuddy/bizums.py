@@ -142,9 +142,10 @@ def detalle_candidatos(pendientes, movs, fijas=(), maximo=8):
 def enlazar(alm):
     """Une cada Bizum recibido que reembolsa un gasto con ese gasto (`movimiento.reembolsa` = id del gasto). Solo si el gasto
     tiene la misma categoría (así lo que ves y lo que se resta coinciden) y no se devuelve más de lo que costó.
-    No toca lo que ya está enlazado (ni lo que enlazaste tú). → nº de enlaces nuevos."""
+    No toca lo que ya está enlazado (ni lo que enlazaste tú), ni enlaza con una parte de un movimiento dividido: eso lo
+    decides tú. → nº de enlaces nuevos."""
     movs = alm.todos("movimiento")
-    gastos = {m["id"]: m for m in movs if m.get("clase") == "gasto"}
+    gastos = {m["id"]: m for m in movs if m.get("clase") == "gasto" and not m.get("parte_de")}
     devuelto = Counter()
     for m in movs:
         if m.get("reembolsa") in gastos: devuelto[m["reembolsa"]] += float(m["importe"])

@@ -407,7 +407,8 @@ function tarjetaPrevision(p) {
   if (F.minimo.saldo < F.inicio - 1) p.createDiv({ cls: "fin-note", text: `Lo más bajo: ${eur(F.minimo.saldo, 0)} en ${mesLbl(F.minimo.key).toLowerCase()}.` });
   const n = p.createDiv({ cls: "fin-note" });
   if (!hayIngresosFijos()) { n.appendText("Tus ingresos aún no están como fijos, así que aquí solo se ve lo que sale. "); enlace(n, "Detectar mis fijos →", "#fijos"); }
-  else n.appendText(`Cuenta tus fijos, tus aportaciones y ${eur(F.varEst, 0)} al mes de gasto variable (${F.fuenteVar}${isFinite(F.varReal) && limiteVar > 0 && Math.abs(F.varReal - limiteVar) >= 1 ? `; tu límite es ${eur(limiteVar, 0)}` : ""}).`);
+  else n.appendText(`Cuenta tus fijos, tus aportaciones y ${eur(F.varEst, 0)} al mes de gasto variable (${F.fuenteVar}${isFinite(F.varReal) && limiteVar > 0 && Math.abs(F.varReal - limiteVar) >= 1 ? `; tu límite es ${eur(limiteVar, 0)}` : ""}).`
+    + (F.sueltoEst >= 1 ? ` Y ${eur(F.sueltoEst, 0)} al mes de otros gastos fijos que no tienes dados de alta (${F.nMesesSuelto > 1 ? `tu media de los últimos ${F.nMesesSuelto} meses` : "lo del mes pasado"}).` : ""));
 }
 
 function tarjetaMeses(p) {

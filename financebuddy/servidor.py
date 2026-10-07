@@ -1,6 +1,6 @@
 # Servidor local de la app: sirve las pantallas (web/) y una API JSON sobre la base de datos.
 # Solo escucha en 127.0.0.1 y cada arranque genera una clave que la página envía en la cabecera X-FB-Token.
-import base64, datetime, http.server, io, json, mimetypes, os, re, secrets, socketserver, tempfile, threading, traceback, urllib.parse
+import base64, calendar, datetime, http.server, io, json, mimetypes, os, re, secrets, socketserver, tempfile, threading, traceback, urllib.parse
 from . import VERSION, actualizaciones, bizums, cartera, clasificar as C, detectar, exportar, importar as IM, jev, modelo, ordenar, plantilla, precios, rutas, secreto
 from .almacen import Almacen
 
@@ -264,20 +264,25 @@ class App:
         return {"ok": True}
 
     def cierre(self, d):
-        """Registro de patrimonio del día del cierre + valores de los activos + nota del mes."""
+        """Registro de patrimonio de ese día + valores de los activos. El mes queda cerrado (con su nota) solo si los saldos son
+        de su último día o de después: anotar saldos a mitad de mes es un registro más, y ese mes se sigue pidiendo al acabar."""
         fecha = modelo.fecha(d.get("fecha"))
         if not fecha: raise ValueError("Falta la fecha del cierre.")
+        mes = str(d.get("mes") or "")
+        if not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", mes): mes = fecha[:7]
+        cierra = fecha >= f"{mes}-{calendar.monthrange(int(mes[:4]), int(mes[5:]))[1]:02d}"
         with self.alm.transaccion():
-            reg = {"fecha": fecha, "saldos": d.get("saldos") or {}, "valores": d.get("valores") or {}, "otros": d.get("otros"), "deudas": d.get("deudas"), "nota": d.get("nota") or ""}
+            reg = {"fecha": fecha, "saldos": d.get("saldos") or {}, "valores": d.get("valores") or {}, "otros": d.get("otros"), "deudas": d.get("deudas"),
+                   "nota": d.get("nota") or ("" if cierra else d.get("notas") or "")}
             ya = next((r for r in self.alm.todos("patrimonio") if r["fecha"] == fecha), None)
             self.alm.guardar("patrimonio", reg, ya["id"] if ya else None)
             for a in self.alm.todos("activo"):
                 v = modelo.numero((d.get("valores") or {}).get(a["nombre"]))
                 if v is not None: self.alm.guardar("activo", {**a, "valor": v, "fecha_valor": fecha}, a["id"])
-            mes = d.get("mes") or fecha[:7]
-            c = next((r for r in self.alm.todos("cierre") if r["mes"] == mes), None)
-            self.alm.guardar("cierre", {"mes": mes, "fecha": fecha, "notas": d.get("notas") or ""}, c["id"] if c else None)
-        return {"ok": True, "mensaje": f"Mes cerrado: registro de patrimonio del {IM.fmt(fecha)} guardado."}
+            if cierra:
+                c = next((r for r in self.alm.todos("cierre") if r["mes"] == mes), None)
+                self.alm.guardar("cierre", {"mes": mes, "fecha": fecha, "notas": d.get("notas") or ""}, c["id"] if c else None)
+        return {"ok": True, "cerrado": cierra, "mensaje": f"Mes cerrado: registro de patrimonio del {IM.fmt(fecha)} guardado." if cierra else f"Saldos del {IM.fmt(fecha)} guardados."}
 
     def precios(self, accion, d):
         """Precios por internet (opcional, apagado de serie): ajustes, actualizar en segundo plano, buscar y comparar."""
@@ -373,14 +378,18 @@ class App:
             if tipo not in modelo.EDITABLES: raise ValueError("Tipo no editable.")
             id = int(d["id"]) if d.get("id") else None
             datos = dict(d.get("datos") or {})
-            if tipo == "movimiento" and id:  # quitar a mano el gasto que devuelve un Bizum: que no se vuelva a enlazar solo
-                viejo = a.obtener("movimiento", id) or {}
-                if datos.get("reembolsa"): datos.pop("sin_gasto", None)
-                elif viejo.get("reembolsa") or viejo.get("sin_gasto"): datos["sin_gasto"] = True
+            if tipo == "movimiento":
+                viejo = (a.obtener("movimiento", id) if id else None) or {}
+                if id:  # quitar a mano el gasto que devuelve un Bizum: que no se vuelva a enlazar solo
+                    if datos.get("reembolsa"): datos.pop("sin_gasto", None)
+                    elif viejo.get("reembolsa") or viejo.get("sin_gasto"): datos["sin_gasto"] = True
+                IM.comprobar_parte(viejo, datos)  # una parte de un movimiento dividido no cambia de importe, fecha ni cuenta
             return {"ok": True, "id": a.guardar(tipo, datos, id)}
         if ruta == "/api/borrar":
             if d.get("tipo") not in modelo.EDITABLES: raise ValueError("Tipo no editable.")
             reg = a.obtener(d["tipo"], int(d["id"]))
+            if d["tipo"] == "movimiento" and reg and reg.get("parte_de"):  # sin esa parte, las demás ya no sumarían el cargo del banco
+                raise ValueError("Es una parte de un movimiento dividido: vuelve a juntarlo antes de borrarlo.")
             usos = a.usos(d["tipo"], reg) if reg else []
             if usos and not d.get("confirmar"):  # hay cosas que apuntan a este registro: antes de borrar, que se vea qué pasa
                 return {"ok": False, "necesita_confirmar": True, "mensaje": _aviso_borrar(d["tipo"], reg, usos)}

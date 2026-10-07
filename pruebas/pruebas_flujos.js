@@ -308,6 +308,13 @@ return (async () => {
     const gastoDespues = regs("movimiento").filter((x) => x.clase === "gasto").reduce((t, x) => t + x.importe, 0);
     if (Math.abs(gastoDespues - gastoAntes) > 0.005) return `el gasto total ha cambiado: ${gastoAntes} → ${gastoDespues}`;
     if (!(await hasta(() => porTexto(".fin-panel", "Es parte de un movimiento dividido")))) return "la ficha no dice que está dividido";
+    // una parte es un trozo del cargo del banco: no cambia de fecha, tipo, importe ni cuenta, ni se borra sola
+    const fijo = (et) => { const el = campo(et); return !!el && (el.readOnly || el.disabled); };
+    for (const et of ["Fecha", "Tipo", "Importe", "Cuenta"]) if (!fijo(et)) return `en una parte, «${et}» debería estar bloqueado`;
+    if (fijo("Concepto") || fijo("Categoría")) return "el concepto y la categoría de una parte sí se pueden cambiar";
+    if (porTexto(".fb-botones button", "Borrar")) return "una parte no debería ofrecer «Borrar»";
+    const rB = await FB.api("/api/borrar", { tipo: "movimiento", id: m.id });
+    if (rB.ok || !/vuelve a juntarlo/.test(rB.mensaje || "")) return "el servidor deja borrar una parte: " + JSON.stringify(rB);
     if (!(await ir("#movimientos/lista"))) return "no se abre la lista";
     if (!(await hasta(() => todos(".fb-item .s").filter((e) => plano(e).includes("parte de")).length === 2))) return "la lista no marca las dos partes";
     const otra = partes().find((x) => x.id !== m.id);
@@ -317,6 +324,43 @@ return (async () => {
     juntar.click();
     if (!(await hasta(() => !partes().length && regs("movimiento").find((x) => x.id === m.id).importe === total))) return "no vuelve a ser un solo movimiento con su importe";
     if (regs("movimiento").some((x) => x.id === otra.id)) return "la otra parte sigue existiendo";
+  });
+
+  // 16. Previsión: un gasto de una categoría fija que no es de ningún fijo dado de alta también sale de tus cuentas
+  await caso("Previsión: los gastos fijos que no están dados de alta se cuentan, y se dice cuánto", async () => {
+    if (!(await ir("#inicio"))) return "no se abre el Inicio";
+    const tarjeta = () => porTexto(".fin-panel", "Tus próximos meses");
+    const total = () => parseFloat(plano(tarjeta().querySelector(".fb-total .v")).replace(/[^\d,−-]/g, "").replace("−", "-").replace(",", "."));
+    if (!(await hasta(() => tarjeta() && isFinite(total())))) return "no está el panel «Tus próximos meses»";
+    if (plano(tarjeta()).includes("otros gastos fijos")) return "en el ejemplo todo lo fijo está dado de alta: no debería hablar de otros gastos fijos";
+    const antes = total();
+    // 480 € de la comunidad en agosto (mes cerrado), en «Vivienda» y sin enlazar a ningún fijo: entre 4 meses con datos, 120 € al mes
+    const r = await FB.api("/api/guardar", { tipo: "movimiento", datos: { fecha: "2026-08-18", clase: "gasto", categoria: "Vivienda", importe: 480, concepto: "Derrama de la comunidad", cuenta: "Cuenta nómina" } });
+    if (!r.ok) return "no se guarda el gasto: " + r.mensaje;
+    await FB.refrescar();
+    const frase = "120 € al mes de otros gastos fijos que no tienes dados de alta (tu media de los últimos 4 meses)";
+    if (!(await hasta(() => tarjeta() && plano(tarjeta()).includes(frase)))) return "la tarjeta no cuenta el gasto fijo suelto: " + plano(tarjeta() || app()).slice(-260);
+    // el mes en curso ya acaba hoy: son 11 meses por delante a 120 €
+    if (Math.abs(antes - total() - 11 * 120) > 2) return `dentro de un año debería haber 1.320 € menos y hay ${antes - total()} menos (${antes} → ${total()})`;
+  });
+
+  // 17. Actualizar saldos: con una fecha de mitad de mes se guardan, pero el mes no queda cerrado; con la de su último día, sí
+  await caso("Actualizar saldos a mitad de mes no cierra el mes; con los del último día, sí", async () => {
+    if (!(await ir("#cerrar"))) return "no se abre Actualizar saldos";
+    const boton = () => todos("button.fb-btn").find((b) => /^(Cerrar |Guardar los saldos)/.test(plano(b)));
+    if (!(await hasta(boton))) return "no está el botón de guardar";
+    if (!plano(boton()).startsWith("Cerrar septiembre")) return "hoy es el último día de septiembre: debería ofrecer cerrarlo y dice «" + plano(boton()) + "»";
+    if (!campo("Lo destacable del mes")) return "al cerrar un mes se pide su nota";
+    escribir(campo("Fecha"), "2026-09-15");
+    if (!(await hasta(() => plano(boton()) === "Guardar los saldos"))) return "con fecha del día 15 no debería ofrecer cerrar el mes: " + plano(boton());
+    if (campo("Lo destacable del mes")) return "sin cierre no se pide la nota del mes";
+    boton().click();
+    if (!(await hasta(() => regs("patrimonio").some((x) => x.fecha === "2026-09-15")))) return "no se guardan los saldos del día 15";
+    if (regs("cierre").some((x) => x.mes === "2026-09")) return "septiembre ha quedado cerrado con saldos del día 15";
+    if (!(await ir("#cerrar"))) return "no se vuelve a abrir Actualizar saldos";
+    if (!(await hasta(() => boton() && plano(boton()).startsWith("Cerrar septiembre")))) return "no ofrece cerrar septiembre";
+    boton().click();
+    if (!(await hasta(() => regs("cierre").some((x) => x.mes === "2026-09" && x.fecha === "2026-09-30")))) return "con los saldos del día 30 no se cierra septiembre";
   });
 
   return casos;

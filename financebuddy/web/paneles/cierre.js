@@ -19,6 +19,12 @@ function vistaCerrar() {
   if (!pendienteAnt && cierres().some((c) => c.mes === ant)) p.createDiv({ cls: "fin-note", text: `${mesLbl(ant)} ya está cerrado. Puedes anotar los saldos de hoy si quieres (por ejemplo, para comprobar que todo cuadra).` });
   const form = p.createDiv({ cls: "fb-form" });
   const campos = {}, refs = { s: {}, v: {} };
+  // Qué mes cierran estos saldos, si cierran alguno: tienen que ser de su último día o de después (el servidor aplica lo mismo).
+  // Anotar los saldos a mitad de mes es un registro más: ese mes se sigue pidiendo cuando acabe.
+  const mesDe = () => (pendienteAnt ? ant : fecha.toFormat("yyyy-MM"));
+  const cierra = () => fecha.toISODate() >= mesDT(mesDe()).endOf("month").toISODate();
+  const textoBoton = () => (cierra() ? `Cerrar ${mesLbl(mesDe()).toLowerCase()}` : "Guardar los saldos");
+  let b = null;
   const pintar = () => {
     form.innerHTML = "";
     refs.s = {}; refs.v = {};
@@ -27,6 +33,7 @@ function vistaCerrar() {
     form.createDiv({ cls: "et", text: "Fecha" });
     const iF = form.createEl("input", { attr: { type: "date" } }); iF.value = fecha.toISODate();
     iF.onchange = () => { const d = DateTime.fromISO(iF.value); if (d.isValid) { fecha = d; pintar(); } };
+    if (pendienteAnt && !cierra()) form.createDiv({ cls: "s", text: `Para cerrar ${mesLbl(ant).toLowerCase()} hacen falta los saldos de su último día (${mesDT(ant).endOf("month").toFormat("dd/MM")}) o de después: con esta fecha se guardan, pero el mes sigue sin cerrar.` });
     form.createDiv({ cls: "sep", text: "Saldo de tus cuentas ese día" });
     for (const c of cuentas()) {
       const est = pr ? pr.cuentas.saldos[c.nombre] : null;
@@ -70,20 +77,24 @@ function vistaCerrar() {
     const iO = form.createEl("input", { attr: { type: "number", step: "0.01" } }); iO.value = campos.otros ?? (u ? u.otros || "" : ""); iO.oninput = () => (campos.otros = iO.value);
     form.createDiv({ cls: "et", text: "Deudas (€)" });
     const iD = form.createEl("input", { attr: { type: "number", step: "0.01" } }); iD.value = campos.deudas ?? (u ? u.deudas || "" : ""); iD.oninput = () => (campos.deudas = iD.value);
-    form.createDiv({ cls: "et", text: "Lo destacable del mes (opcional)" });
-    const iN = form.createEl("textarea", { attr: { rows: "3" } }); iN.value = campos.notas ?? ""; iN.oninput = () => (campos.notas = iN.value);
+    let iN = null;  // la nota es del mes que se cierra: sin cierre, no se pide
+    if (cierra()) {
+      form.createDiv({ cls: "et", text: "Lo destacable del mes (opcional)" });
+      iN = form.createEl("textarea", { attr: { rows: "3" } }); iN.value = campos.notas ?? ""; iN.oninput = () => (campos.notas = iN.value);
+    }
     Object.assign(refs, { otros: iO, deudas: iD, notas: iN });
+    if (b) b.textContent = textoBoton();
   };
   pintar();
   const res = p.createDiv();
-  const b = p.createEl("button", { cls: "fb-btn", text: pendienteAnt ? `Cerrar ${mesLbl(ant).toLowerCase()}` : "Guardar los saldos" });
+  b = p.createEl("button", { cls: "fb-btn", text: textoBoton() });
   b.onclick = async () => {
     const saldos = {}, valores = {};
     for (const [n, i] of Object.entries(refs.s)) if (i.value !== "") saldos[n] = i.value;
     for (const [n, i] of Object.entries(refs.v)) if (i.value !== "") valores[n] = i.value;
     b.disabled = true;
-    const r = await FB.api("/api/cierre", { fecha: fecha.toISODate(), mes: pendienteAnt ? ant : fecha.toFormat("yyyy-MM"), saldos, valores,
-      otros: refs.otros.value, deudas: refs.deudas.value, notas: refs.notas.value });
+    const r = await FB.api("/api/cierre", { fecha: fecha.toISODate(), mes: mesDe(), saldos, valores,
+      otros: refs.otros.value, deudas: refs.deudas.value, notas: refs.notas ? refs.notas.value : "" });
     b.disabled = false;
     if (!r.ok) { res.innerHTML = ""; mensaje(res, r.mensaje || "Error", "err"); return; }
     FB.aviso(r.mensaje);

@@ -35,6 +35,8 @@ Solo para **Windows**. Todo en español y en euros.
    - Si una categoría está mal, pulsa el movimiento y elige otra: puedes cambiar a la vez todos los del mismo comercio.
 5. Una vez al mes, *Ajustes → Actualizar saldos*: anotas lo que tienes en cada cuenta y el valor de tu inversión.
    - Así la app comprueba que no falta ningún movimiento.
+   - Un mes queda cerrado con los saldos de su último día (o de después). Si los anotas a mitad de mes se guardan igual, pero
+     ese mes se te volverá a pedir cuando acabe.
 6. Con dos o más meses importados, *Ajustes → Detectar fijos*: la app encuentra tus nóminas, alquiler y recibos (lo que se repite cada mes) y te los propone; también te enseña **de dónde viene tu dinero**.
 
 **Inversión**: lo que vale y lo que has metido en cada activo, ganancia y rentabilidad anual, evolución, cuánto
@@ -133,6 +135,8 @@ se proponen como traspaso desde tu banco, no como la venta de un activo.
 y en *Dividir en varias categorías* pon el importe y la categoría de cada parte; lo que no repartas se queda en la primera, así
 que siempre suman el total. En la lista cada parte sale marcada («parte de 87,40 €») y desde cualquiera puedes **volver a
 juntarlas**. Reimportar el extracto no lo duplica. No se ofrece en el pago de un fijo ni en un gasto con Bizums enlazados.
+Cada parte es un trozo del cargo del banco: su categoría, su concepto y su nota se cambian, pero su importe, su fecha y su
+cuenta no, ni se borra sola (para eso, vuelve a juntarlo). Un Bizum recibido no se enlaza solo con una parte.
 
 **Poner orden en las categorías** (*Ajustes → Categorías*): **probar una regla** antes de guardarla (cuántos movimientos ya
 importados casarían, con una muestra, y aplicarla a todos de golpe), **fusionar** dos categorías en una y **ocultar** las que
@@ -147,7 +151,8 @@ icono, color y presupuesto de cada categoría (con aviso si te pasas). En *Movim
 frente a tu media de los meses anteriores, y en el Inicio, el ritmo de gasto del mes frente a lo que sueles llevar.
 
 **Lo que viene** (*Inicio*): «Tus próximos meses» enseña cuánto tendrás en tus cuentas al acabar cada uno de los próximos doce
-meses; los avisos se quitan con su **×** (vuelven a salir cuando cambia lo que los provoca: otro mes, otra subida); cada objetivo con fecha dice cuánto apartar al mes; los recordatorios pueden **repetirse** (cada año, cada 3 meses o cada
+meses: cuenta tus fijos, tus aportaciones, lo que sueles gastar de verdad (tu media, no tu límite) y también los gastos fijos
+que no tienes dados de alta (un seguro, un recibo que no llega cada mes), y te dice cuánto es cada cosa; los avisos se quitan con su **×** (vuelven a salir cuando cambia lo que los provoca: otro mes, otra subida); cada objetivo con fecha dice cuánto apartar al mes; los recordatorios pueden **repetirse** (cada año, cada 3 meses o cada
 mes) y con «Hecho» pasan solos a su siguiente fecha. En *Fijos* ves lo que suman al mes y al año. Y si quieres, *Ajustes →
 Avisos de Windows* te avisa de los recordatorios y de cuándo toca importar aunque no abras la app (apagado de serie, sin internet).
 

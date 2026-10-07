@@ -182,8 +182,9 @@ const EMOJIS = ["🏠", "💡", "🛡️", "📺", "🛒", "🍽️", "☕", "�
 
 // ───────────── editor ─────────────
 // opciones: { titulo, volver (ruta tras guardar), datosIniciales, alGuardar(id) }
+// opciones.fijos: campos que se ven pero no se cambian (y por qué: motivoFijos) · sinBorrar: sin botón «Borrar».
 function formulario(padre, tipo, reg, opciones = {}) {
-  const F = FORMS[tipo];
+  const F = FORMS[tipo], fijos = opciones.fijos || [];
   const d = { ...(reg || {}) };
   if (!reg || !reg.id) for (const c of F.campos) if (d[c.k] == null && c.defecto) d[c.k] = c.defecto();
   if (F.cargar) F.cargar(d);
@@ -260,6 +261,7 @@ function formulario(padre, tipo, reg, opciones = {}) {
         if (c.t === "num") el.onblur = () => { if (["meta", "meta_meses", "cuenta"].includes(c.k)) dibujar(); };
         if (c.alSalir) el.onblur = () => c.alSalir(d, dibujar, form);
       }
+      if (fijos.includes(c.k)) { if (el.tagName === "SELECT") el.disabled = true; else el.readOnly = true; el.title = opciones.motivoFijos || ""; }
     }
     etiquetar(form);
   };
@@ -279,7 +281,7 @@ function formulario(padre, tipo, reg, opciones = {}) {
     await FB.recargar();
     if (opciones.alGuardar) opciones.alGuardar(r.id); else FB.ir(opciones.volver || `#gestionar/${tipo}`);
   };
-  if (reg && reg.id) {
+  if (reg && reg.id && !opciones.sinBorrar) {
     const bB = botones.createEl("button", { cls: "fb-btn sec peligro", text: "Borrar" });
     bB.onclick = async () => {
       const nOps = tipo === "activo" ? (DB.registros.aportacion || []).filter((x) => x.activo === reg.nombre).length : 0;

@@ -622,6 +622,20 @@ def partes_de(alm, m):
     """Las partes del movimiento dividido al que pertenece `m` (por id), o [] si no está dividido."""
     return sorted((x for x in alm.todos("movimiento") if x.get("parte_de") == m.get("parte_de")), key=lambda x: x["id"]) if m.get("parte_de") else []
 
+def comprobar_parte(viejo, datos):
+    """Antes de guardar un movimiento desde su ficha (ajusta `datos`). Una parte de un movimiento dividido es un trozo de un cargo
+    del banco: su categoría, su concepto y su nota se cambian; su importe, su fecha, su cuenta y su tipo no (las partes dejarían
+    de sumar el cargo, o quedarían en meses distintos). `parte_de` y la huella del extracto solo los tocan `dividir` y `juntar`."""
+    if not viejo.get("parte_de"):
+        datos.pop("parte_de", None)
+        return
+    if not (abs((modelo.numero(datos.get("importe")) or 0) - viejo["importe"]) < 0.005 and modelo.fecha(datos.get("fecha")) == viejo["fecha"]
+            and str(datos.get("cuenta") or "").strip() == str(viejo.get("cuenta") or "") and datos.get("clase") == viejo.get("clase")):
+        raise ValueError("Es una parte de un movimiento dividido: su importe, su fecha, su cuenta y su tipo son los del cargo entero. Para cambiarlos, vuelve a juntarlo.")
+    for k in ("parte_de", "ext_texto", "ext_importe", "ext_fecha"):
+        if k in viejo: datos[k] = viejo[k]
+        else: datos.pop(k, None)
+
 def dividir(alm, mid, partes):
     """Parte un gasto o un ingreso en varias categorías. partes: [{importe, categoria, nota?}], que tienen que sumar su importe.
     La primera se queda en el movimiento original; las demás son movimientos nuevos con su misma fecha, cuenta, concepto y
@@ -659,6 +673,9 @@ def juntar(alm, mid):
     if not m: raise ValueError("Ese movimiento ya no existe.")
     partes = partes_de(alm, m)
     if not partes: raise ValueError("Este movimiento no está dividido.")
+    ids = {x["id"] for x in partes}
+    if any(x.get("reembolsa") in ids for x in alm.todos("movimiento")):  # al juntar se borran partes: el Bizum se quedaría sin su gasto
+        raise ValueError("Te han devuelto parte de este gasto (hay Bizums enlazados a sus partes): quita antes esos enlaces.")
     primera = next((x for x in partes if x["id"] == m["parte_de"]), partes[0])
     total = abs(primera["ext_importe"]) if primera.get("ext_importe") else round(sum(x["importe"] for x in partes), 2)
     with alm.transaccion():
