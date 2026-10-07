@@ -66,9 +66,13 @@ def _abrir_app(raiz, a):
     from . import almacen, rutas, servidor
     for intento in (1, 2):
         try:
-            return servidor.App(raiz, hoy=a.hoy, pruebas=a.pruebas)
+            return servidor.App(raiz, hoy=a.hoy, pruebas=a.pruebas, fija=bool(a.datos or a.ejemplo or a.pruebas), ejemplo=a.ejemplo)
         except almacen.BaseDañada as e:
             if intento == 2 or not _reparar(raiz, e): return None
+        except almacen.BaseMasNueva as e:
+            decir(f"Los datos de esta carpeta los ha guardado una versión más nueva de FinanceBuddy:\n{e.ruta}\n\n"
+                  "Esta versión no sabe leerlos y podría estropearlos, así que no los abre. Instala la última versión de FinanceBuddy.")
+            return None
         except OSError as e:
             decir(f"No se ha podido abrir la carpeta de datos:\n{raiz}\n\nMotivo: {rutas.motivo(e)}.\n\n"
                   "Comprueba que el disco está conectado y que la carpeta existe. Puedes elegir otra carpeta borrando el archivo:\n" + rutas.AJUSTES)
@@ -90,17 +94,10 @@ def main(argv=None):
     a = ap.parse_args(argv)
     AUTOMATICO = a.sin_navegador
     url = f"http://127.0.0.1:{a.puerto}/"
-    if a.ejemplo:
-        raiz = a.datos or os.path.join(tempfile.gettempdir(), "FinanceBuddy-ejemplo")
-        from . import ejemplo
-        ejemplo.crear(raiz, hoy=a.hoy)
-    else:
-        raiz = a.datos or rutas.leer_ajustes().get("datos") or rutas.carpeta_por_defecto()
-    app = _abrir_app(raiz, a)
-    if app is None: return 1
-    app.ejemplo = a.ejemplo
+    # Primero el puerto y después los datos: si ya hay una FinanceBuddy abierta, esta no tiene que tocar su base de datos
+    # (dos programas escribiendo a la vez en ella: el segundo se quedaba esperando y acababa en un cuadro de error).
     try:
-        srv = servidor.crear(app, a.puerto)
+        srv = servidor.crear(None, a.puerto)
     except OSError:
         # Ya hay una FinanceBuddy abierta en ese puerto: solo abrir el navegador
         try:
@@ -111,6 +108,16 @@ def main(argv=None):
             decir(f"El puerto {a.puerto} lo está usando otro programa, así que FinanceBuddy no puede abrirse.\n\n"
                   f"Cierra ese programa o abre FinanceBuddy con otro puerto:\nFinanceBuddy.exe --puerto 8766")
             return 1
+    if a.ejemplo:
+        raiz = a.datos or os.path.join(tempfile.gettempdir(), "FinanceBuddy-ejemplo")
+        from . import ejemplo
+        ejemplo.crear(raiz, hoy=a.hoy)
+    else:
+        raiz = a.datos or rutas.leer_ajustes().get("datos") or rutas.carpeta_por_defecto()
+    app = _abrir_app(raiz, a)
+    if app is None:
+        srv.server_close(); return 1
+    servidor.Manejador.app = app
     print(f"FinanceBuddy en {url} · datos en {raiz}")
     if not a.sin_navegador: threading.Timer(0.5, lambda: webbrowser.open(url)).start()
     if not a.sin_navegador: _bandeja(url, srv)

@@ -99,6 +99,43 @@ class TestJev(unittest.TestCase):
         self.assertEqual(self.app.datos()["config"]["jev"]["fin_clave"], CLAVE[-4:])
         with self.assertRaises(ValueError): self.app.manejar("/api/jev/config", {"clave": "mal clave con espacios"})
 
+    def test_la_clave_se_guarda_cifrada_y_la_de_antes_se_cifra_al_abrir(self):
+        from financebuddy import secreto
+        self.app.manejar("/api/jev/config", {"clave": CLAVE, "activo": True})
+        guardada = self.app.alm.config("jev")["clave"]
+        if os.name == "nt": self.assertTrue(secreto.cifrada(guardada)); self.assertNotIn(CLAVE, guardada)
+        self.assertEqual(jev.config(self.app.alm)["clave"], CLAVE)
+        with open(self.app.carpeta.db, "rb") as fh: crudo = fh.read()
+        wal = self.app.carpeta.db + "-wal"
+        if os.path.exists(wal):
+            with open(wal, "rb") as fh: crudo += fh.read()
+        if os.name == "nt": self.assertNotIn(CLAVE.encode(), crudo)
+        # una base de una versión anterior, con la clave en claro: al abrirla se cifra y sigue funcionando
+        self.app.alm.set_config("jev", {"clave": CLAVE, "activo": True})
+        self.app.alm.set_config("precios", {"clave_coingecko": "CG-clave-de-prueba"})
+        self.app.abrir(self.dir)
+        if os.name == "nt":
+            self.assertTrue(secreto.cifrada(self.app.alm.config("jev")["clave"]))
+            self.assertTrue(secreto.cifrada(self.app.alm.config("precios")["clave_coingecko"]))
+        self.assertEqual(jev.config(self.app.alm)["clave"], CLAVE)
+        self.assertTrue(self.app.datos()["config"]["precios"]["hay_clave_cg"])
+        # cifrada en otro ordenador: aquí no se puede leer, se dice y el asistente queda apagado (no revienta)
+        self.app.alm.set_config("jev", {"clave": secreto.MARCA + "bm8gZXMgdW4gYmxvYg==", "activo": True})
+        j = self.app.datos()["config"]["jev"]
+        self.assertEqual((j["hay_clave"], j["activo"], j["ilegible"]), (False, False, True))
+
+    def test_la_clave_de_la_variable_de_entorno_no_enciende_el_asistente(self):
+        vieja = os.environ.get("TYPESAFE_API_KEY")
+        os.environ["TYPESAFE_API_KEY"] = CLAVE
+        try:
+            j = self.app.datos()["config"]["jev"]
+            self.assertEqual((j["hay_clave"], j["de_entorno"], j["activo"]), (True, True, False))
+            self.app.manejar("/api/jev/config", {"activo": True})
+            self.assertTrue(self.app.datos()["config"]["jev"]["activo"])
+        finally:
+            if vieja is None: del os.environ["TYPESAFE_API_KEY"]
+            else: os.environ["TYPESAFE_API_KEY"] = vieja
+
     def test_por_revisar_al_importar(self):
         self.app.manejar("/api/jev/config", {"clave": CLAVE, "activo": True})
         r = self.importar()

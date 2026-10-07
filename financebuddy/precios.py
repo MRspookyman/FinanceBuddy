@@ -16,6 +16,7 @@
 # Con la variable FB_PRECIOS_URL (pruebas) todo va a un servidor falso: {url}/yahoo/…, {url}/morningstar/…, {url}/coingecko/….
 import datetime, json, os, re, threading, time, urllib.error, urllib.parse, urllib.request
 from concurrent.futures import ThreadPoolExecutor
+from . import secreto
 
 FUENTES = {"yahoo": "Yahoo Finance", "morningstar": "Morningstar", "coingecko": "CoinGecko"}
 BASES = {"yahoo": "https://query1.finance.yahoo.com", "morningstar": "https://lt.morningstar.com", "coingecko": "https://api.coingecko.com", "bce": "https://api.frankfurter.dev"}
@@ -45,14 +46,14 @@ def config(alm):
 def guardar_config(alm, d):
     c = dict(alm.config("precios") or {})
     if "activo" in d: c["activo"] = bool(d["activo"])
-    if "clave_coingecko" in d: c["clave_coingecko"] = str(d["clave_coingecko"] or "").strip()  # clave gratuita «Demo» de CoinGecko (opcional)
+    if "clave_coingecko" in d: c["clave_coingecko"] = secreto.guardar(str(d["clave_coingecko"] or "").strip())  # clave gratuita «Demo» de CoinGecko (opcional)
     alm.set_config("precios", c)
 
 _clave_cg = ""  # clave Demo de CoinGecko (cabecera x-cg-demo-api-key); se lee de la configuración al empezar cada consulta
 
 def _exigir(alm):
     global _clave_cg
-    _clave_cg = (alm.config("precios") or {}).get("clave_coingecko") or ""
+    _clave_cg = secreto.leer((alm.config("precios") or {}).get("clave_coingecko"))
     if not config(alm)["activo"]: raise ErrorPrecios("Los precios por internet están desactivados (Ajustes → Precios por internet).")
 
 def _base(fuente):

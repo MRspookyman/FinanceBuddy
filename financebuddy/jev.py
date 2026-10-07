@@ -11,7 +11,8 @@
 # Nunca guarda nada por su cuenta: solo sugiere, y lo que aceptas se convierte en regla como siempre.
 #
 # Qué se envía: el concepto del movimiento, saneado (sin nombres de los Bizum, números de tarjeta, IBAN ni correos),
-# si entra o sale dinero y el importe. Nada de saldos, cuentas ni fechas. La clave se guarda solo en tu carpeta de datos.
+# si entra o sale dinero y el importe. Nada de saldos, cuentas ni fechas. La clave se guarda solo en tu carpeta de datos,
+# cifrada para tu usuario de Windows (secreto.py).
 #
 # API (documentada): POST https://api.typesafe.ai/v1/systemone · Authorization: Bearer <clave>
 #   {"model": "jev-latest", "state": "<contexto>", "questions": {"<nombre>": {"type": "choice", "instructions": "…",
@@ -21,7 +22,7 @@
 import datetime, difflib, json, os, re, threading, urllib.error, urllib.request
 from collections import Counter, deque
 from concurrent.futures import ThreadPoolExecutor
-from . import bizums, clasificar as C, lectura as L
+from . import bizums, clasificar as C, lectura as L, secreto
 
 URL = "https://api.typesafe.ai/v1/systemone"
 MODELO = "jev-latest"
@@ -59,8 +60,12 @@ _ocultar = []  # palabras de tus titulares (tu nombre): nunca salen, ni en el co
 def config(alm):
     _ocultar[:] = [w for t in alm.config("titulares") or [] for w in L.norm(t).split() if len(w) >= 3]
     c = alm.config("jev") or {}
-    clave = c.get("clave") or os.environ.get("TYPESAFE_API_KEY", "")
-    return {"clave": clave, "activo": bool(c.get("activo", True)) and bool(clave), "al_importar": bool(c.get("al_importar", True))}
+    propia = secreto.leer(c.get("clave"))
+    clave = propia or os.environ.get("TYPESAFE_API_KEY", "")
+    # Con la clave pegada en Ajustes, activado salvo que lo apagues. Con la de la variable de entorno (quien desarrolla),
+    # apagado hasta que lo actives: tener la variable definida no es haber encendido el asistente.
+    return {"clave": clave, "activo": bool(c.get("activo", bool(propia))) and bool(clave), "al_importar": bool(c.get("al_importar", True)),
+            "propia": bool(propia), "ilegible": bool(c.get("clave")) and not propia}
 
 def config_publica(alm):
     """Lo que ve la página: si hay clave (y sus 4 últimas letras), nunca la clave."""
@@ -68,7 +73,7 @@ def config_publica(alm):
     uso = (alm.config("jev_uso") or {}).get(datetime.date.today().strftime("%Y-%m")) or {"consultas": 0, "tokens": 0}
     rev = alm.config("jev_revision") or {}
     return {"hay_clave": bool(c["clave"]), "fin_clave": c["clave"][-4:] if c["clave"] else "", "activo": c["activo"], "al_importar": c["al_importar"],
-            "de_entorno": bool(c["clave"]) and not (alm.config("jev") or {}).get("clave"),
+            "de_entorno": bool(c["clave"]) and not c["propia"], "ilegible": c["ilegible"],
             "uso": {**uso, "coste": round(uso["tokens"] / 1e6 * PRECIO_MTOK, 6)},
             "revision": {"fecha": rev.get("fecha"), "hallazgos": rev.get("hallazgos") or [], "preguntados": len(rev.get("vistos") or {})}}
 
@@ -77,7 +82,7 @@ def guardar_config(alm, d):
     if "clave" in d:
         clave = str(d.get("clave") or "").strip()
         if clave and not re.fullmatch(r"[A-Za-z0-9_\-\.]{16,300}", clave): raise ValueError("Esa clave no parece válida (cópiala entera desde TypeSafe).")
-        c["clave"] = clave
+        c["clave"] = secreto.guardar(clave)
     for k in ("activo", "al_importar"):
         if k in d: c[k] = bool(d[k])
     alm.set_config("jev", c)

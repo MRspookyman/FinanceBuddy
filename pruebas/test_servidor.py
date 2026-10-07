@@ -54,6 +54,26 @@ class TestFlujo(unittest.TestCase):
         self.assertEqual((len(self.app.alm.todos("pendiente")), len(self.app.alm.todos("movimiento"))), (3, antes))
         self.assertFalse(self.api("/api/deshacer")["ok"])
 
+    def test_deshacer_no_se_lleva_lo_que_se_hizo_despues(self):
+        # «Deshacer» repone la foto entera de antes: si después se guarda otra cosa, ya no se ofrece (se perdería).
+        self.api("/api/bienvenida", {"cuentas": [{"nombre": "Nómina", "tipo": "corriente", "saldo": 1000}]})
+        self.api("/api/confirmar_sugeridos", {})
+        self.assertTrue(self.app.datos()["info"]["deshacer"])
+        # consultar no anula nada…
+        self.api("/api/categoria/uso", {})
+        self.api("/api/importar/carpeta", {"previa": True})
+        self.assertTrue(self.app.datos()["info"]["deshacer"])
+        # …guardar algo, sí
+        self.api("/api/guardar", {"tipo": "movimiento", "datos": {"fecha": "2026-09-29", "concepto": "Después", "importe": 12, "clase": "gasto", "cuenta": "Nómina"}})
+        self.assertEqual(self.app.datos()["info"]["deshacer"], "")
+        self.assertFalse(self.api("/api/deshacer")["ok"])
+        self.assertEqual([m["concepto"] for m in self.app.alm.todos("movimiento")], ["Después"])
+        # una tanda de «Por revisar» (mantener) sigue deshaciéndose junta
+        self.api("/api/confirmar_sugeridos", {})
+        foto = self.app.deshacer
+        self.app.manejar("/api/config", {"mantener": True, "acento": "azul"})
+        self.assertIs(self.app.deshacer, foto)
+
     def test_saldo_banco_no_cierra_el_mes_ni_toca_los_valores(self):
         self.api("/api/bienvenida", {"cuentas": [{"nombre": "Nómina", "tipo": "corriente", "saldo": 1000}]})
         self.app.alm.guardar("activo", {"nombre": "Fondo", "clase": "fondo", "valor": 500, "fecha_valor": "2026-08-31"})

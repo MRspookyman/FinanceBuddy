@@ -1,7 +1,7 @@
 # Servidor local de la app: sirve las pantallas (web/) y una API JSON sobre la base de datos.
 # Solo escucha en 127.0.0.1 y cada arranque genera una clave que la página envía en la cabecera X-FB-Token.
 import base64, datetime, http.server, io, json, mimetypes, os, re, secrets, socketserver, tempfile, threading, traceback, urllib.parse
-from . import VERSION, actualizaciones, bizums, cartera, clasificar as C, detectar, exportar, importar as IM, jev, modelo, ordenar, plantilla, precios, rutas
+from . import VERSION, actualizaciones, bizums, cartera, clasificar as C, detectar, exportar, importar as IM, jev, modelo, ordenar, plantilla, precios, rutas, secreto
 from .almacen import Almacen
 
 mimetypes.add_type("font/woff2", ".woff2")
@@ -32,18 +32,28 @@ CONSECUENCIA = {
     "activo": "Sus operaciones se quedarían sin activo y dejarían de contar en tu inversión.",
 }
 
+# Rutas que no cambian nada tuyo (consultas, descargas, copias): tras ellas, lo último que se podía deshacer sigue valiendo.
+# Cualquier otra escritura lo anula: «Deshacer» repone la foto ENTERA de antes y se llevaría por delante lo hecho después.
+NO_ANULAN_DESHACER = {"/api/parecidos", "/api/detectar", "/api/jev/enviado", "/api/jev/probar", "/api/jev/categoria", "/api/categoria/uso",
+                      "/api/plantilla", "/api/exportar_datos", "/api/regla/probar", "/api/abrir_carpeta", "/api/copia",
+                      "/api/actualizaciones/comprobar", "/api/precios/actualizar", "/api/precios/estado", "/api/precios/buscar", "/api/precios/comparar"}
+
 def _aviso_borrar(tipo, reg, usos):
     lista = " y ".join(", ".join(f"{n} {PLURAL.get(t, t)}" for t, n in usos).rsplit(", ", 1))
     return f"«{modelo.nombre_de(tipo, reg)}» se está usando en {lista}. " + (CONSECUENCIA.get(tipo) or "Lo que apunta a esto se quedaría sin ello.")
 
 class App:
     """Estado del servidor: carpeta de datos abierta, base de datos y clave de la sesión."""
-    def __init__(self, raiz, hoy=None, pruebas=False):
+    def __init__(self, raiz, hoy=None, pruebas=False, fija=False, ejemplo=False):
         self.token = secrets.token_urlsafe(24)
         self.hoy = hoy
         self.pruebas = pruebas
         self.lock = threading.RLock()
-        self.ejemplo = False
+        self.ejemplo = ejemplo
+        # fija: la carpeta se ha dado al arrancar (--datos, --ejemplo, --pruebas). Esa app no es «la de siempre»: ni apunta en
+        # ajustes.json la carpeta que se elija ni vuelve a la que diga ese archivo (que es la de los datos de verdad).
+        self.fija = fija
+        self.inicio = None if ejemplo else os.path.abspath(raiz)
         self.deshacer = None  # foto de los datos antes de la última decisión que se puede deshacer
         self.deshacer_que = ""  # qué se deshace (se enseña en Ajustes: el aviso con «Deshacer» dura segundos, esto no)
         self.abrir(raiz)
@@ -55,6 +65,7 @@ class App:
         alm = Almacen(carpeta.db)
         try:
             plantilla.instalar(alm)
+            secreto.proteger(alm, "jev", "clave"); secreto.proteger(alm, "precios", "clave_coingecko")  # claves en claro de versiones anteriores
             alm.copia(carpeta.copias, extra=alm.config("copia_extra"))
             bizums.enlazar(alm)  # une los Bizums recibidos con su gasto (también en datos de versiones anteriores)
         except BaseException:
@@ -305,7 +316,8 @@ class App:
             self.abrir(nueva)
         except Exception as e:  # la carpeta de antes sigue abierta: solo hay que contar qué ha pasado
             raise ValueError(f"No se ha podido usar «{nueva}»: {rutas.motivo(e)}. Sigues con {self.carpeta.raiz}.")
-        a = rutas.leer_ajustes(); a["datos"] = nueva; rutas.guardar_ajustes(a)
+        self.ejemplo = False
+        if not self.fija: a = rutas.leer_ajustes(); a["datos"] = nueva; rutas.guardar_ajustes(a)
         return {"ok": True, "mensaje": f"Usando la carpeta {nueva}"}
 
     def copia(self, motivo="diaria", forzar=False):
@@ -321,7 +333,8 @@ class App:
             self.abrir(raiz)
             self.ejemplo = True
         else:
-            self.abrir(rutas.leer_ajustes().get("datos") or rutas.carpeta_por_defecto())
+            if self.fija and not self.inicio: raise ValueError("Esta app se ha abierto solo con datos de ejemplo: no hay otros a los que volver.")
+            self.abrir(self.inicio if self.fija else rutas.leer_ajustes().get("datos") or rutas.carpeta_por_defecto())
             self.ejemplo = False
         return {"ok": True}
 
@@ -344,6 +357,16 @@ class App:
 
     def manejar(self, ruta, d):
         """API de escritura. Devuelve un dict JSON."""
+        foto = self.deshacer
+        r = self._manejar(ruta, d)
+        # Si esto ha cambiado algo sin renovar la foto, lo de antes ya no se puede deshacer (se perdería lo de ahora).
+        # `mantener`: una decisión más de la misma tanda de «Por revisar», que se deshace junta.
+        if (foto is not None and self.deshacer is foto and r is not None and ruta not in NO_ANULAN_DESHACER and not d.get("previa")
+                and not d.get("mantener") and not r.get("necesita_confirmar")):
+            self.deshacer, self.deshacer_que = None, ""
+        return r
+
+    def _manejar(self, ruta, d):
         a = self.alm
         if ruta == "/api/guardar":
             tipo = d.get("tipo")
@@ -584,5 +607,6 @@ class Servidor(socketserver.ThreadingMixIn, http.server.HTTPServer):
     allow_reuse_address = False
 
 def crear(app, puerto):
+    srv = Servidor(("127.0.0.1", puerto), Manejador)  # si el puerto está ocupado falla aquí, sin tocar nada más
     Manejador.app = app
-    return Servidor(("127.0.0.1", puerto), Manejador)
+    return srv

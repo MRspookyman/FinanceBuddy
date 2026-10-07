@@ -9,6 +9,12 @@ class BaseDañada(Exception):
         super().__init__(f"El archivo de datos está dañado y no se puede abrir ({causa}).")
         self.ruta, self.causa = ruta, causa
 
+class BaseMasNueva(Exception):
+    """El archivo datos.db lo ha guardado una versión más nueva de la app: esta no sabe leerlo y podría estropearlo."""
+    def __init__(self, ruta):
+        super().__init__("esos datos son de una versión más nueva de FinanceBuddy: actualiza la app para abrirlos")
+        self.ruta = ruta
+
 ESQUEMA = """
 CREATE TABLE IF NOT EXISTS registros(id INTEGER PRIMARY KEY, tipo TEXT NOT NULL, datos TEXT NOT NULL, creado TEXT, modificado TEXT);
 CREATE INDEX IF NOT EXISTS registros_tipo ON registros(tipo);
@@ -56,7 +62,11 @@ class Almacen:
         try:
             self.con.execute("PRAGMA journal_mode=WAL")
             self.con.executescript(ESQUEMA)
-            if self.config("version_esquema") is None: self.set_config("version_esquema", VERSION_ESQUEMA)
+            v = self.config("version_esquema")
+            if v is None: self.set_config("version_esquema", VERSION_ESQUEMA)
+            elif isinstance(v, int) and v > VERSION_ESQUEMA:
+                self.con.close()
+                raise BaseMasNueva(ruta)
         except sqlite3.DatabaseError as e:  # no es una base de datos, o está corrupta: hay que restaurar una copia
             self.con.close()
             raise BaseDañada(ruta, str(e))
@@ -198,6 +208,9 @@ class Almacen:
         if not forzar and glob.glob(os.path.join(carpeta, f"datos {hoy}*.db")): return None
         nombre = f"datos {hoy}" + (f" {datetime.datetime.now():%H%M%S} {motivo}" if forzar else "") + ".db"
         destino = os.path.join(carpeta, nombre)
+        n = 1
+        while os.path.exists(destino):  # dos copias con el mismo motivo en el mismo segundo: la segunda no pisa la primera
+            n += 1; destino = os.path.join(carpeta, f"{nombre[:-3]} ({n}).db")
         with self.lock:
             dst = sqlite3.connect(destino)
             self.con.backup(dst)

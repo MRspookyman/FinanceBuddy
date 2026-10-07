@@ -1,6 +1,6 @@
 # Que la app aguante lo que puede salir mal: carpeta de datos que no se puede abrir, base de datos dañada, borrar algo
 # que se está usando, copias en un segundo sitio y extractos de bancos que la app no conoce.
-import os, shutil, sys, tempfile, unittest
+import os, shutil, sys, tempfile, threading, unittest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from financebuddy import almacen, lectura as L, rutas, servidor, __main__ as arranque
 from financebuddy.almacen import Almacen
@@ -8,7 +8,7 @@ from financebuddy.almacen import Almacen
 class TestCarpetaYBaseDatos(unittest.TestCase):
     def setUp(self):
         self.dir = tempfile.mkdtemp()
-        # Cuál es tu carpeta de datos se guarda fuera de ella, en %APPDATA%\FinanceBuddyjustes.json, y «/api/carpeta» lo
+        # Cuál es tu carpeta de datos se guarda fuera de ella, en %APPDATA%\FinanceBuddy\ajustes.json, y «/api/carpeta» lo
         # reescribe: sin apartarlo, pasar las pruebas dejaba la app de verdad apuntando a una carpeta temporal y, al abrirla,
         # parecía que no había datos (estaban en su sitio, pero la app miraba a otro lado).
         self.ajustes_reales = rutas.AJUSTES
@@ -73,6 +73,72 @@ class TestCarpetaYBaseDatos(unittest.TestCase):
             self.assertFalse(arranque._reparar(vacia, error, lambda t, *a, **k: (dichos.append(t), False)[1]))
             self.assertIn("no hay ninguna copia", dichos[0])
         finally: shutil.rmtree(vacia, ignore_errors=True)
+
+    def test_datos_de_una_version_mas_nueva_no_se_abren(self):
+        otra = os.path.join(self.dir, "del-futuro")
+        alm = Almacen(servidor.rutas.Carpeta(otra).db)
+        alm.set_config("version_esquema", almacen.VERSION_ESQUEMA + 1); alm.cerrar()
+        with self.assertRaises(almacen.BaseMasNueva):
+            Almacen(os.path.join(otra, "datos.db"))
+        # al cambiar de carpeta se explica y la app sigue con la suya
+        with self.assertRaises(ValueError) as e:
+            self.app.manejar("/api/carpeta", {"carpeta": otra})
+        self.assertIn("versión más nueva", str(e.exception))
+        self.assertEqual(self.app.carpeta.raiz, os.path.abspath(self.dir))
+        # y al arrancar, un cuadro que lo dice en vez de abrirlos
+        dichos, decir = [], arranque.decir
+        arranque.decir = lambda t, *a, **k: dichos.append(t)
+        try:
+            class A: hoy = None; pruebas = False; datos = otra; ejemplo = False
+            self.assertIsNone(arranque._abrir_app(otra, A))
+        finally: arranque.decir = decir
+        self.assertIn("versión más nueva", dichos[0])
+
+    def test_una_app_abierta_con_su_carpeta_no_toca_la_de_siempre(self):
+        # Servidores de pruebas (--datos, --ejemplo, --pruebas): «Usar otra carpeta» no se apunta en ajustes.json y
+        # «Volver a mis datos» vuelve a la carpeta con la que se arrancó, no a los datos de verdad.
+        rutas.guardar_ajustes({"datos": os.path.join(self.dir, "los-de-verdad")})
+        d = os.path.join(self.dir, "pruebas")
+        app = servidor.App(d, fija=True)
+        try:
+            app.manejar("/api/carpeta", {"carpeta": os.path.join(self.dir, "otra")})
+            self.assertEqual(rutas.leer_ajustes()["datos"], os.path.join(self.dir, "los-de-verdad"))
+            app.ejemplo = True
+            app.manejar("/api/ejemplo", {"activar": False})
+            self.assertEqual(app.carpeta.raiz, os.path.abspath(d))
+            self.assertFalse(os.path.exists(os.path.join(self.dir, "los-de-verdad")))
+        finally: app.alm.cerrar()
+        solo = servidor.App(os.path.join(self.dir, "ej"), fija=True, ejemplo=True)
+        try:
+            with self.assertRaises(ValueError): solo.manejar("/api/ejemplo", {"activar": False})
+        finally: solo.alm.cerrar()
+
+    def test_restaurar_una_copia_vuelve_a_ese_dia_y_guarda_lo_de_ahora(self):
+        self.app.manejar("/api/guardar", {"tipo": "cuenta", "datos": {"nombre": "La de antes"}})
+        copia = os.path.basename(self.app.copia("prueba", forzar=True))
+        self.app.manejar("/api/guardar", {"tipo": "cuenta", "datos": {"nombre": "La de después"}})
+        self.assertIn(copia, self.app.copias())
+        r = self.app.manejar("/api/restaurar", {"copia": copia})
+        self.assertTrue(r["ok"], r)
+        self.assertEqual([c["nombre"] for c in self.app.alm.todos("cuenta")], ["La de antes"])
+        # lo que había justo antes de restaurar no se pierde: queda en otra copia
+        antes = [n for n in self.app.copias() if "antes de restaurar" in n]
+        self.assertEqual(len(antes), 1)
+        self.app.manejar("/api/restaurar", {"copia": antes[0]})
+        self.assertEqual([c["nombre"] for c in self.app.alm.todos("cuenta")], ["La de antes", "La de después"])
+        with self.assertRaises(ValueError): self.app.manejar("/api/restaurar", {"copia": "..\\datos.db"})
+        with self.assertRaises(ValueError): self.app.manejar("/api/restaurar", {"copia": "no-existe.db"})
+
+    def test_si_ya_hay_una_app_abierta_la_segunda_no_toca_los_datos(self):
+        srv = servidor.crear(self.app, 8795)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        nueva = os.path.join(self.dir, "no-se-crea")
+        try:
+            self.assertEqual(arranque.main(["--datos", nueva, "--puerto", "8795", "--sin-navegador"]), 0)
+            self.assertFalse(os.path.exists(nueva), "con el puerto ocupado no hay que abrir (ni crear) la carpeta de datos")
+            self.assertIs(servidor.Manejador.app, self.app)
+        finally:
+            srv.shutdown(); srv.server_close()
 
 class TestBorrarEnUso(unittest.TestCase):
     def setUp(self):

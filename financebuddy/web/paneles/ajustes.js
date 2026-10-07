@@ -161,12 +161,12 @@ function vistaAjustes() {
 }
 
 // «Deshacer lo último»: el aviso de abajo con «Deshacer» dura segundos; la foto de antes sigue en el servidor hasta que
-// se cambia de carpeta o se cierra la app, así que también se puede deshacer desde aquí sin prisa.
+// guardas otra cosa, se cambia de carpeta o se cierra la app, así que también se puede deshacer desde aquí sin prisa.
 function panelDeshacer(padre) {
   const que = (DB.info || {}).deshacer;
   if (!que) return;
   const p = panel(padre, "Deshacer lo último");
-  p.createDiv({ cls: "fin-note", text: `Lo último que se puede deshacer: ${que}. Vuelve a dejar tus datos como estaban justo antes; lo que hayas hecho después se mantiene.` });
+  p.createDiv({ cls: "fin-note", text: `Lo último que se puede deshacer: ${que}. Vuelve a dejar tus datos como estaban justo antes. En cuanto guardes, importes o cambies otra cosa, ya no se podrá deshacer.` });
   const b = p.createDiv({ cls: "fb-fila" }).createEl("button", { cls: "fb-btn sec", text: "Deshacer" });
   b.onclick = async () => {
     b.disabled = true;
@@ -193,7 +193,7 @@ function panelVersion(p) {
 }
 // Tema (en este navegador) y color de acento (en tus datos).
 const ACENTOS = [["salvia", "#1B7558"], ["violeta", "#5A44D4"], ["azul", "#1C5DCF"], ["verde", "#327D1A"], ["coral", "#CB4520"], ["rosa", "#C4307A"], ["grafito", "#2B3340"]];
-// Asistente Jev (TypeSafe AI), opcional: la clave se guarda solo en tu carpeta de datos y nunca vuelve a la página.
+// Asistente Jev (TypeSafe AI), opcional: la clave se guarda solo en tu carpeta de datos (cifrada) y nunca vuelve a la página.
 function panelJev(padre) {
   const J = (DB.config || {}).jev || {};
   const p = panel(padre, "Asistente Jev (opcional)", { text: J.activo ? "activado" : J.hay_clave ? "desactivado" : "sin clave" },
@@ -212,6 +212,7 @@ function panelJev(padre) {
   const bG = f.createEl("button", { cls: "fb-btn", text: "Guardar" });
   const bP = f.createEl("button", { cls: "fb-btn sec", text: "Probar" });
   const msg = p.createDiv();
+  if (J.ilegible) mensaje(msg, "La clave guardada no se puede leer en este ordenador: se guardó en otro, o con otro usuario de Windows. Pégala otra vez.", "err");
   // El resultado de «Probar» se guarda en FB.estado: la pantalla se redibuja al guardar y el mensaje sobrevive
   if (FB.estado.jevPrueba) mensaje(msg, FB.estado.jevPrueba.texto, FB.estado.jevPrueba.ok ? "ok" : "err");
   const enviar = async (d) => { const r = await FB.api("/api/jev/config", d); if (!r.ok) { msg.empty(); mensaje(msg, r.mensaje || "Error", "err"); } return r.ok; };

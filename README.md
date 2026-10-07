@@ -111,7 +111,7 @@ Solo sugiere, con su confianza («Jev · 91 %»; desde el 85 % sale marcada al a
 clave falla, deja de preguntar y no marca nada (se reintenta la próxima vez). En Ajustes ves las consultas del mes y
 lo que cuestan (céntimos). Se envía solo el concepto saneado —sin
 nombres de personas en Bizums y transferencias, números de tarjeta, IBAN ni correos— y el importe; la clave se guarda
-solo en tu carpeta de datos. Para medir cuánto acierta con tus movimientos antes de fiarte:
+solo en tu carpeta de datos, cifrada para tu usuario de Windows (si llevas los datos a otro ordenador, hay que pegarla otra vez). Para medir cuánto acierta con tus movimientos antes de fiarte:
 `python pruebas\evaluar_jev.py` (con `--mostrar` enseña lo que se enviaría sin enviar nada). Sin clave, todo igual.
 
 **Bizums**: tus Bizums enviados son tu parte de un gasto (categoría por el concepto). Los recibidos son lo que te devuelven de un
@@ -222,6 +222,7 @@ financebuddy/
   exportar.py      plantilla de Excel con desplegable de categorías y exportación de todos tus datos a Excel
   ordenar.py       poner orden en las categorías: probar una regla antes de guardarla, fusionar y ocultar categorías
   bizums.py        Bizums recibidos: casar con el gasto que devuelven (aritmética de repartos) y enlazarlo
+  secreto.py       cifra las claves de Jev y CoinGecko con la protección de datos de Windows
   jev.py           asistente opcional Jev (TypeSafe AI): dudas del banco y del bróker, repaso de categorías, apuntar, fijos y formatos nuevos
   plantilla.py     categorías, reglas y formatos de serie
   ejemplo.py       datos de ejemplo

@@ -20,7 +20,8 @@ Python (biblioteca estándar + `openpyxl`/`xlrd`/`pystray`) · SQLite · interfa
 5. **Accesibilidad:** cada campo con su nombre, foco visible, contraste ≥ 4,5:1.
 6. **Nunca subir datos del usuario al repositorio** (`.gitignore` excluye `*.db`, `Importar/`, `Copias/`, `*.xlsx`, `*.csv`).
    Las pruebas usan datos **inventados**.
-7. **La clave de Jev nunca va en el código, los tests, los commits ni una PR.** Vive en `config.jev` de la base local.
+7. **La clave de Jev nunca va en el código, los tests, los commits ni una PR.** Vive en `config.jev` de la base local,
+   cifrada para el usuario de Windows (`secreto.py`): una clave nueva se guarda con `secreto.guardar` y se lee con `secreto.leer`.
 8. El servidor solo escucha en `127.0.0.1`, exige cabecera `Host` local y un token por arranque (`X-FB-Token`), y **solo
    sirve archivos de `web/`** (`servidor._dentro_de`).
 9. **Solo escritorio:** nadie usa la app desde el móvil; no hay que diseñar ni probar para pantalla estrecha.
@@ -29,7 +30,7 @@ Python (biblioteca estándar + `openpyxl`/`xlrd`/`pystray`) · SQLite · interfa
 
 ```bat
 python -m financebuddy --ejemplo --sin-navegador --puerto 8830 --hoy 2026-09-30   :: app con datos inventados
-python -m unittest discover -s pruebas -p "test_*.py" -t .     :: 176 pruebas de Python
+python -m unittest discover -s pruebas -p "test_*.py" -t .     :: 183 pruebas de Python
 python pruebas\run.py --tests                                  :: 20 pantallas sin errores + 84 pruebas de cálculos
 python pruebas\run.py --flujos                                 :: 10 flujos con clics de verdad
 python pruebas\run.py --capturas                               :: capturas en claro y oscuro (%TEMP%\fb-pruebas)
@@ -43,10 +44,11 @@ navegador instalado, `run.py` devuelve 3 y el build avisa y sigue.
 **Cuidado con el puerto:** la app real del usuario suele estar abierta en el **8765**. Las pruebas van en otro puerto y con
 carpeta de datos propia, y **nunca** hay que pulsar «Volver a mis datos» ni «Usar otra carpeta» en un servidor de pruebas.
 
-**Y con la carpeta de datos:** cuál es la suya no se guarda dentro de ella, sino en `%APPDATA%\FinanceBuddyjustes.json`,
-que es único para todo. Cualquier cosa que llame a `/api/carpeta` lo reescribe y la app real se queda apuntando ahí (parece
-que no hay datos, aunque estén). Las pruebas lo apartan a una ruta temporal (`test_robustez.setUp`): si escribes una prueba
-que toque carpetas, haz lo mismo.
+**Y con la carpeta de datos:** cuál es la suya no se guarda dentro de ella, sino en `%APPDATA%\FinanceBuddy\ajustes.json`,
+que es único para todo. Una app arrancada con `--datos`, `--ejemplo` o `--pruebas` (`App.fija`) ni lo escribe ni lo lee para
+«Volver a mis datos». Pero una `servidor.App(...)` creada a pelo en una prueba sí: `/api/carpeta` lo reescribe y la app real
+se queda apuntando ahí (parece que no hay datos, aunque estén). Las pruebas lo apartan a una ruta temporal
+(`test_robustez.setUp`): si escribes una prueba que toque carpetas, haz lo mismo.
 
 ## Mapa del código
 
@@ -62,7 +64,7 @@ navegador ──GET /api/datos──▶ servidor.py ──▶ almacen.py ──�
 | API | `servidor.py` (`App.datos()` calcula también las sugerencias de cada duda) |
 | Datos | `almacen.py` (tabla `registros(id, tipo, datos JSON)` + `config`), `modelo.py` (`CAMPOS` define y valida cada tipo) |
 | Importación | `importar.py`, `lectura.py`, `clasificar.py`, `operaciones.py`, `cartera.py`, `detectar.py`, `ordenar.py` |
-| Opcionales | `precios.py`, `jev.py`, `actualizaciones.py` |
+| Opcionales | `precios.py`, `jev.py`, `actualizaciones.py`, `secreto.py` (cifra sus claves con DPAPI) |
 | Salidas | `exportar.py` (Excel), `web/paneles/exportar.js` (resumen HTML) |
 
 Para añadir algo: `modelo.CAMPOS` **y** `FORMS` (`web/paneles/formularios.js`) → módulo de dominio → ruta en `servidor.py`
@@ -76,6 +78,9 @@ Para añadir algo: `modelo.CAMPOS` **y** `FORMS` (`web/paneles/formularios.js`) 
   saldos y cierres van por mes natural (`keyCal()`).
 - `movimiento.importe` es **siempre positivo**; el signo lo da `clase`.
 - Los avisos de nivel `info` no se enseñan en ninguna parte (solo los `warn` del Inicio).
+- «Deshacer» repone la foto **entera** de antes, así que cualquier otra escritura la anula (`App.manejar`). Una ruta nueva
+  que solo consulte va en `servidor.NO_ANULAN_DESHACER`; si no, el «Deshacer» desaparece al llamarla.
+- Si cambia el formato de los datos, **sube `almacen.VERSION_ESQUEMA`**: una versión anterior de la app se negará a abrirlos.
 - Las copias se ordenan por `almacen.copias_de()` (por su fecha, no alfabéticamente: el mismo día puede haber varias).
 - Al cambiar categorías, reglas o perfiles de serie, **sube `plantilla.VERSION`**.
 
