@@ -30,9 +30,9 @@ Python (biblioteca estándar + `openpyxl`/`xlrd`/`pystray`) · SQLite · interfa
 
 ```bat
 python -m financebuddy --ejemplo --sin-navegador --puerto 8830 --hoy 2026-09-30   :: app con datos inventados
-python -m unittest discover -s pruebas -p "test_*.py" -t .     :: 183 pruebas de Python
-python pruebas\run.py --tests                                  :: 20 pantallas sin errores + 84 pruebas de cálculos
-python pruebas\run.py --flujos                                 :: 10 flujos con clics de verdad
+python -m unittest discover -s pruebas -p "test_*.py" -t .     :: 196 pruebas de Python
+python pruebas\run.py --tests                                  :: 20 pantallas sin errores + 101 pruebas de cálculos
+python pruebas\run.py --flujos                                 :: 15 flujos con clics de verdad
 python pruebas\run.py --capturas                               :: capturas en claro y oscuro (%TEMP%\fb-pruebas)
 python pruebas\evaluar_jev.py / evaluar_precios.py             :: contra los servicios reales (lo ejecuta el usuario)
 build.bat                                                      :: pasa TODO lo anterior y genera dist\FinanceBuddy\
@@ -60,7 +60,7 @@ navegador ──GET /api/datos──▶ servidor.py ──▶ almacen.py ──�
 
 | Capa | Archivos |
 |---|---|
-| Arranque | `__main__.py` (cuadros de Windows si algo falla, recuperar una base dañada), `rutas.py` |
+| Arranque | `__main__.py` (cuadros de Windows si algo falla, recuperar una base dañada), `rutas.py`, `recordar.py` (avisos de Windows desde la bandeja: opcionales, apagados de serie y sin internet) |
 | API | `servidor.py` (`App.datos()` calcula también las sugerencias de cada duda) |
 | Datos | `almacen.py` (tabla `registros(id, tipo, datos JSON)` + `config`), `modelo.py` (`CAMPOS` define y valida cada tipo) |
 | Importación | `importar.py`, `lectura.py`, `clasificar.py`, `operaciones.py`, `cartera.py`, `detectar.py`, `ordenar.py` |
@@ -77,10 +77,16 @@ Para añadir algo: `modelo.CAMPOS` **y** `FORMS` (`web/paneles/formularios.js`) 
 - «Tu mes» **no es el mes natural** (`config.dia_inicio`): para gasto se usa `keyDe()`/`iniMes()`/`diasMes()`; inversión,
   saldos y cierres van por mes natural (`keyCal()`).
 - `movimiento.importe` es **siempre positivo**; el signo lo da `clase`.
-- Los avisos de nivel `info` no se enseñan en ninguna parte (solo los `warn` del Inicio).
+- Un movimiento dividido son varios con el mismo `parte_de` (`importar.dividir`): comparten la huella del extracto y quedan fuera de
+  «cambiar todo el comercio», de aplicar reglas, del repaso de Jev y de lo que aprende el historial. Si añades otra operación en
+  bloque sobre movimientos, sáltate los que tengan `parte_de`.
+- En el Inicio van a la vista dos avisos `warn`; el resto y los `info`, plegados en «y N avisos más» (`repartirAvisos`).
+  Cada aviso lleva una `clave` con el mes o el dato que lo provoca: la × la guarda en `config.avisos_descartados` y no vuelve a salir
+  hasta que eso cambia. Un aviso nuevo sin clave no se puede quitar.
 - «Deshacer» repone la foto **entera** de antes, así que cualquier otra escritura la anula (`App.manejar`). Una ruta nueva
   que solo consulte va en `servidor.NO_ANULAN_DESHACER`; si no, el «Deshacer» desaparece al llamarla.
-- Si cambia el formato de los datos, **sube `almacen.VERSION_ESQUEMA`**: una versión anterior de la app se negará a abrirlos.
+- Si cambia el formato de los datos (también un campo nuevo: una app anterior lo borraría al editar), **sube `almacen.VERSION_ESQUEMA`**:
+  al abrir, la base se marca con la versión de ahora y una versión anterior de la app se negará a abrirla.
 - Las copias se ordenan por `almacen.copias_de()` (por su fecha, no alfabéticamente: el mismo día puede haber varias).
 - Al cambiar categorías, reglas o perfiles de serie, **sube `plantilla.VERSION`**.
 

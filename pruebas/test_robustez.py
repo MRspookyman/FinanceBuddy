@@ -74,6 +74,15 @@ class TestCarpetaYBaseDatos(unittest.TestCase):
             self.assertIn("no hay ninguna copia", dichos[0])
         finally: shutil.rmtree(vacia, ignore_errors=True)
 
+    def test_datos_de_una_version_anterior_se_marcan_con_la_de_ahora(self):
+        # si no, una app vieja los abriría y, al editar, borraría los campos que no conoce (recordatorio.repetir, cobro.retencion)
+        otra = os.path.join(self.dir, "de-antes")
+        alm = Almacen(servidor.rutas.Carpeta(otra).db)
+        alm.set_config("version_esquema", almacen.VERSION_ESQUEMA - 1); alm.cerrar()
+        alm = Almacen(os.path.join(otra, "datos.db"))
+        try: self.assertEqual(alm.config("version_esquema"), almacen.VERSION_ESQUEMA)
+        finally: alm.cerrar()
+
     def test_datos_de_una_version_mas_nueva_no_se_abren(self):
         otra = os.path.join(self.dir, "del-futuro")
         alm = Almacen(servidor.rutas.Carpeta(otra).db)

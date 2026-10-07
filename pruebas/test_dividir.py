@@ -1,0 +1,114 @@
+# Dividir un movimiento en varias categorías y volver a juntarlo (datos inventados).
+import shutil, tempfile, unittest
+from financebuddy import clasificar, importar, plantilla, rutas, servidor
+from financebuddy.almacen import Almacen
+
+EXT = {"ext_texto": "COMPRA TARJ. HIPERMERCADO SOL", "ext_importe": -87.4, "ext_fecha": "2026-09-10"}
+
+class TestDividir(unittest.TestCase):
+    def setUp(self):
+        self.dir = tempfile.mkdtemp()
+        self.a = Almacen(rutas.Carpeta(self.dir).db)
+        plantilla.instalar(self.a)
+        self.id = self.a.guardar("movimiento", {"fecha": "2026-09-10", "clase": "gasto", "categoria": "Supermercado", "importe": 87.4,
+                                                "concepto": "Hipermercado Sol", "cuenta": "Nómina", **EXT})
+
+    def tearDown(self):
+        self.a.cerrar()
+        shutil.rmtree(self.dir, ignore_errors=True)
+
+    def partes(self):
+        return sorted((m for m in self.a.todos("movimiento") if m.get("parte_de") == self.id), key=lambda m: m["id"])
+
+    def dividir(self, id=None):
+        return importar.dividir(self.a, id or self.id, [{"importe": 62, "categoria": "Supermercado"}, {"importe": "25,40", "categoria": "Hogar", "nota": "sartén"}])
+
+    def test_las_partes_suman_y_conservan_la_huella(self):
+        self.assertEqual(self.dividir(), "Dividido en 2 partes")
+        p = self.partes()
+        self.assertEqual([(m["importe"], m["categoria"]) for m in p], [(62.0, "Supermercado"), (25.4, "Hogar")])
+        self.assertEqual(p[0]["id"], self.id)  # la primera es el movimiento de siempre
+        self.assertEqual(p[1]["nota"], "sartén")
+        for m in p:
+            self.assertEqual((m["fecha"], m["cuenta"], m["concepto"], m["ext_importe"], m["ext_fecha"]), ("2026-09-10", "Nómina", "Hipermercado Sol", -87.4, "2026-09-10"))
+
+    def test_reimportar_no_duplica_lo_dividido(self):
+        self.dividir()
+        self.assertEqual(importar.huellas_existentes(self.a, "Nómina")[("2026-09-10", -87.4)], 1)
+        # dos cargos iguales el mismo día, los dos divididos: son dos filas del extracto, no una
+        otro = self.a.guardar("movimiento", {"fecha": "2026-09-10", "clase": "gasto", "categoria": "Supermercado", "importe": 87.4,
+                                             "concepto": "Hipermercado Sol", "cuenta": "Nómina", **EXT})
+        self.dividir(otro)
+        self.assertEqual(importar.huellas_existentes(self.a, "Nómina")[("2026-09-10", -87.4)], 2)
+
+    def test_lo_que_no_cuadra_no_se_divide(self):
+        casos = [
+            ([{"importe": 60, "categoria": "Supermercado"}, {"importe": 20, "categoria": "Hogar"}], "suman 80,00 € y el movimiento es de 87,40 €"),
+            ([{"importe": 87.4, "categoria": "Supermercado"}], "entre 2 y 6"),
+            ([{"importe": 87.4, "categoria": "Supermercado"}, {"importe": 0, "categoria": "Hogar"}], "mayor que cero"),
+            ([{"importe": 62, "categoria": "Supermercado"}, {"importe": 25.4, "categoria": "No existe"}], "categoría de cada parte"),
+        ]
+        for partes, texto in casos:
+            with self.assertRaises(ValueError) as e: importar.dividir(self.a, self.id, partes)
+            self.assertIn(texto, str(e.exception))
+        self.assertEqual(self.partes(), [])
+        self.assertEqual(len(self.a.todos("movimiento")), 1)
+
+    def test_no_se_divide_un_fijo_un_traspaso_ni_un_gasto_con_bizums(self):
+        fijo = self.a.guardar("movimiento", {"fecha": "2026-09-01", "clase": "gasto", "categoria": "Vivienda", "importe": 700, "concepto": "Alquiler", "recurrente": "Alquiler"})
+        tras = self.a.guardar("movimiento", {"fecha": "2026-09-02", "clase": "transferencia", "importe": 100, "concepto": "A ahorro", "destino": "Ahorro"})
+        self.a.guardar("movimiento", {"fecha": "2026-09-11", "clase": "reembolso", "categoria": "Supermercado", "importe": 20, "concepto": "Parte de Ana", "reembolsa": self.id})
+        for id, texto in ((fijo, "fijo"), (tras, "gastos e ingresos"), (self.id, "Bizums")):
+            with self.assertRaises(ValueError) as e: importar.dividir(self.a, id, [{"importe": 1, "categoria": "Hogar"}, {"importe": 1, "categoria": "Ocio"}])
+            self.assertIn(texto, str(e.exception))
+
+    def test_volver_a_juntar(self):
+        self.dividir()
+        with self.assertRaises(ValueError): self.dividir()  # una parte no se vuelve a dividir
+        segunda = self.partes()[1]["id"]
+        self.assertEqual(importar.juntar(self.a, segunda), self.id)  # desde cualquiera de las partes
+        m = self.a.todos("movimiento")
+        self.assertEqual(len(m), 1)
+        self.assertEqual((m[0]["id"], m[0]["importe"], m[0]["categoria"], m[0].get("parte_de")), (self.id, 87.4, "Supermercado", None))
+        with self.assertRaises(ValueError): importar.juntar(self.a, self.id)
+
+    def test_lo_dividido_no_se_recategoriza_en_bloque_ni_ensena_al_historial(self):
+        otro = self.a.guardar("movimiento", {"fecha": "2026-08-10", "clase": "gasto", "categoria": "Supermercado", "importe": 30, "concepto": "Hipermercado Sol",
+                                             "cuenta": "Nómina", "ext_texto": EXT["ext_texto"], "ext_importe": -30, "ext_fecha": "2026-08-10"})
+        self.dividir()
+        hogar = self.partes()[1]
+        importar.recategorizar(self.a, otro, {"categoria": "Compras", "parecidos": True})
+        self.assertEqual(self.a.obtener("movimiento", hogar["id"])["categoria"], "Hogar")
+        self.assertEqual(self.a.obtener("movimiento", self.id)["categoria"], "Supermercado")
+        mem = clasificar.memoria(self.a.todos("movimiento"))
+        self.assertEqual({cat for c in mem.values() for (_, cat) in c}, {"Compras"})
+
+    def test_por_la_api_se_puede_deshacer(self):
+        self.a.cerrar()
+        app = servidor.App(self.dir, fija=True)
+        try:
+            r = app.manejar("/api/movimiento/dividir", {"id": self.id, "partes": [{"importe": 62, "categoria": "Supermercado"}, {"importe": 25.4, "categoria": "Hogar"}]})
+            self.assertTrue(r["ok"])
+            self.assertEqual(len(app.alm.todos("movimiento")), 2)
+            self.assertTrue(app.manejar("/api/deshacer", {})["ok"])
+            m = app.alm.todos("movimiento")
+            self.assertEqual((len(m), m[0]["importe"], m[0].get("parte_de")), (1, 87.4, None))
+        finally:
+            app.alm.cerrar()
+            self.a = Almacen(rutas.Carpeta(self.dir).db)
+
+    def test_quitar_un_aviso_y_volver_a_ponerlo(self):
+        self.a.cerrar()
+        app = servidor.App(self.dir, fija=True)
+        try:
+            app.manejar("/api/config/descartar_aviso", {"clave": "inicio:ritmo:2026-10"})
+            app.manejar("/api/config/descartar_aviso", {"clave": "inicio:ritmo:2026-10"})
+            self.assertEqual(app.alm.config("avisos_descartados"), ["inicio:ritmo:2026-10"])
+            app.manejar("/api/config/descartar_aviso", {"clave": "inicio:ritmo:2026-10", "volver": True})
+            self.assertEqual(app.alm.config("avisos_descartados"), [])
+        finally:
+            app.alm.cerrar()
+            self.a = Almacen(rutas.Carpeta(self.dir).db)
+
+if __name__ == "__main__":
+    unittest.main()

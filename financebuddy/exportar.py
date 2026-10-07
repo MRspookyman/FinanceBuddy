@@ -64,10 +64,10 @@ _HOJAS = [
                              ("Aportado al inicio", "aportado_inicial"), ("Estado", "estado"), ("Gastos anuales %", "ter")]),
     ("Aportaciones", "aportacion", [("Fecha", "fecha"), ("Activo", "activo"), ("Importe (− venta)", "importe"), ("Participaciones", "participaciones"), ("Cuenta", "cuenta"),
                                     ("Traspaso", "traspaso"), ("Ajuste", "ajuste"), ("Nota", "nota")]),
-    ("Dividendos y comisiones", "cobro", [("Fecha", "fecha"), ("Activo", "activo"), ("Tipo", "tipo"), ("Importe", "importe"), ("Cuenta", "cuenta"), ("Nota", "nota")]),
+    ("Dividendos y comisiones", "cobro", [("Fecha", "fecha"), ("Activo", "activo"), ("Tipo", "tipo"), ("Importe", "importe"), ("Retención", "retencion"), ("Cuenta", "cuenta"), ("Nota", "nota")]),
     ("Objetivos", "objetivo", [("Nombre", "nombre"), ("Meta", "meta"), ("Meta en meses de gasto", "meta_meses"), ("Ahorrado", "ahorrado"), ("Cuenta", "cuenta"),
                                ("Fecha límite", "fecha_limite"), ("Prioridad", "prioridad"), ("Estado", "estado")]),
-    ("Recordatorios", "recordatorio", [("Qué", "nombre"), ("Fecha", "fecha"), ("Avisar (días antes)", "avisar_dias"), ("Estado", "estado"), ("Nota", "texto")]),
+    ("Recordatorios", "recordatorio", [("Qué", "nombre"), ("Fecha", "fecha"), ("Avisar (días antes)", "avisar_dias"), ("Estado", "estado"), ("Se repite", "repetir"), ("Nota", "texto")]),
 ]
 _CLASE = {"gasto": "Gasto", "ingreso": "Ingreso", "reembolso": "Reembolso", "transferencia": "Entre cuentas", "aportacion": "Aportación"}
 _FECHAS = {"fecha", "desde", "hasta", "fecha_valor", "fecha_limite"}

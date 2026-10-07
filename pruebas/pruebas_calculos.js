@@ -54,7 +54,7 @@ caso("TIR calculada", isFinite(I.tir), I.tir);
 
 // 7. Previsión: usa el límite de 600 €, el mínimo es de un mes futuro, el seguro anual cae en marzo.
 const PV = F.prevision();
-caso("Previsión: variable = límite de 600 €", cerca(PV.varEst, 600), PV.varEst);
+caso("Previsión: el gasto variable es tu media real de los meses cerrados, no el límite de 600 €", PV.nMesesReal > 0 && PV.varReal > 0 && cerca(PV.varEst, PV.varReal) && !cerca(PV.varEst, 600), [PV.varEst, PV.varReal, PV.nMesesReal]);
 caso("Previsión: mínimo en un mes futuro", PV.minimo.key !== F.hoyKey, PV.minimo.key);
 const mar = PV.filas.find((f) => f.key === "2027-03");
 caso("Previsión: en marzo se paga el seguro (310 €)", mar && cerca(mar.fijos, 700 + 35 + 48 + 29.9 + 310), mar && mar.fijos);
@@ -173,5 +173,42 @@ caso("Rentabilidad: sin valor de partida o sin tanto historial, no se calcula", 
 // Colchón: sin fijarlo a mano es el calculado.
 const PLANC = F.planReparto();
 caso("Colchón automático si no se fija a mano", !PLANC || (!PLANC.manual && PLANC.colchon === PLANC.colchonAuto), JSON.stringify(PLANC && [PLANC.colchon, PLANC.colchonAuto]));
+
+// ── Inicio: avisos plegados, objetivos con fecha, recordatorios que se repiten, fijos y renta ──
+const d0 = (iso) => F.DateTime.fromISO(iso);
+const AVx = [{ nivel: "warn", ruta: "#revisar" }, { nivel: "warn", ruta: "#a" }, { nivel: "info", ruta: "#importar" }, { nivel: "warn", ruta: "#b" }, { nivel: "warn", ruta: "#c" }, { nivel: "info", ruta: "#d" }];
+const RAx = F.repartirAvisos(AVx, ["#importar"]);
+caso("Avisos: dos a la vista; el resto y las notas, plegados; nada de «Por revisar» ni lo que ya sale arriba",
+  RAx.arriba.map((a) => a.ruta).join() === "#a,#b" && RAx.resto.map((a) => a.ruta).join() === "#c,#d", JSON.stringify(RAx));
+caso("Avisos: los del ejemplo no se pierden (a la vista + plegados = todos menos «Por revisar»)",
+  (() => { const t = F.avisos(), r = F.repartirAvisos(t); return r.arriba.length + r.resto.length === t.filter((a) => a.ruta !== "#revisar").length; })());
+const JP = F.objetivos().find((o) => o.nombre === "Viaje a Japón");
+caso("Objetivo con fecha: faltan 1.600 € en 10 meses = 160 € al mes", JP && cerca(F.ritmoObjetivo(JP, F.hoy), 160), JP && F.ritmoObjetivo(JP, F.hoy));
+caso("Objetivo sin fecha, vencido o conseguido: no pide nada al mes",
+  F.ritmoObjetivo({ meta: 100, ahorrado: 10 }, F.hoy) === 0 && F.ritmoObjetivo({ meta: 100, ahorrado: 10, limite: d0("2026-01-01") }, F.hoy) === 0 && F.ritmoObjetivo({ meta: 100, ahorrado: 100, limite: d0("2027-01-01") }, F.hoy) === 0);
+caso("Recordatorio anual hecho antes de tiempo: pasa al año siguiente", F.siguienteFecha(d0("2026-10-10"), "anual", d0("2026-09-30")).toISODate() === "2027-10-10");
+caso("Recordatorio mensual atrasado: la primera fecha que aún no ha pasado", F.siguienteFecha(d0("2026-05-31"), "mensual", d0("2026-09-30")).toISODate() === "2026-10-31");
+caso("Recordatorio que no se repite: no hay siguiente fecha", F.siguienteFecha(d0("2026-10-10"), "no", d0("2026-09-30")) === null && F.siguienteFecha(d0("2026-10-10"), "", d0("2026-09-30")) === null);
+caso("Cuánto falta: hoy, mañana, en 10 días, hace 3 días",
+  [0, 1, 10, -3].map((n) => F.cuantoFalta(F.hoy.plus({ days: n }), F.hoy)).join("|") === "hoy|mañana|en 10 días|hace 3 días");
+const TF = F.totalesFijos([{ clase: "gasto", importe: 700 }, { clase: "gasto", importe: 240, meses: [3] }, { clase: "gasto", importe: 50, activo: false }, { clase: "gasto", importe: 30, hasta: "2026-01-31" },
+  { clase: "ingreso", importe: 1850 }, { clase: "aportacion", importe: 200 }], "2026-09-30");
+caso("Fijos: 700 € × 12 + un seguro anual de 240 € = 8.640 € al año (720 € al mes de media); los parados no cuentan",
+  cerca(TF.gasto.año, 8640) && cerca(TF.gasto.mes, 720) && TF.gasto.n === 2 && TF.gasto.noMensual && !TF.ingreso.noMensual && cerca(TF.ingreso.mes, 1850) && cerca(TF.aportacion.año, 2400), JSON.stringify(TF));
+caso("Fijos del ejemplo: todos se han cobrado hace poco, ninguno sale como «ya no aparece»", F.fijosSinCobrar().length === 0, JSON.stringify(F.fijosSinCobrar()));
+caso("Tramos del ahorro: 5.000 € → 950 €; 10.000 € → 1.140 + 840 = 1.980 €; 0 → 0", cerca(F.cuotaAhorro(5000), 950) && cerca(F.cuotaAhorro(10000), 1980) && F.cuotaAhorro(0) === 0 && F.cuotaAhorro(-5) === 0);
+// 2024: pierdes 1.000 € y cobras 400 € brutos → 100 € (el 25 %) se restan de los dividendos y quedan 900 € pendientes.
+// 2025: ganas 600 € → se compensan enteros; quedan 300 €. 2026: ganas 2.000 € y cobras 1.000 € brutos con 190 € retenidos.
+const RN = F.rentaPorAño([{ año: 2026, ventas: 2000, dividendos: 1000, retenido: 190 }, { año: 2024, ventas: -1000, dividendos: 400, retenido: 76 }, { año: 2025, ventas: 600, dividendos: 0, retenido: 0 }]);
+caso("Renta 2024: la pérdida resta el 25 % de los dividendos y el resto queda pendiente", cerca(RN.get(2024).base, 300) && cerca(RN.get(2024).cuota, 57) && cerca(RN.get(2024).pendDespues, 900), JSON.stringify(RN.get(2024)));
+caso("Renta 2025: la ganancia se compensa entera con lo pendiente", cerca(RN.get(2025).base, 0) && cerca(RN.get(2025).usado, 600) && cerca(RN.get(2025).pendDespues, 300), JSON.stringify(RN.get(2025)));
+caso("Renta 2026: 2.000 − 300 pendientes + 1.000 de dividendos = 2.700 € → 513 €, menos 190 € retenidos = 323 €",
+  cerca(RN.get(2026).base, 2700) && cerca(RN.get(2026).cuota, 513) && cerca(RN.get(2026).diferencia, 323) && cerca(RN.get(2026).pendDespues, 0), JSON.stringify(RN.get(2026)));
+const RCx = F.rentaPorAño([{ año: 2020, ventas: -500, dividendos: 0 }, { año: 2025, ventas: 500, dividendos: 0 }]);
+caso("Renta: una pérdida de hace más de 4 años ya no compensa", cerca(RCx.get(2025).base, 500) && cerca(RCx.get(2025).pendAntes, 0), JSON.stringify(RCx.get(2025)));
+const CSV = F.csvRenta(2026, [{ fecha: d0("2026-03-05"), activo: "Fondo; raro", unidades: 1.5, valor: 1234.5, coste: 1000, resultado: 234.5 }], [{ fecha: d0("2026-06-01"), activo: "ETF", tipo: "dividendo", importe: 81, retencion: 19 }]);
+caso("Renta en CSV: coma decimal, punto y coma, y el bruto del dividendo (81 + 19 = 100)",
+  CSV.includes('05/03/2026;"Fondo; raro";1,500000;1234,50;1000,00;234,50') && CSV.includes("01/06/2026;ETF;Dividendo;81,00;19,00;100,00"), CSV);
+caso("Recordatorios: el del ejemplo no se repite", F.recordatorios().every((r) => !r.repetir || r.repetir === "no"));
 
 return casos;

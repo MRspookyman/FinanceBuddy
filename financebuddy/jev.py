@@ -521,7 +521,7 @@ def auditar(alm, limite=150, url=None):
     vistos, hallazgos = dict(rev.get("vistos") or {}), {h["clave"]: h for h in rev.get("hallazgos") or []}
     grupos = {}
     for m in alm.todos("movimiento"):
-        if m.get("clase") not in ("gasto", "ingreso", "reembolso") or not m.get("categoria"): continue
+        if m.get("clase") not in ("gasto", "ingreso", "reembolso") or not m.get("categoria") or m.get("parte_de"): continue  # lo dividido lo decidiste tú
         texto = m.get("ext_texto") or m.get("concepto") or ""
         pat = C.patron_sugerido(texto)
         if not pat: continue

@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS registros(id INTEGER PRIMARY KEY, tipo TEXT NOT NULL,
 CREATE INDEX IF NOT EXISTS registros_tipo ON registros(tipo);
 CREATE TABLE IF NOT EXISTS config(clave TEXT PRIMARY KEY, valor TEXT);
 """
-VERSION_ESQUEMA = 1
+VERSION_ESQUEMA = 2
 COPIAS_MAX = 30
 
 RE_COPIA = re.compile(r"datos (\d{4}-\d{2}-\d{2})(?: (\d{6}))?")
@@ -63,7 +63,7 @@ class Almacen:
             self.con.execute("PRAGMA journal_mode=WAL")
             self.con.executescript(ESQUEMA)
             v = self.config("version_esquema")
-            if v is None: self.set_config("version_esquema", VERSION_ESQUEMA)
+            if v is None or (isinstance(v, int) and v < VERSION_ESQUEMA): self.set_config("version_esquema", VERSION_ESQUEMA)
             elif isinstance(v, int) and v > VERSION_ESQUEMA:
                 self.con.close()
                 raise BaseMasNueva(ruta)

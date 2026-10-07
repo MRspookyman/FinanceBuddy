@@ -16,12 +16,13 @@ CAMPOS = {
     "movimiento": {"fecha": "fecha*", "clase": ("gasto", "ingreso", "reembolso", "transferencia"), "categoria": "texto",
                    "importe": "num+*", "cuenta": "texto", "concepto": "texto*", "recurrente": "texto", "destino": "texto",
                    "origen": "texto", "nota": "texto", "ext_texto": "texto", "ext_importe": "num", "ext_fecha": "fecha",
-                   "reembolsa": "int", "sugerido": "texto", "sin_gasto": "bool"},  # sugerido: por qué se eligió sola la categoría (vacío = confirmada);
+                   "reembolsa": "int", "sugerido": "texto", "sin_gasto": "bool", "parte_de": "int"},  # parte_de: id del movimiento que se dividió (importar.dividir); sugerido: por qué se eligió sola la categoría (vacío = confirmada);
                                                                # reembolsa: id del gasto que devuelve este reembolso (Bizums, bizums.py);
                                                                # sin_gasto: quitaste el enlace a mano, que no se vuelva a enlazar solo
     # Dinero que te da (dividendo, cupón) o te cobra (comisión, custodia) un activo, sin cambiar sus participaciones: importe siempre
     # positivo, el tipo dice el sentido. Cuenta para la rentabilidad del activo y entra/sale del efectivo de su bróker.
-    "cobro": {"fecha": "fecha*", "activo": "texto*", "tipo": ("dividendo", "comision"), "importe": "num+*", "cuenta": "texto", "nota": "texto",
+    # retencion: lo que ya se quedó Hacienda de un dividendo (el importe es lo que llegó a la cuenta; el bruto, la suma de los dos).
+    "cobro": {"fecha": "fecha*", "activo": "texto*", "tipo": ("dividendo", "comision"), "importe": "num+*", "retencion": "num+", "cuenta": "texto", "nota": "texto",
               "ext_texto": "texto", "ext_importe": "num", "ext_fecha": "fecha"},
     # meses: solo esos meses del año (p. ej. [7] = anual en julio).
     "recurrente": {"nombre": "texto*", "clase": ("gasto", "ingreso", "aportacion"), "categoria": "texto", "importe": "num+*",
@@ -48,7 +49,9 @@ CAMPOS = {
     # cuenta: lo ahorrado es el saldo de esa cuenta · meta_meses: la meta es N meses de gasto.
     "objetivo": {"nombre": "texto*", "meta": "num+", "meta_meses": "num+", "ahorrado": "num+", "cuenta": "texto",
                  "fecha_limite": "fecha", "prioridad": ("media", "alta", "baja"), "estado": ("activo", "conseguido")},
-    "recordatorio": {"nombre": "texto*", "fecha": "fecha*", "avisar_dias": "int", "estado": ("pendiente", "hecho"), "texto": "texto"},
+    # repetir: al marcarlo hecho pasa a su siguiente fecha (renta, ITV, seguro…) en vez de quedar cerrado.
+    "recordatorio": {"nombre": "texto*", "fecha": "fecha*", "avisar_dias": "int", "estado": ("pendiente", "hecho"), "texto": "texto",
+                     "repetir": ("no", "anual", "trimestral", "mensual")},
     # Si el texto del movimiento contiene `patron` → categoría/clase. cuenta_otra: para traspasos, la otra cuenta.
     "regla": {"patron": "texto*", "categoria": "texto", "clase": ("gasto", "ingreso", "reembolso", "transferencia"),
               "recurrente": "texto", "cuenta_otra": "texto", "origen": ("usuario", "plantilla")},

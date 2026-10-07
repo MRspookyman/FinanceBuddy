@@ -194,5 +194,130 @@ return (async () => {
     if (!(await hasta(() => !app().querySelector(".fin-mes button:last-child").textContent.includes("Hoy")))) return "no se vuelve al mes actual";
   });
 
+  const plano = (el) => (el.textContent || "").replace(/ /g, " ");
+
+  // 11. Recordatorios: «Hecho» pasa al año siguiente el que se repite y cierra el que no
+  await caso("Recordatorio «Hecho»: el anual pasa a su siguiente fecha y el suelto queda hecho", async () => {
+    const r = await FB.api("/api/guardar", { tipo: "recordatorio", datos: { nombre: "ITV de prueba", fecha: "2026-10-05", repetir: "anual" } });
+    if (!r.ok) return "no se guarda el recordatorio: " + r.mensaje;
+    await FB.recargar();
+    if (!(await ir("#gestionar/recordatorio"))) return "no se abre la lista de recordatorios";
+    const fila = await hasta(() => porTexto("tr", "ITV de prueba"));
+    if (!fila) return "el recordatorio no sale en la lista";
+    if (!plano(fila).includes("cada año")) return "la lista no dice que se repite: " + plano(fila);
+    porTexto("a", "Hecho", fila).click();
+    if (!(await hasta(() => (regs("recordatorio").find((x) => x.id === r.id) || {}).fecha === "2027-10-05"))) return "no pasa al 05/10/2027: " + JSON.stringify(regs("recordatorio").find((x) => x.id === r.id));
+    if (regs("recordatorio").find((x) => x.id === r.id).estado === "hecho") return "el que se repite no debe quedar cerrado";
+    if (!(await ir("#inicio"))) return "no se abre el Inicio";
+    const it = await hasta(() => porTexto(".fb-item", "Declaración de la renta"));
+    if (!it) return "el recordatorio del ejemplo no sale en el Inicio";
+    it.querySelector("button").click();
+    if (!(await hasta(() => regs("recordatorio").find((x) => x.nombre === "Declaración de la renta").estado === "hecho"))) return "el suelto no queda hecho";
+    if (!(await hasta(() => !porTexto(".fb-item", "Declaración de la renta")))) return "sigue saliendo en el Inicio después de hecho";
+  });
+
+  // 12. Para la renta: un dividendo con retención → bruto, lo ya retenido y lo que saldría a pagar
+  await caso("Renta: dividendo de 81 € con 19 € retenidos = 100 € brutos, 19 € de impuesto, nada por pagar", async () => {
+    const r = await FB.api("/api/guardar", { tipo: "cobro", datos: { fecha: "2026-06-01", activo: "Bitcoin", tipo: "dividendo", importe: 81, retencion: 19 } });
+    if (!r.ok) return "no se guarda el dividendo: " + r.mensaje;
+    await FB.recargar();
+    if (!(await ir("#renta"))) return "no se abre Para la renta";
+    const p = await hasta(() => porTexto(".fin-panel", "Lo que te saldría por 2026"));
+    if (!p) return "no sale la estimación";
+    const t = plano(app());
+    for (const x of ["100,00 €", "ya retenido 19,00 €", "Te quedaría por pagar"]) if (!t.includes(x)) return `falta «${x}» en la pantalla`;
+    const fila = (l) => plano(todos(".fin-rows .r", p).find((e) => plano(e).startsWith(l)) || document.createElement("i"));
+    if (!fila("Impuesto").includes("19,00 €")) return "el impuesto no es 19 €: " + fila("Impuesto");
+    if (!fila("Te quedaría por pagar").includes("0,00 €")) return "debería quedar 0 € por pagar: " + fila("Te quedaría por pagar");
+    if (!porTexto("button", "Descargar 2026 (CSV)")) return "no está el botón de descargar";
+  });
+
+  // 13. Movimientos: el año entero, por importe y con la nota a la vista y en el buscador
+  await caso("Movimientos: todo el año, de mayor a menor y buscando por la nota", async () => {
+    const m = regs("movimiento").find((x) => x.concepto === "Cinesa");
+    if (!m) return "no está el movimiento del ejemplo";
+    const { id, ...datos } = m;
+    const r = await FB.api("/api/guardar", { tipo: "movimiento", id, datos: { ...datos, nota: "con mis primos" } });
+    if (!r.ok) return "no se guarda la nota: " + r.mensaje;
+    await FB.recargar();
+    if (!(await ir("#movimientos/lista"))) return "no se abre la lista";
+    const nMes = todos(".fb-item").length;
+    porTexto(".fb-seg.mini button", "Todo 2026").click();
+    if (!(await hasta(() => plano(app()).includes(" en 2026 ·")))) return "no pasa a ver el año";
+    const sel = app().querySelector('select[aria-label="Ordenar los movimientos"]');
+    if (!sel) return "no está el orden";
+    escribir(sel, "importe");
+    if (!(await hasta(() => !app().querySelector(".fb-dia") && todos(".fb-item").length))) return "por importe no debería agrupar por días";
+    const imp = todos(".fb-item .v").slice(0, 6).map((e) => parseFloat(plano(e).replace(/[^\d,]/g, "").replace(",", ".")));
+    if (imp.some((x, i) => i && x > imp[i - 1])) return "no van de mayor a menor: " + imp.join(", ");
+    if (!/^\d\d\/\d\d\/\d{4} · /.test(plano(app().querySelector(".fb-item .s")))) return "por importe, cada fila debe llevar su fecha: " + plano(app().querySelector(".fb-item .s"));
+    escribir(app().querySelector(".fin-search"), "primos");
+    const it = await hasta(() => todos(".fb-item").length === 1 && todos(".fb-item")[0]);
+    if (!it) return `buscar por la nota no deja solo ese movimiento (hay ${todos(".fb-item").length}; el mes tenía ${nMes})`;
+    if (!plano(it).includes("«con mis primos»")) return "la nota no se ve en la fila: " + plano(it);
+  });
+
+  // 14. Inicio: un aviso se quita con su × y se puede volver a poner
+  await caso("Inicio: la × quita un aviso y «Volver a ponerlo» lo repone", async () => {
+    if (!(await ir("#inicio"))) return "no se abre el Inicio";
+    const equis = () => todos(".fb-franja .r.con-x .x");
+    const n = (await hasta(() => equis().length && equis()) || []).length;
+    if (!n) return "no hay ningún aviso con × en el Inicio del ejemplo";
+    const texto = plano(equis()[0].parentElement.querySelector(".t"));
+    equis()[0].click();
+    if (!(await hasta(() => (FB.DB.config.avisos_descartados || []).some((k) => k.startsWith("inicio:")) && equis().length === n - 1))) return `sigue habiendo ${equis().length} avisos (había ${n})`;
+    if (plano(app()).includes(texto)) return "el aviso quitado sigue en pantalla: " + texto;
+    const volver = await hasta(() => porTexto("#aviso button", "Volver a ponerlo", document));
+    if (!volver) return "no se ofrece volver a ponerlo";
+    volver.click();
+    if (!(await hasta(() => equis().length === n && plano(app()).includes(texto)))) return "no vuelve a salir";
+  });
+
+  // 15. Dividir un gasto en dos categorías y volver a juntarlo
+  await caso("Dividir un gasto: dos partes que suman el total, marcadas en la lista, y se vuelven a juntar", async () => {
+    const m = regs("movimiento").find((x) => x.concepto === "Mercadona" && x.clase === "gasto" && !x.recurrente && String(x.fecha).startsWith("2026-09"));  // del mes que se ve en la lista
+    if (!m) return "no hay un Mercadona en el ejemplo";
+    const total = m.importe, gastoAntes = regs("movimiento").filter((x) => x.clase === "gasto").reduce((t, x) => t + x.importe, 0);
+    if (!(await ir(`#editar/movimiento/${m.id}`))) return "no se abre la ficha";
+    const p = await hasta(() => porTexto(".fin-panel", "Dividir en varias categorías"));
+    if (!p) return "no está el panel de dividir";
+    p.querySelector("details").open = true;
+    const imp = () => todos('.fb-partes input[type="number"]', p), cat = () => todos(".fb-partes select", p);
+    if (imp().length !== 2) return `debería empezar con 2 partes y hay ${imp().length}`;
+    const boton = porTexto("button", "Dividir", p.querySelector("details > .fb-fila:last-of-type"));
+    if (!boton.disabled) return "sin importe en la segunda parte no debería dejar dividir";
+    escribir(imp()[1], "20");
+    if (Math.abs(parseFloat(imp()[0].value) - (total - 20)) > 0.005) return `la primera parte debería quedarse con ${total - 20} y tiene ${imp()[0].value}`;
+    escribir(cat()[1], "Hogar");
+    if (boton.disabled) return "con las partes bien no deja dividir";
+    // una parte añadida de más se quita con su × (y con solo dos, la × no se ofrece)
+    const equis = () => todos(".fb-partes .fb-quitar", p).filter((b) => !b.hidden);
+    if (equis().length) return "con dos partes no debería haber × para quitar";
+    porTexto("button", "+ Otra parte", p).click();
+    if (imp().length !== 3 || equis().length !== 2) return `tras añadir: ${imp().length} partes y ${equis().length} ×`;
+    if (!boton.disabled) return "con una parte sin importe no debería dejar dividir";
+    equis()[1].click();
+    if (imp().length !== 2 || equis().length || boton.disabled) return `tras quitar: ${imp().length} partes, ${equis().length} ×, botón ${boton.disabled ? "apagado" : "encendido"}`;
+    if (Math.abs(parseFloat(imp()[0].value) - (total - 20)) > 0.005) return "al quitar la parte, la primera no recupera lo suyo: " + imp()[0].value;
+    boton.click();
+    const partes = () => regs("movimiento").filter((x) => x.parte_de === m.id);
+    if (!(await hasta(() => partes().length === 2))) return "no se han creado las dos partes";
+    const suma = partes().reduce((t, x) => t + x.importe, 0);
+    if (Math.abs(suma - total) > 0.005) return `las partes suman ${suma} y eran ${total}`;
+    if (partes().map((x) => x.categoria).sort().join() !== ["Hogar", m.categoria].sort().join()) return "categorías: " + partes().map((x) => x.categoria).join();
+    const gastoDespues = regs("movimiento").filter((x) => x.clase === "gasto").reduce((t, x) => t + x.importe, 0);
+    if (Math.abs(gastoDespues - gastoAntes) > 0.005) return `el gasto total ha cambiado: ${gastoAntes} → ${gastoDespues}`;
+    if (!(await hasta(() => porTexto(".fin-panel", "Es parte de un movimiento dividido")))) return "la ficha no dice que está dividido";
+    if (!(await ir("#movimientos/lista"))) return "no se abre la lista";
+    if (!(await hasta(() => todos(".fb-item .s").filter((e) => plano(e).includes("parte de")).length === 2))) return "la lista no marca las dos partes";
+    const otra = partes().find((x) => x.id !== m.id);
+    if (!(await ir(`#editar/movimiento/${otra.id}`))) return "no se abre la ficha de la otra parte";
+    const juntar = await hasta(() => porTexto("button", "Volver a juntar"));
+    if (!juntar) return "no está «Volver a juntar»";
+    juntar.click();
+    if (!(await hasta(() => !partes().length && regs("movimiento").find((x) => x.id === m.id).importe === total))) return "no vuelve a ser un solo movimiento con su importe";
+    if (regs("movimiento").some((x) => x.id === otra.id)) return "la otra parte sigue existiendo";
+  });
+
   return casos;
 })();

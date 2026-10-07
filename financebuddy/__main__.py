@@ -24,8 +24,9 @@ def decir(texto, titulo="FinanceBuddy", preguntar=False):
     except Exception:
         return False  # fuera de Windows (o sin interfaz): sin cuadro, el mensaje ya ha salido por consola
 
-def _bandeja(url, srv):
-    """Icono en la bandeja de Windows: se ve que la app sigue en marcha y se puede abrir o cerrar desde ahí (opcional: sin pystray, no pasa nada)."""
+def _bandeja(url, srv, app=None):
+    """Icono en la bandeja de Windows: se ve que la app sigue en marcha y se puede abrir o cerrar desde ahí (opcional: sin pystray, no pasa nada).
+    Con `app`, el icono enseña además los avisos de Windows (recordar.py), si el usuario los ha activado en Ajustes."""
     try:
         import pystray
         from PIL import Image
@@ -34,7 +35,11 @@ def _bandeja(url, srv):
         def salir(ic, _=None):
             ic.stop(); threading.Thread(target=srv.shutdown, daemon=True).start()
         menu = pystray.Menu(pystray.MenuItem("Abrir FinanceBuddy", lambda ic, _=None: webbrowser.open(url), default=True), pystray.MenuItem("Cerrar FinanceBuddy", salir))
-        pystray.Icon("FinanceBuddy", icono, "FinanceBuddy (en marcha)", menu).run_detached()
+        ic = pystray.Icon("FinanceBuddy", icono, "FinanceBuddy (en marcha)", menu)
+        ic.run_detached()
+        if app is not None:
+            from . import recordar
+            recordar.vigilar(app, lambda texto: ic.notify(texto, "FinanceBuddy"))
     except Exception:
         pass
 
@@ -120,7 +125,7 @@ def main(argv=None):
     servidor.Manejador.app = app
     print(f"FinanceBuddy en {url} · datos en {raiz}")
     if not a.sin_navegador: threading.Timer(0.5, lambda: webbrowser.open(url)).start()
-    if not a.sin_navegador: _bandeja(url, srv)
+    if not a.sin_navegador: _bandeja(url, srv, None if a.ejemplo else app)
     try: srv.serve_forever()
     except KeyboardInterrupt: pass
     return 0

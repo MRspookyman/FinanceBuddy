@@ -227,7 +227,7 @@ const objetivos = () => (_objs ??= registros("objetivo").map((p) => {
 // Recordatorios con fecha (seguro del coche, renta…): aparecen en Pendientes `avisar_dias` antes (14 por defecto).
 const recordatorios = () => registros("recordatorio").map((p) => ({
   p, nombre: p.nombre, fecha: toDate(p.fecha), avisar: hasNum(p.avisar_dias) ? num(p.avisar_dias) : 14,
-  estado: txt(p.estado).toLowerCase() || "pendiente", texto: txt(p.texto),
+  estado: txt(p.estado).toLowerCase() || "pendiente", texto: txt(p.texto), repetir: txt(p.repetir).toLowerCase(),
 })).filter((r) => r.fecha);
 const cierres = () => registros("cierre");
 // Transferencias según el tipo de la otra cuenta.
@@ -256,7 +256,7 @@ const aportaciones = () => {
 const aportacionesReales = () => aportaciones().filter((a) => !a.previsto);
 // Cuenta del bróker de la que se paga una aportación: la del activo, la de la aportación o la primera del bróker.
 // Dividendos y comisiones de los activos (no cambian sus participaciones): importe siempre positivo, `tipo` dice el sentido.
-const cobros = () => (_cobros ??= registros("cobro").map((p) => ({ p, fecha: toDate(p.fecha), activo: txt(p.activo), tipo: txt(p.tipo) || "dividendo", importe: num(p.importe), cuenta: txt(p.cuenta) }))
+const cobros = () => (_cobros ??= registros("cobro").map((p) => ({ p, fecha: toDate(p.fecha), activo: txt(p.activo), tipo: txt(p.tipo) || "dividendo", importe: num(p.importe), retencion: Math.max(0, num(p.retencion) || 0), cuenta: txt(p.cuenta) }))
   .filter((c) => c.fecha && c.fecha <= finHoy).sort((a, b) => a.fecha.toMillis() - b.fecha.toMillis()));
 const cuentaAportacion = (a) => {
   const act = registros("activo").find((x) => x.nombre === a.activo);

@@ -81,6 +81,7 @@ def memoria(movimientos):
     mem = {}
     for m in movimientos:
         if m.get("clase") not in ("gasto", "ingreso", "reembolso") or not m.get("categoria") or not m.get("ext_texto"): continue
+        if m.get("parte_de"): continue  # una parte de un movimiento dividido no dice de qué es el comercio
         if m.get("sugerido"): continue  # una categoría sin confirmar no enseña nada (si no, una suposición se reforzaría a sí misma)
         k = clave(m["ext_texto"])
         if len(k) < 3: continue

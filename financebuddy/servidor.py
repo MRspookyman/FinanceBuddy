@@ -411,7 +411,7 @@ class App:
                     try: n = int(modelo.numero(v) or 40)
                     except ValueError: n = 40
                     a.set_config(k, min(200, max(10, n)))
-                elif k == "guardar_sugeridos": a.set_config(k, v in (True, 1, "1", "true", "on"))  # guardar ya lo dudoso con categoría sugerida
+                elif k in ("guardar_sugeridos", "avisos_windows"): a.set_config(k, v in (True, 1, "1", "true", "on"))  # guardar ya lo dudoso con categoría sugerida · avisos de Windows (recordar.py)
                 elif k == "sugeridos_umbral": a.set_config(k, C.umbral_valido(v))
                 elif k == "acento": a.set_config(k, v if v in ACENTOS else ACENTOS[0])
                 elif k in ("inicio", "inicio_ocultos"):  # paneles de Inicio visibles (en orden) y ocultos
@@ -427,6 +427,16 @@ class App:
             return {"ok": True, "mensaje": self.deshacer_que}
         if ruta == "/api/recategorizar": return {"ok": True, "mensaje": IM.recategorizar(a, int(d["id"]), d)}
         if ruta == "/api/parecidos": return {"ok": True, **IM.parecidos(a, int(d["id"]))}
+        if ruta == "/api/movimiento/dividir":  # un cargo que son varias cosas: una parte por categoría (se puede deshacer y volver a juntar)
+            foto = a.instantanea()
+            msg = IM.dividir(a, int(d["id"]), d.get("partes"))
+            self.deshacer, self.deshacer_que = foto, msg
+            return {"ok": True, "mensaje": msg}
+        if ruta == "/api/movimiento/juntar":
+            foto = a.instantanea()
+            id = IM.juntar(a, int(d["id"]))
+            self.deshacer, self.deshacer_que = foto, "Vuelto a juntar"
+            return {"ok": True, "mensaje": "Vuelto a juntar ✓", "id": id}
         if ruta == "/api/importar/carpeta": return self.importar_carpeta(bool(d.get("previa")))
         if ruta == "/api/importar/descartar": return self.descartar_archivo(d)
         if ruta == "/api/importar/subir": return self.subir(d)
@@ -496,9 +506,10 @@ class App:
         if ruta == "/api/categoria/uso": return {"ok": True, "uso": ordenar.uso(a)}
         if ruta == "/api/plantilla": return {"ok": True, "nombre": "FinanceBuddy-plantilla.xlsx", "contenido": base64.b64encode(exportar.plantilla_excel(a)).decode()}
         if ruta.startswith("/api/precios/"): return self.precios(ruta[len("/api/precios/"):], d)
-        if ruta == "/api/config/descartar_aviso":  # avisos de la revisión de la cartera que el usuario da por buenos
+        if ruta == "/api/config/descartar_aviso":  # avisos que el usuario quita (los de la cartera y los del Inicio); `volver`: lo repone
             k = str(d.get("clave") or "")[:120]
-            if k: a.set_config("avisos_descartados", list(dict.fromkeys((a.config("avisos_descartados") or []) + [k]))[-200:])
+            ya = a.config("avisos_descartados") or []
+            if k: a.set_config("avisos_descartados", [x for x in ya if x != k] if d.get("volver") else list(dict.fromkeys(ya + [k]))[-200:])
             return {"ok": True}
         if ruta == "/api/carpeta": return self.cambiar_carpeta(d)
         if ruta == "/api/copia_extra":  # segunda carpeta donde dejar las copias (USB, otro disco); vacío = solo la de siempre

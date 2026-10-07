@@ -10,6 +10,12 @@ function vistaGestionar() {
   if (!["cierre"].includes(tipo)) enlace(barra, `+ Nuevo`, `#editar/${tipo}/nuevo`).className = "fb-btn";
   if (tipo === "recurrente") enlace(barra, "Detectar en mis movimientos", "#fijos").className = "fb-btn sec";
   if (tipo === "categoria") panelOrdenarCategorias(root);
+  if (tipo === "recurrente") {  // lo que suman tus fijos: al mes y al año
+    const T = totalesFijos(DB.registros.recurrente || [], hoy.toISODate()), cada = (t) => (t.noMensual ? "al mes de media" : "al mes");
+    const partes = [T.gasto.n ? `Gastos fijos: ${eur(T.gasto.mes, 0)} ${cada(T.gasto)} · ${eur(T.gasto.año, 0)} al año` : "", T.ingreso.n ? `Ingresos fijos: ${eur(T.ingreso.mes, 0)} ${cada(T.ingreso)}` : "",
+      T.aportacion.n ? `Aportaciones: ${eur(T.aportacion.mes, 0)} ${cada(T.aportacion)} · ${eur(T.aportacion.año, 0)} al año` : ""].filter(Boolean);
+    if (partes.length) { const box = root.createDiv({ cls: "fb-sumas" }); for (const t of partes) box.createDiv({ text: t }); }
+  }
   const cont = root.createDiv({ cls: "fin-panel" });
   let todos = [...(DB.registros[tipo] || [])];
   if (F.orden) todos.sort(F.orden);
@@ -113,6 +119,7 @@ function vistaEditar() {
   const volver = FB.anterior && !FB.anterior.startsWith("#editar") ? FB.anterior : `#gestionar/${tipo}`;
   if (tipo === "movimiento" && reg && ["gasto", "ingreso", "reembolso"].includes(reg.clase)) cambioCategoria(root, reg, volver);
   if (tipo === "movimiento" && reg && reg.id) panelReembolsos(root, reg);
+  if (tipo === "movimiento" && reg && reg.id) panelDividir(root, reg);
   formulario(root, tipo, reg, { volver });
   if (tipo === "aportacion" && reg && reg.id) {
     const x = [reg.supuesta ? "La orden no decía si era compra o venta: se tomó como compra. Si fue una venta, pon el importe y las participaciones en negativo." : "",
@@ -121,6 +128,86 @@ function vistaEditar() {
     for (const t of x) root.createDiv({ cls: "fin-note", text: t });
   }
   if (tipo === "movimiento" && reg && reg.ext_texto) root.createDiv({ cls: "fin-note", text: `Del extracto: «${reg.ext_texto}» (${eurS(num(reg.ext_importe))}, ${fmtISO(reg.ext_fecha)})` });
+}
+
+// Dividir un gasto o un ingreso en varias categorías (una compra que mezcla comida y cosas de casa, dinero sacado del cajero).
+// La primera parte se lleva lo que no pongas en las demás, así que siempre suman el importe entero. Si ya está dividido,
+// enseña sus partes y «Volver a juntar». Las partes se añaden (hasta seis) y se quitan con su × (quedan al menos dos). No se ofrece en el pago de un fijo ni en un gasto con Bizums enlazados.
+function panelDividir(padre, reg) {
+  const movs = registros("movimiento");
+  if (reg.parte_de) {
+    const partes = movs.filter((m) => m.parte_de === reg.parte_de).sort((a, b) => a.id - b.id), total = sum(partes.map((m) => num(m.importe)));
+    const p = panel(padre, "Es parte de un movimiento dividido", { text: `${partes.length} partes · ${eur(total)}` }, "Este movimiento se dividió en varias categorías. Cada parte cuenta en la suya; entre todas suman el importe entero.");
+    filasDato(p, partes.map((m) => ({ l: `${catIcono(m.categoria)} ${m.categoria}${m.id === reg.id ? " (esta)" : ""}`, s: m.nota || "", v: eur(num(m.importe)), ruta: m.id === reg.id ? null : `#editar/movimiento/${m.id}` })));
+    const b = p.createDiv({ cls: "fb-fila" }).createEl("button", { cls: "fb-btn sec", text: "Volver a juntar", attr: { type: "button" } });
+    b.onclick = async () => {
+      const r = await FB.api("/api/movimiento/juntar", { id: reg.id });
+      if (!r.ok) { FB.aviso(r.mensaje || "No se ha podido juntar", true); return; }
+      await FB.recargar();
+      FB.aviso(r.mensaje, false, { texto: "Deshacer", fn: async () => { await FB.api("/api/deshacer", {}); await FB.refrescar(); } });
+      FB.ir(`#editar/movimiento/${r.id}`);
+    };
+    return;
+  }
+  if (!["gasto", "ingreso"].includes(reg.clase) || reg.recurrente || movs.some((m) => m.reembolsa === reg.id)) return;
+  const total = num(reg.importe), cats = catSegunClase({ clase: reg.clase, categoria: reg.categoria });
+  if (!(total > 0.01) || cats.length < 2) return;
+  const p = panel(padre, "Dividir en varias categorías", null, "Para un cargo que en realidad son varias cosas. Pon el importe y la categoría de cada parte: lo que no repartas se queda en la primera.");
+  const det = p.createEl("details"); det.open = !!FB.estado.dividir;
+  det.addEventListener("toggle", () => { FB.estado.dividir = det.open; });
+  det.createEl("summary", { text: `Dividir estos ${eur(total)}` });
+  const box = det.createDiv({ cls: "fb-partes" }), pie = det.createDiv({ cls: "fin-note" });
+  const filas = [];
+  const cent = (v) => Math.round((Number(String(v).replace(",", ".")) || 0) * 100);
+  const resto = () => Math.round(total * 100) - sum(filas.slice(1).map((f) => cent(f.imp.value)));
+  let bDiv = null, bMas = null;
+  // Tras añadir o quitar una parte: su número en el nombre de cada campo, la × (solo si hay más de dos) y el tope de seis.
+  const renumerar = () => {
+    filas.forEach((f, i) => {
+      f.imp.setAttribute("aria-label", i ? `Importe de la parte ${i + 1}, en euros` : "Importe de la primera parte (lo que queda), en euros");
+      f.sel.setAttribute("aria-label", `Categoría de la parte ${i + 1}`); f.nota.setAttribute("aria-label", `Nota de la parte ${i + 1}`);
+      if (f.x) { f.x.hidden = filas.length <= 2; f.x.setAttribute("aria-label", `Quitar la parte ${i + 1}`); }
+    });
+    if (bMas) bMas.disabled = filas.length >= 6;
+  };
+  const repasar = () => {
+    const r = resto();
+    filas[0].imp.value = (r / 100).toFixed(2);
+    const mal = r <= 0 ? "Las otras partes ya suman todo el importe: baja alguna." : filas.slice(1).some((f) => cent(f.imp.value) <= 0) ? "Pon el importe de cada parte." : "";
+    pie.textContent = mal || `Suman ${eur(total)}.`; pie.classList.toggle("fb-mal", !!mal);
+    if (bDiv) bDiv.disabled = !!mal;
+  };
+  const añadir = (cat) => {
+    const i = filas.length, f = box.createDiv({ cls: "fb-fila" });
+    const imp = f.createEl("input", { cls: "corto", attr: { type: "number", step: "0.01", min: "0", inputmode: "decimal" } });
+    if (!i) { imp.readOnly = true; imp.title = "Lo que queda: se ajusta solo"; }
+    f.createSpan({ text: "€ en" });
+    const sel = f.createEl("select");
+    for (const [v, t] of cats) { const o = sel.createEl("option", { text: t }); o.value = v; }
+    sel.value = cat && cats.some(([v]) => v === cat) ? cat : cats[0][0];
+    const nota = f.createEl("input", { attr: { type: "text", placeholder: "nota (opcional)" } });
+    imp.oninput = repasar;
+    const fila = { imp, sel, nota };
+    if (i) {  // la primera no se quita: es la que se queda con lo que sobra
+      fila.x = f.createEl("button", { cls: "fb-btn sec mini fb-quitar", text: "×", attr: { type: "button", title: "Quitar esta parte" } });
+      fila.x.onclick = () => { filas.splice(filas.indexOf(fila), 1); f.remove(); renumerar(); repasar(); (bMas.disabled ? filas[filas.length - 1].imp : bMas).focus(); };
+    }
+    filas.push(fila);
+    renumerar();
+  };
+  añadir(reg.categoria); añadir(cats.find(([v]) => v !== reg.categoria)[0]);
+  const acc = det.createDiv({ cls: "fb-fila" });
+  bMas = acc.createEl("button", { cls: "fb-btn sec", text: "+ Otra parte", attr: { type: "button" } });
+  bMas.onclick = () => { añadir(); repasar(); filas[filas.length - 1].imp.focus(); };
+  bDiv = acc.createEl("button", { cls: "fb-btn", text: "Dividir", attr: { type: "button" } });
+  bDiv.onclick = async () => {
+    const r = await FB.api("/api/movimiento/dividir", { id: reg.id, partes: filas.map((f) => ({ importe: cent(f.imp.value) / 100, categoria: f.sel.value, nota: f.nota.value })) });
+    if (!r.ok) { FB.aviso(r.mensaje || "No se ha podido dividir", true); return; }
+    FB.estado.dividir = false;
+    await FB.refrescar();
+    FB.aviso(r.mensaje + " ✓", false, { texto: "Deshacer", fn: async () => { await FB.api("/api/deshacer", {}); await FB.refrescar(); } });
+  };
+  repasar();
 }
 
 // Cambiar la categoría a un clic; si viene del extracto, también la de los parecidos (mismo comercio) y recordarlo.

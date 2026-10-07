@@ -18,6 +18,7 @@ const PANELES_INICIO = [
   { id: "categorias", t: "A dónde va tu dinero" },
   { id: "patrimonio", t: "Tu patrimonio (cuentas e inversión)" },
   { id: "proximos", t: "Próximos cargos (el mes que viene)" },
+  { id: "prevision", t: "Tus próximos meses (cuánto tendrás en tus cuentas)" },
   { id: "objetivos", t: "Objetivos y recordatorios" },
   { id: "semana", t: "Esta semana", defecto: false },
   { id: "meses", t: "Tus últimos meses", defecto: false },
@@ -62,6 +63,7 @@ function vistaInicio() {
     categorias: (padre) => tarjetaCategorias(panel(padre, "A dónde va tu dinero", { text: "Ver todo", ruta: "#movimientos/categorias" }), mes),
     patrimonio: (padre) => tarjetaPatrimonio(panel(padre, "Tu patrimonio", { text: "Actualizar saldos", ruta: "#cerrar" })),
     proximos: (padre) => { if (actual) tarjetaProximos(panel(padre, "Próximos cargos", { text: "Fijos", ruta: "#gestionar/recurrente" })); },
+    prevision: (padre) => { if (actual && estimacion()) tarjetaPrevision(panel(padre, "Tus próximos meses", { text: "Fijos", ruta: "#gestionar/recurrente" }, "Lo que tendrás en tus cuentas al acabar cada mes si todo sigue igual: parte de lo que tienes hoy y suma tus fijos, tus aportaciones y lo que sueles gastar de verdad (tu media, no tu límite).")); },
     objetivos: (padre) => { if (objetivosActivos().length || recordatoriosCercanos().length) tarjetaObjetivos(panel(padre, "Objetivos y recordatorios", { text: "Editar", ruta: "#gestionar/objetivo" })); },
     semana: (padre) => { if (actual) tarjetaSemana(panel(padre, "Esta semana", { text: `${S.lunes.toFormat("d/M")} – ${S.domingo.toFormat("d/M")}` }), S); },
     meses: (padre) => tarjetaMeses(panel(padre, "Tus últimos meses")),
@@ -81,19 +83,41 @@ function vistaInicio() {
 // Lo que pide actuar, en una sola franja: lo que toca hacer ahora (importar, anotar saldos), los avisos de nivel «warn»
 // (como máximo 2) y una frase con lo que conviene hacer con el dinero que sobra en la cuenta corriente (planReparto).
 function franjaAvisos(padre) {
-  const filas = accionesQueTocan().map((x) => ({ tipo: "toca", ic: x.ic, b: x.t, txt: x.s, ruta: x.ruta }));
-  for (const a of avisos().filter((a) => a.nivel === "warn" && a.ruta !== "#revisar").slice(0, 2)) filas.push({ tipo: "warn", ic: "!", txt: a.texto, ruta: a.ruta && a.ruta.startsWith("#") ? a.ruta : "#inicio" });
+  const tocan = accionesQueTocan();
+  const filas = tocan.map((x) => ({ tipo: "toca", ic: x.ic, b: x.t, txt: x.s, ruta: x.ruta }));
+  const { arriba, resto } = repartirAvisos(avisos(), tocan.map((x) => x.ruta));
+  const deAviso = (a) => ({ tipo: a.nivel === "warn" ? "warn" : "nota", ic: a.nivel === "warn" ? "!" : "i", txt: a.texto, ruta: a.ruta && a.ruta.startsWith("#") ? a.ruta : "#inicio", clave: a.clave });
+  filas.push(...arriba.map(deAviso));
   const R = planReparto(), r = R && R.acciones[0];
   if (r) filas.push({ tipo: "info", ic: "→", b: r.texto, txt: r.sub });
-  if (!filas.length) return;
+  if (!filas.length && !resto.length) return;
   const box = padre.createDiv({ cls: "fb-franja" });
-  for (const f of filas) {
-    const el = f.ruta ? box.createEl("a", { cls: "r internal-link " + f.tipo, href: f.ruta }) : box.createDiv({ cls: "r " + f.tipo });
+  // Un aviso se puede quitar con su ×: la fila es entonces una caja con el enlace y, al lado, el botón (no uno dentro del otro).
+  const fila = (donde, f) => {
+    const caja = f.clave ? donde.createDiv({ cls: "r con-x " + f.tipo }) : null;
+    const el = f.ruta ? (caja || donde).createEl("a", { cls: (caja ? "" : "r " + f.tipo + " ") + "internal-link", href: f.ruta }) : donde.createDiv({ cls: "r " + f.tipo });
     el.createSpan({ cls: "i", text: f.ic });
     const t = el.createSpan({ cls: "t" });
     if (f.b) t.createEl("b", { text: f.b });
     if (f.txt) t.appendText((f.b ? " · " : "") + f.txt);
     if (f.ruta) el.createSpan({ cls: "fl", text: "›" });
+    if (!caja) return;
+    const x = caja.createEl("button", { cls: "x", text: "×", attr: { type: "button", title: "Quitar este aviso", "aria-label": `Quitar este aviso: ${f.txt}` } });
+    x.onclick = async () => {
+      const abierto = FB.estado.masAvisos;
+      const r = await FB.api("/api/config/descartar_aviso", { clave: f.clave });
+      if (!r.ok) { FB.aviso(r.mensaje || "No se ha podido quitar", true); return; }
+      await FB.refrescar(); FB.estado.masAvisos = abierto;
+      FB.aviso("Aviso quitado", false, { texto: "Volver a ponerlo", fn: async () => { await FB.api("/api/config/descartar_aviso", { clave: f.clave, volver: true }); await FB.refrescar(); } });
+    };
+  };
+  for (const f of filas) fila(box, f);
+  if (resto.length) {  // lo que no cabía arriba y las notas: plegado, para no llenar el Inicio
+    const d = box.createEl("details", { cls: "mas" });
+    d.open = !!FB.estado.masAvisos;
+    d.addEventListener("toggle", () => { FB.estado.masAvisos = d.open; });
+    d.createEl("summary", { text: filas.length ? `y ${resto.length} aviso${resto.length > 1 ? "s" : ""} más` : `${resto.length} aviso${resto.length > 1 ? "s" : ""}` });
+    for (const a of resto) fila(d, deAviso(a));
   }
 }
 
@@ -167,10 +191,10 @@ function heroGasto(padre, S, M) {
     graficoRitmo(g, R, M.key);
   }
   const r = h0.createDiv({ cls: "fb-resumen" });
-  const dato = (l, v, cls) => { const d = r.createDiv({ cls: "d " + (cls || "") }); d.createDiv({ cls: "k", text: l }); d.createDiv({ cls: "n", text: v }); };
+  const dato = (l, v, cls, pie) => { const d = r.createDiv({ cls: "d " + (cls || "") }); d.createDiv({ cls: "k", text: l }); d.createDiv({ cls: "n", text: v }); if (pie) d.createDiv({ cls: "p", text: pie }); };
   dato(actual ? "Ha entrado" : "Entró", eur(M.ingresos, 0), "entra");
   dato(actual ? "Ha salido" : "Salió", eur(M.gastos, 0), "sale");
-  dato("Ahorro del mes", eurS(M.ahorro, 0), M.ahorro < 0 ? "neg" : "");
+  dato("Ahorro del mes", eurS(M.ahorro, 0), M.ahorro < 0 ? "neg" : "", M.ahorro > 0 && isFinite(M.tasa) ? `${pct(M.tasa)} de lo que ${actual ? "ha entrado" : "entró"}` : "");
 }
 
 // Media de gasto variable de los últimos meses completos con movimientos, redondeada a 50 €
@@ -344,11 +368,46 @@ function tarjetaObjetivos(p) {
     const fila = p.createDiv({ cls: "fb-obj" });
     const cab = fila.createDiv({ cls: "fb-fila" });
     cab.createSpan({ cls: "fb-et", text: o.nombre });
-    cab.createSpan({ cls: "fin-note", text: `${eur(o.ahorrado, 0)} de ${eur(o.meta, 0)}${o.limite ? ` · para el ${o.limite.toFormat("dd/MM/yyyy")}` : ""}` });
+    const alMes = ritmoObjetivo(o, hoy);
+    cab.createSpan({ cls: "fin-note", text: `${eur(o.ahorrado, 0)} de ${eur(o.meta, 0)}${o.limite ? ` · para el ${o.limite.toFormat("dd/MM/yyyy")}` : ""}${alMes ? ` · ≈ ${eur(alMes, 0)} al mes` : ""}` });
     const b = fila.createDiv({ cls: "fb-barra fina" }); b.createDiv().style.width = `${(f * 100).toFixed(1)}%`;
   }
   const R = recordatoriosCercanos().slice(0, 3);
-  if (R.length) { const l = p.createDiv({ cls: "fb-lista" }); for (const r of R) item(l, { fecha: r.fecha, t: r.nombre, s: r.texto || "recordatorio", v: "", ruta: `#editar/recordatorio/${r.p.id}` }); }
+  if (R.length) {
+    const l = p.createDiv({ cls: "fb-lista" });
+    for (const r of R) {
+      const el = item(l, { fecha: r.fecha, t: "", s: [r.texto, cuantoFalta(r.fecha, hoy), REPETIR[r.repetir]].filter(Boolean).join(" · ") });
+      enlace(el.querySelector(".t"), r.nombre, `#editar/recordatorio/${r.p.id}`);
+      botonHecho(el, r);
+    }
+  }
+}
+// «Hecho»: un recordatorio que se repite pasa a su próxima fecha; el que no, queda como hecho (se cambia editándolo).
+// p: el registro tal cual está guardado.
+async function marcarHecho(p) {
+  const sig = siguienteFecha(toDate(p.fecha), txt(p.repetir).toLowerCase(), hoy);
+  const { id, file, ...datos } = p;
+  const res = await FB.api("/api/guardar", { tipo: "recordatorio", id, datos: sig ? { ...datos, fecha: sig.toISODate(), estado: "pendiente" } : { ...datos, estado: "hecho" } });
+  FB.aviso(res.ok ? (sig ? `Hecho ✓ · el próximo, el ${sig.toFormat("dd/MM/yyyy")}` : "Hecho ✓") : res.mensaje || "No se ha podido guardar", !res.ok);
+  if (res.ok) await FB.refrescar();
+}
+function botonHecho(padre, r) {
+  const b = padre.createEl("button", { cls: "fb-btn sec mini", text: "Hecho", attr: { type: "button", "aria-label": `Marcar como hecho: ${r.nombre}` } });
+  b.onclick = () => marcarHecho(r.p);
+  return b;
+}
+// Lo que tendrás en tus cuentas al acabar cada uno de los próximos 12 meses (prevision()), y cuándo toca fondo.
+function tarjetaPrevision(p) {
+  const F = prevision(), u = F.filas[F.filas.length - 1];
+  const t = p.createDiv({ cls: "fb-total" });
+  t.createDiv({ cls: "v", text: eur(u.saldo, 0) });
+  t.createDiv({ cls: "s " + (u.saldo < 0 ? "neg" : ""), text: `en tus cuentas en ${mesLbl(u.key).toLowerCase()} · hoy ${eur(F.inicio, 0)}` });
+  columnas(p, { alto: 150, etiquetas: F.filas.map((f) => mesCorto(f.key)), titulos: F.filas.map((f) => `${mesLbl(f.key)}: entra ${eur(f.ing, 0)}, sale ${eur(f.salidas, 0)}`),
+    series: [{ nombre: "Al acabar el mes", color: (v) => (v < 0 ? "var(--rose)" : "var(--brand)"), valores: F.filas.map((f) => Math.round(f.saldo)) }] });
+  if (F.minimo.saldo < F.inicio - 1) p.createDiv({ cls: "fin-note", text: `Lo más bajo: ${eur(F.minimo.saldo, 0)} en ${mesLbl(F.minimo.key).toLowerCase()}.` });
+  const n = p.createDiv({ cls: "fin-note" });
+  if (!hayIngresosFijos()) { n.appendText("Tus ingresos aún no están como fijos, así que aquí solo se ve lo que sale. "); enlace(n, "Detectar mis fijos →", "#fijos"); }
+  else n.appendText(`Cuenta tus fijos, tus aportaciones y ${eur(F.varEst, 0)} al mes de gasto variable (${F.fuenteVar}${isFinite(F.varReal) && limiteVar > 0 && Math.abs(F.varReal - limiteVar) >= 1 ? `; tu límite es ${eur(limiteVar, 0)}` : ""}).`);
 }
 
 function tarjetaMeses(p) {
@@ -378,10 +437,11 @@ function vistaMovimientos() {
   if (nJev) enlace(root.createDiv({ cls: "fin-note fb-pista" }), `✨ El asistente Jev cree que ${nJev === 1 ? "un comercio está" : `${nJev} comercios están`} en otra categoría · revísalo →`, "#revision");
   if (modo === "categorias") { vistaPorCategoria(M); return; }
 
-  // Un mes o todo el historial (buscar un concepto siempre mira en todo)
+  // Un mes, su año entero o todo el historial (buscar un concepto mira en todo, salvo que hayas elegido el año)
   let todos = [], cats = [];
+  const año = mes.slice(0, 4);
   const cargar = (todo) => {
-    todos = (todo ? movimientos().filter((m) => !m.auto && !m.previsto) : [...M.ms]).sort((a, b) => b.fecha - a.fecha || (b.p.id || 0) - (a.p.id || 0));
+    todos = (todo ? movimientos().filter((m) => !m.auto && !m.previsto && (todo !== "año" || keyDe(m.fecha).slice(0, 4) === año)) : [...M.ms]).sort((a, b) => b.fecha - a.fecha || (b.p.id || 0) - (a.p.id || 0));
     cats = [...new Set(todos.map((m) => (m.clase === "transferencia" ? "Entre tus cuentas" : m.categoria)).filter(Boolean))].sort((a, b) => a.localeCompare(b, "es"));
   };
   cargar(FB.estado.hist);
@@ -389,7 +449,11 @@ function vistaMovimientos() {
   const inp = filtros.createEl("input", { cls: "fin-search", attr: { type: "search", placeholder: "Buscar un concepto, comercio o importe…" } });
   inp.value = busqueda;
   const per = filtros.createDiv({ cls: "fb-seg mini" });
-  for (const [k, t] of [[false, mesLbl(mes)], [true, "Todo el historial"]]) { const b = per.createEl("button", { text: t, cls: !!FB.estado.hist === k ? "act" : "", attr: { type: "button" } }); b.onclick = () => { FB.estado.hist = k; FB.estado.pagMov = 0; render(); }; }
+  for (const [k, t] of [[false, mesLbl(mes)], ["año", `Todo ${año}`], [true, "Todo el historial"]]) { const b = per.createEl("button", { text: t, cls: (FB.estado.hist || false) === k ? "act" : "", attr: { type: "button" } }); b.onclick = () => { FB.estado.hist = k; FB.estado.pagMov = 0; render(); }; }
+  const sOrd = filtros.createEl("select", { attr: { "aria-label": "Ordenar los movimientos" } });
+  for (const [k, t] of [["fecha", "Más recientes primero"], ["importe", "Mayor importe primero"]]) { const o = sOrd.createEl("option", { text: t }); o.value = k; }
+  sOrd.value = FB.estado.ordenMov || "fecha";
+  sOrd.onchange = () => { FB.estado.ordenMov = sOrd.value; FB.estado.pagMov = 0; pintar(); };
   const chips = root.createDiv({ cls: "fb-chips" });
   const total = root.createDiv({ cls: "fin-note" });
   const lista = root.createDiv({ cls: "fin-panel" });
@@ -403,6 +467,8 @@ function vistaMovimientos() {
       b.onclick = () => { filtroCat = c; FB.estado.pagMov = 0; pintarChips(); pintar(); };
     }
   };
+  const entero = new Map();  // movimiento dividido → su importe entero (la suma de sus partes)
+  for (const r of registros("movimiento")) if (r.parte_de) entero.set(r.parte_de, (entero.get(r.parte_de) || 0) + num(r.importe));
   const devuelto = new Map();  // gasto → lo que te han devuelto de él (Bizums enlazados)
   for (const r of registros("movimiento")) if (r.reembolsa) devuelto.set(r.reembolsa, (devuelto.get(r.reembolsa) || 0) + num(r.importe));
   const pintar = () => {
@@ -411,15 +477,17 @@ function vistaMovimientos() {
     if (q && !FB.estado.hist) { cargar(true); }  // buscar mira en todo el historial; sin búsqueda vuelve al mes
     else if (!q && !FB.estado.hist) cargar(false);
     const f = todos.filter((m) => (!filtroCat || (m.clase === "transferencia" ? "Entre tus cuentas" : m.categoria) === filtroCat)
-      && (!q || norm(`${m.concepto} ${m.categoria} ${m.cuenta} ${m.p.ext_texto || ""} ${nf(m.importe, 2, 2)}`).includes(q)));
+      && (!q || norm(`${m.concepto} ${m.categoria} ${m.cuenta} ${m.p.ext_texto || ""} ${m.p.nota || ""} ${nf(m.importe, 2, 2)}`).includes(q)));
     if (!f.length) { vacio(lista, todos.length ? "Nada coincide" : "Sin movimientos este mes", todos.length ? "" : " Importa el extracto de tu banco o apunta uno a mano."); return; }
     const neto = sum(f.map((x) => (x.clase === "ingreso" || x.clase === "reembolso" ? x.importe : x.clase === "gasto" ? -x.importe : 0)));
-    total.textContent = `${f.length} movimiento${f.length > 1 ? "s" : ""}${q && !FB.estado.hist ? " en todo el historial" : ""} · ${eurS(neto, 0)} en total (sin contar traspasos)`;
-    let dia = null, cont = null;
+    total.textContent = `${f.length} movimiento${f.length > 1 ? "s" : ""}${q && !FB.estado.hist ? " en todo el historial" : FB.estado.hist === "año" ? ` en ${año}` : ""} · ${eurS(neto, 0)} en total (sin contar traspasos)`;
+    const porImporte = FB.estado.ordenMov === "importe";  // de mayor a menor, sin agrupar por días: la fecha va en cada fila
+    if (porImporte) f.sort((a, b) => b.importe - a.importe);
+    let dia = null, cont = porImporte ? lista.createDiv({ cls: "fb-lista" }) : null;
     const paginas = Math.ceil(f.length / POR_PAGINA), pag = Math.min(FB.estado.pagMov || 0, paginas - 1);
     for (const m of f.slice(pag * POR_PAGINA, (pag + 1) * POR_PAGINA)) {
       const k = m.fecha.toISODate();
-      if (k !== dia) {
+      if (!porImporte && k !== dia) {
         dia = k;
         const d = lista.createDiv({ cls: "fb-dia" });
         const cab = d.createDiv({ cls: "cab" });
@@ -433,7 +501,7 @@ function vistaMovimientos() {
       const sub = m.clase === "transferencia" ? `Entre tus cuentas ${m.destino ? "→ " + m.destino : m.origen ? "← " + m.origen : ""}` : `${m.categoria}${m.clase === "reembolso" ? " · te lo devolvieron" : ""}${devuelto.has(m.p.id) ? ` · te devolvieron ${eur(devuelto.get(m.p.id))}` : ""}`;
       item(cont, {
         av: { cat: m.clase === "transferencia" ? null : m.categoria, clase: m.clase }, t: m.concepto,
-        s: `${sub}${cuentas().length > 1 ? " · " + m.cuenta : ""}${m.auto ? " · previsto" : ""}${m.pendiente ? " · sin revisar" : ""}${m.p && m.p.sugerido ? " · categoría por confirmar" : ""}`,
+        s: `${porImporte ? fechaCorta(k) + " · " : ""}${sub}${cuentas().length > 1 ? " · " + m.cuenta : ""}${m.auto ? " · previsto" : ""}${m.pendiente ? " · sin revisar" : ""}${m.p && m.p.sugerido ? " · categoría por confirmar" : ""}${m.p && m.p.parte_de ? ` · parte de ${eur(entero.get(m.p.parte_de) || m.importe)}` : ""}${m.p && m.p.nota ? ` · «${m.p.nota}»` : ""}`,
         v: signo + eur(m.importe), pos: entra, prev: m.auto || m.previsto,
         ruta: m.pendiente ? "#revisar" : m.auto ? (m.p.id ? `#editar/recurrente/${m.p.id}` : null) : `#editar/movimiento/${m.p.id}`,
       });

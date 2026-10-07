@@ -58,7 +58,9 @@ largo plazo») para dejar fuera un colchón o una apuesta de las cifras.
 **Para la renta** (*Inversión → Para la renta*): ganancias y pérdidas realizadas por año con el método **FIFO** (se vende lo
 primero que compraste); un traspaso entre fondos no es venta y el nuevo hereda el coste; **dividendos y comisiones** (se
 detectan en el extracto o se anotan a mano) y lo que no se puede calcular (ventas sin participaciones). Es una ayuda para
-preparar la declaración, no asesoramiento fiscal. Tipos de activo: fondo, ETF, acción, cripto, materias primas, plan de pensiones,
+preparar la declaración, no asesoramiento fiscal. En cada dividendo puedes anotar la **retención**; con ella la pantalla enseña el
+bruto, lo ya retenido y **lo que te saldría a pagar** (tramos del ahorro, restando las pérdidas de los cuatro años anteriores), y
+«Descargar el año (CSV)» lo saca a Excel. Tipos de activo: fondo, ETF, acción, cripto, materias primas, plan de pensiones,
 bono e inmueble.
 
 **Precios por internet (opcional, apagado de serie)** (*Ajustes → Precios por internet*): en vez de anotar a mano lo que vale cada
@@ -127,6 +129,11 @@ categoría y cuenta en el mes, marcado «categoría por confirmar» (se apaga en
 categoría tuya encaja, te propone **crear una nueva** (Mascotas, Viajes, Salud…) con su emoji: solo se crea si la pulsas. Las entradas de dinero al bróker con un concepto tuyo («ahorro», «Inicio»)
 se proponen como traspaso desde tu banco, no como la venta de un activo.
 
+**Dividir un movimiento**: si un cargo son varias cosas (una compra que mezcla comida y cosas de casa, dinero del cajero), ábrelo
+y en *Dividir en varias categorías* pon el importe y la categoría de cada parte; lo que no repartas se queda en la primera, así
+que siempre suman el total. En la lista cada parte sale marcada («parte de 87,40 €») y desde cualquiera puedes **volver a
+juntarlas**. Reimportar el extracto no lo duplica. No se ofrece en el pago de un fijo ni en un gasto con Bizums enlazados.
+
 **Poner orden en las categorías** (*Ajustes → Categorías*): **probar una regla** antes de guardarla (cuántos movimientos ya
 importados casarían, con una muestra, y aplicarla a todos de golpe), **fusionar** dos categorías en una y **ocultar** las que
 no usas (no se borra nada y sus movimientos siguen contando). Todo con vista previa y **Deshacer**.
@@ -138,6 +145,11 @@ categorías, reglas, inversión, aportaciones, dividendos, objetivos y recordato
 cuántos registros por página en las listas largas; el día en que empieza tu mes y tu colchón;
 icono, color y presupuesto de cada categoría (con aviso si te pasas). En *Movimientos → Por categoría* ves cada una
 frente a tu media de los meses anteriores, y en el Inicio, el ritmo de gasto del mes frente a lo que sueles llevar.
+
+**Lo que viene** (*Inicio*): «Tus próximos meses» enseña cuánto tendrás en tus cuentas al acabar cada uno de los próximos doce
+meses; los avisos se quitan con su **×** (vuelven a salir cuando cambia lo que los provoca: otro mes, otra subida); cada objetivo con fecha dice cuánto apartar al mes; los recordatorios pueden **repetirse** (cada año, cada 3 meses o cada
+mes) y con «Hecho» pasan solos a su siguiente fecha. En *Fijos* ves lo que suman al mes y al año. Y si quieres, *Ajustes →
+Avisos de Windows* te avisa de los recordatorios y de cuándo toca importar aunque no abras la app (apagado de serie, sin internet).
 
 Cerrar la pestaña del navegador no cierra la app: para cerrarla, clic derecho en su icono de la bandeja → *Cerrar FinanceBuddy* (o *Ajustes → General → Cerrar FinanceBuddy*). Si la vuelves a abrir, se reutiliza la que ya estaba en marcha.
 
@@ -223,6 +235,7 @@ financebuddy/
   ordenar.py       poner orden en las categorías: probar una regla antes de guardarla, fusionar y ocultar categorías
   bizums.py        Bizums recibidos: casar con el gasto que devuelven (aritmética de repartos) y enlazarlo
   secreto.py       cifra las claves de Jev y CoinGecko con la protección de datos de Windows
+  recordar.py      avisos de Windows desde el icono de la bandeja (opcional): recordatorios y días sin importar
   jev.py           asistente opcional Jev (TypeSafe AI): dudas del banco y del bróker, repaso de categorías, apuntar, fijos y formatos nuevos
   plantilla.py     categorías, reglas y formatos de serie
   ejemplo.py       datos de ejemplo

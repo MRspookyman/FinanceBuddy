@@ -211,8 +211,8 @@ function planReparto() {
 
 // ───────────── previsión de caja ─────────────
 // Parte de la liquidez estimada hoy y suma, mes a mes, lo pendiente: recurrentes (ingresos, gastos, aportaciones),
-// movimientos con fecha futura y el gasto variable previsto: el límite mensual (el plan del usuario);
-// si no hay límite, la media real de los 3 últimos meses cerrados. La media real se devuelve siempre para comparar.
+// movimientos con fecha futura y el gasto variable previsto: lo que gastas de verdad (la media de los 3 últimos meses
+// cerrados), no el límite que te propones, porque lo normal es pasarse; el límite solo se usa si aún no hay meses con datos.
 // Las aportaciones se pagan primero con el efectivo del bróker; cuando se acaba, salen del banco (`agota`: primer mes así).
 function prevision(n = 12) {
   const E = estimacion();
@@ -222,8 +222,8 @@ function prevision(n = 12) {
   // Solo meses con gasto variable apuntado (un mes con solo recurrentes fijos daría una media de 0 €).
   const cerrados = mesesHasta(mesAnterior(hoyKey), 3).map(finMes).map(gastoVariable).filter((v) => v > 0);
   const varReal = cerrados.length ? media(cerrados) : NaN;
-  const varEst = limiteVar > 0 ? limiteVar : isFinite(varReal) ? varReal : 0;
-  const fuenteVar = limiteVar > 0 ? "tu límite mensual" : isFinite(varReal) ? `media de ${cerrados.length} mes${cerrados.length > 1 ? "es" : ""}` : "sin datos";
+  const varEst = isFinite(varReal) ? varReal : limiteVar > 0 ? limiteVar : 0;
+  const fuenteVar = isFinite(varReal) ? (cerrados.length > 1 ? `tu media de los últimos ${cerrados.length} meses` : "lo que gastaste el mes pasado") : limiteVar > 0 ? "tu límite mensual: aún no hay meses completos" : "sin datos";
   const varMes = gastoVariable(finMes(hoyKey));
   let saldo = inicio;
   const filas = mesesDesde(hoyKey, n).map((key) => {

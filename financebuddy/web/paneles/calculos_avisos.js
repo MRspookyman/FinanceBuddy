@@ -27,48 +27,103 @@ function resumenMes(key) {
   if (sin) out.push(`Quedan ${sin} movimiento${sin > 1 ? "s" : ""} sin revisar que ya cuentan como «Sin clasificar».`);
   return out;
 }
+// Fijos de cada mes que llevan más de dos meses sin aparecer en lo importado (una suscripción que diste de baja, un recibo que
+// cambió de nombre): mientras sigan activos, la app los da por pagados cada mes y cuentan en tus gastos y en la previsión.
+// Solo los que alguna vez casaron con un movimiento real, y contando hasta el último día con datos (no hasta hoy).
+function fijosSinCobrar() {
+  const fd = fechaDatos();
+  if (!fd) return [];
+  const ult = new Map();
+  for (const m of movimientos()) if (!m.auto && !m.previsto && m.recurrente && (!ult.has(m.recurrente) || m.fecha > ult.get(m.recurrente))) ult.set(m.recurrente, m.fecha);
+  return recurrentes().filter((r) => r.clase !== "aportacion" && !r.meses && !(r.hasta && r.hasta < hoy) && ult.has(r.nombre) && fd.diff(ult.get(r.nombre), "days").days > 62)
+    .map((r) => ({ id: r.p.id, nombre: r.nombre, clase: r.clase, ultima: ult.get(r.nombre) }));
+}
+// Qué avisos van a la vista en el Inicio y cuáles plegados («y N avisos más»). Arriba, como mucho `max` de los que piden
+// actuar (warn); el resto de esos y las notas (info), plegados. Fuera: lo de «Por revisar» (ya está en el menú, con su número)
+// y las notas que repiten una de las acciones que ya salen arriba (`rutasArriba`).
+function repartirAvisos(lista, rutasArriba = [], max = 2) {
+  const L = lista.filter((a) => a.ruta !== "#revisar" && !(a.nivel !== "warn" && rutasArriba.includes(a.ruta)));
+  const warn = L.filter((a) => a.nivel === "warn");
+  return { arriba: warn.slice(0, max), resto: [...warn.slice(max), ...L.filter((a) => a.nivel !== "warn")] };
+}
+// Cuánto hay que apartar al mes para llegar a un objetivo con fecha (0 si no tiene fecha, ya pasó o ya está conseguido).
+function ritmoObjetivo(o, hoyF) {
+  if (!o.limite || !(o.limite > hoyF) || !(o.meta > o.ahorrado)) return 0;
+  return (o.meta - o.ahorrado) / Math.max(1, Math.ceil(o.limite.diff(hoyF, "months").months));
+}
+// Recordatorios que se repiten: cada cuántos meses, cómo se dice y cuál es la siguiente fecha (la primera posterior a hoy).
+const MESES_REPETIR = { anual: 12, trimestral: 3, mensual: 1 };
+const REPETIR = { anual: "cada año", trimestral: "cada 3 meses", mensual: "cada mes" };
+function siguienteFecha(fecha, repetir, hoyF) {
+  const n = MESES_REPETIR[repetir];
+  if (!n || !fecha) return null;
+  let f = fecha.plus({ months: n });
+  for (let i = 1; f <= hoyF; i++) f = fecha.plus({ months: n * (i + 1) });  // desde la fecha original: un día 31 no se va corriendo al 28
+  return f;
+}
+function cuantoFalta(fecha, hoyF) {
+  const d = Math.round(fecha.startOf("day").diff(hoyF.startOf("day"), "days").days);
+  return d === 0 ? "hoy" : d === 1 ? "mañana" : d === -1 ? "ayer" : d < 0 ? `hace ${-d} días` : `en ${d} días`;
+}
+// Lo que suman tus fijos en marcha, por tipo: al año (cada uno por las veces que toca) y al mes (de media, si alguno no es de todos los meses: `noMensual`).
+// regs: los registros tal cual ({ clase, importe, meses, activo, hasta }).
+function totalesFijos(regs, hoyISO) {
+  const out = { gasto: { año: 0, n: 0 }, ingreso: { año: 0, n: 0 }, aportacion: { año: 0, n: 0 } };
+  for (const r of regs) {
+    if (r.activo === false || (r.hasta && String(r.hasta) < hoyISO)) continue;
+    const t = out[r.clase || "gasto"]; if (!t) continue;
+    const veces = Array.isArray(r.meses) && r.meses.length ? r.meses.length : 12;
+    if (veces < 12) t.noMensual = true;
+    t.año += Math.abs(num(r.importe)) * veces; t.n++;
+  }
+  for (const k of ["gasto", "ingreso", "aportacion"]) out[k].mes = out[k].año / 12;
+  return out;
+}
 function avisos() {
-  const out = [];
-  const add = (nivel, texto, ruta) => out.push({ nivel, texto, ruta });
+  // `clave`: qué aviso es y de cuándo. Con la × del Inicio se guarda en config.avisos_descartados y ese aviso no vuelve a salir;
+  // como la clave lleva el mes o el dato que lo provoca, sí avisa otra vez cuando cambia (otro mes, otra subida, otro saldo).
+  const out = [], quitados = new Set((DB.config || {}).avisos_descartados || []);
+  const add = (nivel, texto, ruta, clave) => { if (!clave || !quitados.has("inicio:" + clave)) out.push({ nivel, texto, ruta, clave: clave ? "inicio:" + clave : "" }); };
   const nPend = (DB.pendientes || []).length;
   if (nPend) add("warn", `${nPend} movimiento${nPend > 1 ? "s" : ""} por revisar: la app no ha sabido clasificarlo${nPend > 1 ? "s" : ""} sola`, "#revisar");
-  for (const x of subidasFijos()) add("warn", `${x.nombre} ha subido: de ${eur(x.antes, 2)} a ${eur(x.ahora, 2)}`, "#gestionar/recurrente");
+  for (const x of subidasFijos()) add("warn", `${x.nombre} ha subido: de ${eur(x.antes, 2)} a ${eur(x.ahora, 2)}`, "#gestionar/recurrente", `subida:${x.nombre}:${x.ahora}`);
+  for (const x of fijosSinCobrar()) add("info", `${x.nombre} no aparece en tus movimientos desde el ${x.ultima.toFormat("dd/MM")} · si ya no lo ${x.clase === "ingreso" ? "cobras" : "pagas"}, desactívalo: sigue contando cada mes`, `#editar/recurrente/${x.id}`, `sincobrar:${x.id}:${x.ultima.toISODate()}`);
   const nArch = ((DB.info || {}).archivos || []).length;
-  if (nArch) add("warn", `${nArch} archivo${nArch > 1 ? "s" : ""} en la carpeta Importar sin procesar`, "#importar");
+  if (nArch) add("warn", `${nArch} archivo${nArch > 1 ? "s" : ""} en la carpeta Importar sin procesar`, "#importar", `archivos:${nArch}:${hoy.toISODate()}`);
   const K = conciliacion();
   const desc = K ? K.filas.filter((f) => Math.abs(f.dif) > 1) : [];
   // Con las dos cifras: «+6,50 €» a secas no dice si falta un movimiento o si el saldo que anotaste es de antes
   if (desc.length) add("warn", `No cuadra entre el ${K.desde.toFormat("dd/MM")} y el ${K.hasta.toFormat("dd/MM")}: `
     + desc.map((f) => `${f.nombre} ${eurS(f.dif)} (anotaste ${eur(f.real)} y los movimientos dan ${eur(f.esperado)})`).join(", ")
-    + " · falta o sobra algún movimiento, o el saldo que anotaste es de antes", "#cerrar");
+    + " · falta o sobra algún movimiento, o el saldo que anotaste es de antes", "#cerrar", `cuadre:${K.hasta.toISODate()}`);
   const P = patrimonio();
   // Los cierres se piden desde que se usa la app (primer registro de patrimonio), no desde el historial importado.
   const primerMes = P.length ? keyCal(P[0].fecha) : null;
   const ant = mesAnterior(hoyCal);
-  if (primerMes && ant >= primerMes && !cierres().some((c) => c.mes === ant)) add("warn", `${mesLbl(ant)} sin cerrar · anota tus saldos del último día del mes`, "#cerrar");
-  if (!P.length) add("warn", "Aún no hay saldos registrados · se anotan al cerrar el mes", "#cerrar");
-  else { const d = diasDesde(P[P.length - 1].fecha); if (d > 40) add("warn", `Último registro de saldos hace ${d} días`, "#cerrar"); }
+  if (primerMes && ant >= primerMes && !cierres().some((c) => c.mes === ant)) add("warn", `${mesLbl(ant)} sin cerrar · anota tus saldos del último día del mes`, "#cerrar", `cierre:${ant}`);
+  if (!P.length) add("warn", "Aún no hay saldos registrados · se anotan al cerrar el mes", "#cerrar", `sinsaldos:${hoyCal}`);
+  else { const d = diasDesde(P[P.length - 1].fecha); if (d > 40) add("warn", `Último registro de saldos hace ${d} días`, "#cerrar", `saldosviejos:${hoyCal}`); }
   const fd = fechaDatos();
-  if (cuentas().some((c) => c.extracto) && (!fd || diasDesde(fd) > 8)) add("info", fd ? `Movimientos hasta el ${fd.toFormat("dd/MM")}: importa el extracto de tu banco para ver cómo vas` : "Importa el extracto de tu banco para empezar", "#importar");
+  if (cuentas().some((c) => c.extracto) && (!fd || diasDesde(fd) > 8)) add("info", fd ? `Movimientos hasta el ${fd.toFormat("dd/MM")}: importa el extracto de tu banco para ver cómo vas` : "Importa el extracto de tu banco para empezar", "#importar", `importar:${fd ? fd.toISODate() : ""}`);
   const A = activos();
   const viejos = A.filter((a) => !a.fechaValor || diasDesde(a.fechaValor) > 35);
-  if (viejos.length) add("info", `Valor de la inversión sin actualizar hace más de un mes: ${viejos.map((a) => a.nombre).join(", ")}`, "#valores");
+  if (viejos.length) add("info", `Valor de la inversión sin actualizar hace más de un mes: ${viejos.map((a) => a.nombre).join(", ")}`, "#valores", `valores:${hoyCal}`);
   const malos = saludInversion().filter((x) => x.nivel === "error");
-  if (malos.length) add("warn", `Tu inversión: ${malos.length === 1 ? "hay algo que no cuadra" : `${malos.length} cosas no cuadran`} (${malos.map((x) => x.activo.nombre).join(", ")}) · revísalo`, "#inversion");
+  if (malos.length) add("warn", `Tu inversión: ${malos.length === 1 ? "hay algo que no cuadra" : `${malos.length} cosas no cuadran`} (${malos.map((x) => x.activo.nombre).join(", ")}) · revísalo`, "#inversion", `salud:${hoyCal}:${malos.length}`);
   const sinIni = A.filter((a) => a.aportadoIni == null);
-  if (sinIni.length) add("info", `Falta cuánto habías aportado antes a ${sinIni.map((a) => a.nombre).join(", ")} · sin rentabilidad`, "#gestionar/activo");
+  if (sinIni.length) add("info", `Falta cuánto habías aportado antes a ${sinIni.map((a) => a.nombre).join(", ")} · sin rentabilidad`, "#gestionar/activo", `sinini:${sinIni.length}`);
   const F = prevision();
-  if (!hayIngresosFijos() && fechaDatos() && sum(mesesHasta(hoyKey, 3).map((k) => finMes(k).ingresos)) > 0) add("info", "Tus ingresos aún no están como fijos: la previsión de los próximos meses no los cuenta · detéctalos", "#fijos");
-  else if (F.conRegistro && F.minimo && F.minimo.saldo < 0) add("warn", `Tu dinero en cuentas bajaría a ${eur(F.minimo.saldo, 0)} en ${mesLbl(F.minimo.key).toLowerCase()}`, "#inicio");
+  if (!hayIngresosFijos() && fechaDatos() && sum(mesesHasta(hoyKey, 3).map((k) => finMes(k).ingresos)) > 0) add("info", "Tus ingresos aún no están como fijos: la previsión de los próximos meses no los cuenta · detéctalos", "#fijos", `ingfijos:${hoyCal}`);
+  else if (F.conRegistro && F.minimo && F.minimo.saldo < 0) add("warn", `Tu dinero en cuentas bajaría a ${eur(F.minimo.saldo, 0)} en ${mesLbl(F.minimo.key).toLowerCase()}`, "#inicio", `minimo:${F.minimo.key}:${hoyCal}`);
   if (F.agota) {
     const meses = Math.round(mesDT(F.agota.key).diff(mesDT(hoyKey), "months").months);
-    add(meses <= 1 ? "warn" : "info", `El dinero sin invertir de ${nombresBroker()} se acaba en ${mesLbl(F.agota.key).toLowerCase()}: ese mes faltan ${eur(F.agota.apoBanco, 0)} para las aportaciones · pasa dinero desde el banco antes`, "#inicio");
+    add(meses <= 1 ? "warn" : "info", `El dinero sin invertir de ${nombresBroker()} se acaba en ${mesLbl(F.agota.key).toLowerCase()}: ese mes faltan ${eur(F.agota.apoBanco, 0)} para las aportaciones · pasa dinero desde el banco antes`, "#inicio", `agota:${F.agota.key}`);
   }
   // Ritmo del gasto variable del mes en curso (desde el día 7, mientras no se haya pasado ya: eso lo dice la barra).
   const Mh = finMes(hoyKey), vari = gastoVariable(Mh), d = diaDeMes(hoy), dm = diasMes(hoyKey);
   if (limiteVar > 0 && d >= 7 && d < dm && vari <= limiteVar) {
     const proy = (vari / d) * dm;
-    if (proy > limiteVar * 1.05) add("warn", `A este ritmo acabarás ${mesLbl(hoyKey).toLowerCase()} con ${eur(proy, 0)} de gasto variable (límite ${eur(limiteVar, 0)}; llevas ${eur(vari, 0)})`, "#movimientos");
+    if (proy > limiteVar * 1.05) add("warn", `A este ritmo acabarás ${mesLbl(hoyKey).toLowerCase()} con ${eur(proy, 0)} de gasto variable (límite ${eur(limiteVar, 0)}; llevas ${eur(vari, 0)})`, "#movimientos", `ritmo:${hoyKey}`);
   }
   // Categorías disparadas este mes: ≥ 2× su media de los meses anteriores con datos (y al menos 50 € más).
   const previos = mesesHasta(mesAnterior(hoyKey), 3).filter(conDatos);
@@ -78,18 +133,18 @@ function avisos() {
     for (const [cat, v] of actual) {
       const med = media(antes.map((m) => m.get(cat) || 0));
       if ((med > 0 && v >= 2 * med && v - med >= 50) || (med === 0 && v >= 150))
-        add("info", `${cat}: ${eur(v, 0)} este mes, ${med > 0 ? `${nf(v / med, 1, 1)}× tu media (${eur(med, 0)})` : "sin gasto los meses anteriores"}`, "#movimientos");
+        add("info", `${cat}: ${eur(v, 0)} este mes, ${med > 0 ? `${nf(v / med, 1, 1)}× tu media (${eur(med, 0)})` : "sin gasto los meses anteriores"}`, "#movimientos", `cat:${cat}:${hoyKey}`);
     }
   }
   // Presupuestos por categoría del mes en curso.
   for (const c of resumenCategorias(hoyKey).filter((c) => c.presupuesto > 0)) {
-    if (c.valor > c.presupuesto) add("warn", `${c.nombre}: llevas ${eur(c.valor, 0)} de un presupuesto de ${eur(c.presupuesto, 0)}`, "#movimientos/categorias");
-    else if (c.valor >= 0.9 * c.presupuesto && d < dm - 3) add("info", `${c.nombre}: ya llevas el ${Math.round((100 * c.valor) / c.presupuesto)} % de su presupuesto`, "#movimientos/categorias");
+    if (c.valor > c.presupuesto) add("warn", `${c.nombre}: llevas ${eur(c.valor, 0)} de un presupuesto de ${eur(c.presupuesto, 0)}`, "#movimientos/categorias", `pres:${c.nombre}:${hoyKey}`);
+    else if (c.valor >= 0.9 * c.presupuesto && d < dm - 3) add("info", `${c.nombre}: ya llevas el ${Math.round((100 * c.valor) / c.presupuesto)} % de su presupuesto`, "#movimientos/categorias", `pres90:${c.nombre}:${hoyKey}`);
   }
   // Recordatorios con fecha.
   for (const r of recordatorios().filter((r) => r.estado !== "hecho" && r.fecha.minus({ days: r.avisar }) <= finHoy)) {
     const vencido = r.fecha <= finHoy;
-    add(vencido ? "warn" : "info", `${r.nombre} · ${vencido ? "desde el" : "el"} ${r.fecha.toFormat("dd/MM/yyyy")}${r.texto ? ` · ${r.texto}` : ""}`, r.p.file.path);
+    add(vencido ? "warn" : "info", `${r.nombre} · ${vencido ? "desde el" : "el"} ${r.fecha.toFormat("dd/MM/yyyy")}${r.texto ? ` · ${r.texto}` : ""}`, r.p.file.path, `rec:${r.p.id}:${r.fecha.toISODate()}:${vencido ? "v" : "a"}`);
   }
   return out;
 }
@@ -213,5 +268,47 @@ function fifoVentas(ops) {
     }
   }
   return { ventas, sinDatos: [...sinDatos], traspasos: pareja.size };
+}
+// ───────────── estimación de la renta (base del ahorro) ─────────────
+// Tramos estatales + autonómicos de la base del ahorro (desde 2025): [hasta, tipo].
+const TRAMOS_AHORRO = [[6000, 0.19], [50000, 0.21], [200000, 0.23], [300000, 0.27], [Infinity, 0.30]];
+function cuotaAhorro(base) {
+  let cuota = 0, desde = 0;
+  for (const [hasta, tipo] of TRAMOS_AHORRO) { if (base <= desde) break; cuota += (Math.min(base, hasta) - desde) * tipo; desde = hasta; }
+  return cuota;
+}
+// Año a año: el resultado de las ventas se junta con las pérdidas que arrastras (las de los 4 años anteriores, primero las más
+// viejas); una pérdida puede restar además hasta el 25 % de los dividendos del año. Lo que no se compensa queda pendiente.
+// años: [{ año, ventas (ganancia − pérdida), dividendos (brutos), retenido }] → Map año → { base, cuota, retenido, diferencia,
+// pendAntes, usado, pendDespues }. Orientativo: no conoce tus otras rentas del ahorro ni la regla de los dos meses.
+function rentaPorAño(años) {
+  const out = new Map();
+  let pend = [];
+  for (const y of [...años].sort((a, b) => a.año - b.año)) {
+    pend = pend.filter((p) => y.año - p.año <= 4);
+    const pendAntes = sum(pend.map((p) => p.importe));
+    let gp = y.ventas, rcm = Math.max(0, y.dividendos), tope = 0.25 * rcm, usado = 0;
+    if (gp < 0) { const c = Math.min(-gp, tope); gp += c; rcm -= c; tope -= c; }
+    for (const p of pend) {
+      if (gp > 0) { const c = Math.min(p.importe, gp); p.importe -= c; gp -= c; usado += c; }
+      if (p.importe > 0 && tope > 0) { const c = Math.min(p.importe, tope); p.importe -= c; rcm -= c; tope -= c; usado += c; }
+    }
+    pend = pend.filter((p) => p.importe > 0.005);
+    if (gp < -0.005) pend.push({ año: y.año, importe: -gp });
+    const base = Math.max(0, gp) + rcm, cuota = cuotaAhorro(base), retenido = y.retenido || 0;
+    out.set(y.año, { base, cuota, retenido, diferencia: cuota - retenido, pendAntes, usado, pendDespues: sum(pend.map((p) => p.importe)) });
+  }
+  return out;
+}
+// El año de «Para la renta» en CSV (punto y coma y coma decimal: se abre tal cual en un Excel en español).
+function csvRenta(año, ventas, cobrosAño) {
+  const n = (x, d = 2) => (isFinite(x) ? x.toFixed(d).replace(".", ",") : "");
+  const c = (v) => (/[;"\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : String(v));
+  const filas = [[`Ventas de ${año}`], ["Fecha", "Activo", "Participaciones", "Vendido por", "Coste", "Resultado"],
+    ...ventas.map((v) => [v.fecha.toFormat("dd/MM/yyyy"), v.activo, n(v.unidades, 6), n(v.valor), n(v.coste), n(v.resultado)]),
+    ["Total", "", "", n(sum(ventas.map((v) => v.valor))), n(sum(ventas.map((v) => v.coste))), n(sum(ventas.map((v) => v.resultado)))], [],
+    [`Dividendos y comisiones de ${año}`], ["Fecha", "Activo", "Qué", "Te llegó", "Retención", "Bruto"],
+    ...cobrosAño.map((x) => [x.fecha.toFormat("dd/MM/yyyy"), x.activo, x.tipo === "comision" ? "Comisión" : "Dividendo", n(x.tipo === "comision" ? -x.importe : x.importe), x.tipo === "comision" ? "" : n(x.retencion), x.tipo === "comision" ? "" : n(x.importe + x.retencion)])];
+  return "\ufeff" + filas.map((f) => f.map(c).join(";")).join("\r\n") + "\r\n";
 }
 const opsParaRenta = () => aportacionesReales().map((x) => ({ id: x.p.id, fecha: x.fecha, activo: x.activo, importe: x.importe, part: hasNum(x.p.participaciones) ? num(x.p.participaciones) : null, traspaso: !!x.p.traspaso, ajuste: !!x.p.ajuste }));

@@ -92,7 +92,7 @@ def huellas_existentes(alm, cuenta, tipo_reg="movimiento"):
         if r.get("cuenta", cuenta) != cuenta or not r.get("ext_fecha"): continue
         k = (r["ext_fecha"], round(float(r.get("ext_importe") or 0), 2))
         if tipo_reg == "movimiento" and abs(abs(k[1]) - float(r.get("importe") or 0)) >= 0.005:
-            partidas.add((*k, L.norm(r.get("ext_texto", ""))))
+            partidas.add((*k, r.get("parte_de") or L.norm(r.get("ext_texto", ""))))  # dos cargos iguales divididos son dos filas
         else: huellas[k] += 1
     for op, imp, _ in partidas: huellas[(op, imp)] += 1
     for r in alm.todos("pendiente") + alm.todos("ignorado"):
@@ -578,7 +578,7 @@ def _parecidos(alm, m):
     patron = C.clave(m.get("ext_texto") or m.get("concepto") or "")
     if len(patron) < 3: return patron, []
     entra = m["clase"] == "ingreso"
-    out = [x for x in alm.todos("movimiento") if x["id"] != m["id"] and x.get("clase") in ("gasto", "ingreso", "reembolso")
+    out = [x for x in alm.todos("movimiento") if x["id"] != m["id"] and x.get("clase") in ("gasto", "ingreso", "reembolso") and not x.get("parte_de")
            and (x["clase"] == "ingreso") == entra and C.aplica(patron, x.get("ext_texto") or x.get("concepto") or "")]
     return patron, out
 
@@ -616,3 +616,53 @@ def recategorizar(alm, mid, d):
             r = next((x for x in alm.todos("regla") if x.get("origen") != "plantilla" and L.norm(x["patron"]) == patron), None)
             alm.guardar("regla", {**(r or {}), "patron": patron, "categoria": cat, "clase": clase, "origen": "usuario"}, r["id"] if r else None)
     return f"Ahora es {cat}" + (f" · y {n} más de «{C.titulo(patron)}»" if n else "") + (" · lo recordaré" if d.get("recordar") and patron else "")
+
+# ───────────── dividir un movimiento en varias categorías ─────────────
+def partes_de(alm, m):
+    """Las partes del movimiento dividido al que pertenece `m` (por id), o [] si no está dividido."""
+    return sorted((x for x in alm.todos("movimiento") if x.get("parte_de") == m.get("parte_de")), key=lambda x: x["id"]) if m.get("parte_de") else []
+
+def dividir(alm, mid, partes):
+    """Parte un gasto o un ingreso en varias categorías. partes: [{importe, categoria, nota?}], que tienen que sumar su importe.
+    La primera se queda en el movimiento original; las demás son movimientos nuevos con su misma fecha, cuenta, concepto y
+    huella del extracto (al reimportar, entre todas cuentan como una fila: huellas_existentes). Todas llevan `parte_de` = id
+    del original: quedan fuera de los cambios «a todo el comercio», de las reglas y de lo que la app aprende de tu historial."""
+    m = alm.obtener("movimiento", mid)
+    if not m: raise ValueError("Ese movimiento ya no existe.")
+    if m.get("clase") not in ("gasto", "ingreso"): raise ValueError("Solo se pueden dividir gastos e ingresos.")
+    if m.get("parte_de"): raise ValueError("Este movimiento ya es una parte: vuelve a juntarlo para dividirlo de otra forma.")
+    if m.get("recurrente"): raise ValueError("Es el pago de un fijo: quítale antes el enlace con el fijo.")
+    if any(x.get("reembolsa") == m["id"] for x in alm.todos("movimiento")):
+        raise ValueError("Te han devuelto parte de este gasto (tiene Bizums enlazados): quita antes esos enlaces.")
+    cats = {c["nombre"] for c in alm.todos("categoria")}
+    limpias = []
+    for p in partes if isinstance(partes, list) else []:
+        imp = modelo.numero((p or {}).get("importe"))
+        cat = str((p or {}).get("categoria") or "").strip()
+        if not imp or imp <= 0: raise ValueError("Cada parte necesita un importe mayor que cero.")
+        if cat not in cats: raise ValueError("Elige la categoría de cada parte.")
+        limpias.append({"importe": imp, "categoria": cat, "nota": str((p or {}).get("nota") or "").strip()})
+    if not 2 <= len(limpias) <= 6: raise ValueError("Divídelo en entre 2 y 6 partes.")
+    total = round(sum(p["importe"] for p in limpias), 2)
+    if abs(total - m["importe"]) >= 0.005:
+        raise ValueError(f"Las partes suman {total:.2f} € y el movimiento es de {m['importe']:.2f} €".replace(".", ",") + ".")
+    base = {k: v for k, v in m.items() if k not in ("id", "nota", "sugerido", "sin_gasto")}
+    with alm.transaccion():
+        for i, p in enumerate(limpias):
+            alm.guardar("movimiento", {**base, **p, "parte_de": m["id"]}, m["id"] if i == 0 else None)
+    return f"Dividido en {len(limpias)} partes"
+
+def juntar(alm, mid):
+    """Deshace una división: vuelve a un solo movimiento con el importe entero (el del extracto, si viene de uno) y la
+    categoría de la primera parte."""
+    m = alm.obtener("movimiento", mid)
+    if not m: raise ValueError("Ese movimiento ya no existe.")
+    partes = partes_de(alm, m)
+    if not partes: raise ValueError("Este movimiento no está dividido.")
+    primera = next((x for x in partes if x["id"] == m["parte_de"]), partes[0])
+    total = abs(primera["ext_importe"]) if primera.get("ext_importe") else round(sum(x["importe"] for x in partes), 2)
+    with alm.transaccion():
+        for x in partes:
+            if x["id"] != primera["id"]: alm.borrar("movimiento", x["id"])
+        alm.guardar("movimiento", {**{k: v for k, v in primera.items() if k not in ("id", "parte_de")}, "importe": total}, primera["id"])
+    return primera["id"]

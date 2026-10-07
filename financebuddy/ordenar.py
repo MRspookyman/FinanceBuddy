@@ -12,7 +12,7 @@ def _casan(alm, patron, clase):
     if len(C.limpio(patron)) < 2: return []
     out = []
     for m in alm.todos("movimiento"):
-        if m.get("clase") not in CLASES_MOV or not m.get("ext_texto") or not C.aplica(patron, m["ext_texto"]): continue
+        if m.get("clase") not in CLASES_MOV or not m.get("ext_texto") or m.get("parte_de") or not C.aplica(patron, m["ext_texto"]): continue  # lo dividido a mano no se toca
         if clase in CLASES_MOV and _entra(m["clase"]) != _entra(clase): continue  # un gasto no se mezcla con un ingreso
         out.append(m)
     return out

@@ -61,6 +61,13 @@ function vistaAjustes() {
   lS.appendText("Guardar ya lo importado con la categoría sugerida (por confirmar)");
   cS.onchange = () => guardarAjuste("/api/config", { guardar_sugeridos: cS.checked });
 
+  const pW = panel(g, "Avisos de Windows", null, "Con la app en marcha (su icono en la bandeja), Windows te enseña un aviso cuando se acerca un recordatorio o llevas más de una semana sin importar el extracto. Cada cosa, una vez al día. No sale nada a internet.");
+  const lW = pW.createEl("label", { cls: "fb-fila" });
+  const cW = lW.createEl("input", { attr: { type: "checkbox" } }); cW.checked = cfg.avisos_windows === true;
+  lW.appendText("Avisarme de los recordatorios y de cuándo toca importar");
+  cW.onchange = () => guardarAjuste("/api/config", { avisos_windows: cW.checked });
+  pW.createDiv({ cls: "fin-note", text: "Apagado de serie. El primer aviso llega al poco de abrir la app." });
+
   apariencia(panel(g, "Apariencia"));
   const pT = panel(g, "Tú", null, "Tu nombre tal y como sale en el banco. Con él, el dinero que mueves entre cuentas a tu nombre se reconoce como traspaso y no como gasto o ingreso.");
   pT.createDiv({ cls: "fin-note", text: "Se rellena solo con el titular del primer extracto que lo traiga. Si hay más titulares (cuenta conjunta), sepáralos con «;»." });
