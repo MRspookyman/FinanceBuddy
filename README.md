@@ -88,8 +88,13 @@ tu banco tomado por venta, participaciones vendidas de más, operaciones sin par
 fueron ventas, posibles duplicados, el mismo activo dos veces, valores viejos) y cada aviso lleva a la **ficha del
 activo**: todas sus operaciones con su precio y de dónde vienen (extracto, órdenes, a mano), editables una a una;
 **Cuadrar con tu bróker** (escribes las participaciones que ves en el bróker y se añade un ajuste sin dinero); **Unir
-con otro activo**; y «Era dinero traspasado desde mi banco» o borrar el activo con sus operaciones (no reaparecen al
-reimportar el mismo extracto).
+con otro activo**; y «Era dinero traspasado desde mi banco» o borrar el activo con sus operaciones (lo que venía del
+extracto de la cuenta no reaparece al reimportarlo; lo que venía del archivo de órdenes, sí).
+
+**Un activo que ya no tienes** (lo vendiste o lo traspasaste entero a otro fondo): en su ficha, *Marcar como vendido*. Deja de
+salir en Inversión, en los avisos y al anotar valores, pero sus operaciones se quedan guardadas: hacen falta para *Para la
+renta* y para el coste de lo que pasó por traspaso al fondo nuevo. No lo borres para quitarlo de en medio; y si lo marcaste sin
+querer, *Inversión → Tus activos → verlos* te lleva a ellos para volver atrás.
 
 **Asistente Jev (opcional)**: con tu clave de [Jev](https://typesafe.ai) (TypeSafe AI) en *Ajustes → Asistente Jev*, la
 app le pregunta:

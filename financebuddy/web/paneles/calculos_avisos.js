@@ -105,7 +105,7 @@ function avisos() {
   else { const d = diasDesde(P[P.length - 1].fecha); if (d > 40) add("warn", `Último registro de saldos hace ${d} días`, "#cerrar", `saldosviejos:${hoyCal}`); }
   const fd = fechaDatos();
   if (cuentas().some((c) => c.extracto) && (!fd || diasDesde(fd) > 8)) add("info", fd ? `Movimientos hasta el ${fd.toFormat("dd/MM")}: importa el extracto de tu banco para ver cómo vas` : "Importa el extracto de tu banco para empezar", "#importar", `importar:${fd ? fd.toISODate() : ""}`);
-  const A = activos();
+  const A = activos().filter((a) => !vendidoDelTodo(a));  // de lo que ya vendiste o traspasaste entero no hay valor que actualizar
   const viejos = A.filter((a) => !a.fechaValor || diasDesde(a.fechaValor) > 35);
   if (viejos.length) add("info", `Valor de la inversión sin actualizar hace más de un mes: ${viejos.map((a) => a.nombre).join(", ")}`, "#valores", `valores:${hoyCal}`);
   const malos = saludInversion().filter((x) => x.nivel === "error");

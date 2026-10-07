@@ -273,6 +273,9 @@ function tablaActivos(p, I) {
     I.cerradas.forEach((c, i) => { if (i) n.appendText(", "); enlace(n, c.nombre, `#activo/${c.p.id}`); n.appendText(` (${eurS(c.resultado, 2)})`); });
     n.appendText(".");
   }
+  // Los que marcaste como vendidos no se cuentan ni se enseñan: una línea para saber que están y poder volver atrás
+  const nVend = registros("activo").filter((r) => txt(r.estado).toLowerCase() === "vendido").length;
+  if (nVend) { const n = p.createDiv({ cls: "fin-note" }); n.appendText(`${nVend} activo${nVend > 1 ? "s" : ""} marcado${nVend > 1 ? "s" : ""} como vendido${nVend > 1 ? "s" : ""} no se muestra${nVend > 1 ? "n" : ""} · `); enlace(n, "verlos →", "#gestionar/activo"); }
   if (I.estimados) p.createDiv({ cls: "fin-note", text: "≈ estimado: participaciones × el precio de tu última compra o venta. Para el valor exacto, anota lo que vale en tu bróker (Actualizar valores)." });
   if (I.mercado) notaPrecios(p);
   if (I.sinAport) p.createDiv({ cls: "fin-note", text: "Sin «aportado antes de usar la app», la ganancia de ese activo no se puede calcular: edítalo y pon lo que habías metido (0 si empezaste con la app)." });
@@ -427,6 +430,23 @@ function vistaActivo() {
   if (!cb.length) pc2.createDiv({ cls: "fin-note", text: "Ninguno. Los dividendos del extracto de tu bróker se reconocen solos, o los apuntas aquí." });
   else { const pgC = paginacion([...cb].reverse(), "cobros_" + reg.id, () => FB.montar(), 20); tabla(pc2, [{ t: "Fecha" }, { t: "Qué" }, { t: "Importe", num: true }], pgC.parte.map((c) => [{ text: c.fecha.toFormat("dd/MM/yy"), ruta: `#editar/cobro/${c.p.id}` }, c.tipo === "comision" ? "Comisión" : "Dividendo", { text: (c.tipo === "comision" ? "−" : "+") + eur(c.importe, 2), cls: c.tipo === "comision" ? "neg" : "pos" }])); pgC.pie(pc2); }
 
+  // Ya no lo tengo: fuera de la vista, no de los datos. Sus operaciones hacen falta para «Para la renta» y para el coste de lo
+  // que pasó por traspaso a otro fondo, y borrar el activo las quita: por eso esto va antes que «borrarlo» y a la vista.
+  const vendido = txt(reg.estado).toLowerCase() === "vendido";
+  const pv = panel(root, vendido ? "Marcado como vendido" : "¿Ya no lo tienes?", null, "Un activo vendido no sale en Inversión, en los avisos ni al anotar valores, pero sus operaciones se quedan guardadas.");
+  pv.createDiv({ cls: "fin-note", text: vendido ? "No sale en Inversión ni en los avisos. Sus operaciones siguen guardadas y cuentan en «Para la renta»."
+    : "Si lo vendiste o lo traspasaste entero a otro fondo, márcalo como vendido: deja de salir en Inversión y en los avisos. No lo borres: sus operaciones hacen falta para «Para la renta» y para el coste de lo que traspasaste." });
+  const bV = pv.createDiv({ cls: "fb-fila" }).createEl("button", { cls: "fb-btn sec", text: vendido ? "Volver a tenerlo en la cartera" : "Marcar como vendido", attr: { type: "button" } });
+  bV.onclick = async () => {
+    // Si las operaciones dicen que aún queda algo, puede que falte la venta o el traspaso: que no se esconda dinero sin querer
+    if (!vendido && P.conPart && P.part > 0 && !P.vendido && !confirm(`Según tus operaciones aún te quedan ${nf(P.part, 0, 4)} participaciones de «${a.nombre}».\n\nSi lo vendiste o lo traspasaste entero, falta esa operación: importa el archivo de órdenes de tu bróker.\n\n¿Marcarlo como vendido de todas formas?`)) return;
+    const { id: _id, file: _file, ...datos } = reg;
+    const r = await FB.api("/api/guardar", { tipo: "activo", id: reg.id, datos: { ...datos, estado: vendido ? "activo" : "vendido" } });
+    if (!r.ok) { mensaje(pv, r.mensaje || "No se ha podido guardar", "err"); return; }
+    FB.aviso(vendido ? `«${a.nombre}» vuelve a tu cartera` : `«${a.nombre}» marcado como vendido: ya no sale en Inversión`);
+    await FB.recargar(); FB.ir(vendido ? `#activo/${reg.id}` : "#inversion");
+  };
+
   // Unir con otro activo
   const otros = (DB.registros.activo || []).filter((r) => r.id !== reg.id);
   if (otros.length) plegable(root, "Unir con otro activo", (c) => {
@@ -447,6 +467,7 @@ function vistaActivo() {
 
   // Deshacer
   plegable(root, "No es un activo / borrarlo", (c) => {
+    c.createDiv({ cls: "fin-note", text: "Borrar quita el activo y también sus operaciones. Si solo quieres dejar de verlo porque ya no lo tienes, usa «Marcar como vendido», aquí arriba." });
     const f = c.createDiv({ cls: "fb-fila" });
     const bT = f.createEl("button", { cls: "fb-btn sec", text: "Era dinero traspasado desde mi banco" });
     bT.title = "Quita el activo y sus «ventas»: era dinero que entró desde tu banco. La próxima vez se ignora solo.";
@@ -458,7 +479,7 @@ function vistaActivo() {
     };
     const bB = f.createEl("button", { cls: "fb-btn sec peligro", text: `Borrar el activo y sus ${ops.length} operaciones` });
     bB.onclick = async () => {
-      if (!confirm(`¿Borrar «${a.nombre}» y sus ${ops.length} operaciones? Si vuelves a importar el mismo extracto, no reaparecerán.`)) return;
+      if (!confirm(`¿Borrar «${a.nombre}» y sus ${ops.length} operaciones? Dejarán de contar en «Para la renta».\n\nLo que venía del extracto de la cuenta no reaparecerá al reimportarlo; lo que venía del archivo de órdenes, sí.\n\nSi solo quieres dejar de verlo, cancela y usa «Marcar como vendido».`)) return;
       const r = await FB.api("/api/activo/borrar", { id: reg.id });
       if (!r.ok) { mensaje(c, r.mensaje || "Error", "err"); return; }
       FB.aviso(r.mensaje); await FB.recargar(); FB.ir("#inversion");

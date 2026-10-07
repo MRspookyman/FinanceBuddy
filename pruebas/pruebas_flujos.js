@@ -388,5 +388,27 @@ return (async () => {
     if (!(await hasta(() => !tarjeta()))) return "al descartar, la tarjeta sigue ahí";
   });
 
+  // 19. Un activo que ya no tienes: se marca como vendido desde su ficha (no hace falta borrarlo), deja de salir y se puede volver atrás
+  await caso("Inversión: marcar un activo como vendido lo quita de la vista sin borrar sus operaciones", async () => {
+    const a = regs("activo").find((x) => x.nombre === "Bitcoin");
+    if (!a) return "no está el Bitcoin del ejemplo";
+    const nOps = regs("aportacion").filter((x) => x.activo === "Bitcoin").length;
+    if (!(await ir(`#activo/${a.id}`))) return "no se abre la ficha";
+    const b = await hasta(() => porTexto("button", "Marcar como vendido"));
+    if (!b) return "la ficha no ofrece marcarlo como vendido";
+    b.click();
+    if (!(await hasta(() => (regs("activo").find((x) => x.id === a.id) || {}).estado === "vendido" && app().dataset.vista === "inversion"))) return "no queda como vendido";
+    if (regs("aportacion").filter((x) => x.activo === "Bitcoin").length !== nOps || !nOps) return "se han perdido sus operaciones";
+    const panelActivos = await hasta(() => porTexto(".fin-panel", "Tus activos"));
+    if (!panelActivos) return "no está el panel «Tus activos»";
+    if (porTexto("td", "Bitcoin", panelActivos)) return "sigue saliendo en «Tus activos»";
+    if (!plano(panelActivos).includes("1 activo marcado como vendido no se muestra")) return "no dice que hay un activo vendido que no se muestra: " + plano(panelActivos).slice(-220);
+    if (!(await ir(`#activo/${a.id}`))) return "no se vuelve a abrir su ficha";
+    const v = await hasta(() => porTexto("button", "Volver a tenerlo"));
+    if (!v) return "la ficha de un vendido no ofrece volver a tenerlo";
+    v.click();
+    if (!(await hasta(() => (regs("activo").find((x) => x.id === a.id) || {}).estado !== "vendido"))) return "no vuelve a la cartera";
+  });
+
   return casos;
 })();

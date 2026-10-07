@@ -32,7 +32,7 @@ Python (biblioteca estándar + `openpyxl`/`xlrd`/`pystray`) · SQLite · interfa
 python -m financebuddy --ejemplo --sin-navegador --puerto 8830 --hoy 2026-09-30   :: app con datos inventados
 python -m unittest discover -s pruebas -p "test_*.py" -t .     :: 206 pruebas de Python
 python pruebas\run.py --tests                                  :: 20 pantallas sin errores + 106 pruebas de cálculos
-python pruebas\run.py --flujos                                 :: 18 flujos con clics de verdad
+python pruebas\run.py --flujos                                 :: 19 flujos con clics de verdad
 python pruebas\run.py --capturas                               :: capturas en claro y oscuro (%TEMP%\fb-pruebas)
 python pruebas\evaluar_jev.py / evaluar_precios.py             :: contra los servicios reales (lo ejecuta el usuario)
 build.bat                                                      :: pasa TODO lo anterior y genera dist\FinanceBuddy\
@@ -89,6 +89,9 @@ Para añadir algo: `modelo.CAMPOS` **y** `FORMS` (`web/paneles/formularios.js`) 
   nuevo tiene que casar la celda entera y no ser ambiguo (ni orden americano ni «20260930»).
 - Una fila con cifras donde va la fecha y donde va el importe que no se puede leer no se salta en silencio: va a `ilegibles`
   (`importar.leer`, `operaciones.leer`) y la vista previa la enseña con su número de fila y el motivo. Otro lector de archivos, igual.
+- Un activo deja de verse de dos formas: `estado: vendido` (lo marca el usuario: `activos()` ya no lo devuelve) o «vendido del
+  todo» (`vendidoDelTodo`: sus participaciones suman cero). En los dos casos sus aportaciones siguen contando en la renta
+  (`fifoVentas` hereda el coste por los traspasos): borrar un fondo de origen deja sin emparejar los traspasos del de destino.
 - «Gasto variable» deja fuera las categorías de grupo fijo. Lo que haya en ellas sin ser el pago de un fijo dado de alta es
   `gastoFijoSuelto`: la previsión y el colchón lo suman aparte. Si añades otro cálculo de «lo que sale al mes», cuenta las tres cosas.
 - En el Inicio van a la vista dos avisos `warn`; el resto y los `info`, plegados en «y N avisos más» (`repartirAvisos`).

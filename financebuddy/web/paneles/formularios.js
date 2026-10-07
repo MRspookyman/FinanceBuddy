@@ -95,7 +95,7 @@ const FORMS = {
       { k: "objetivo", l: "Peso que quieres que tenga (%, opcional)", t: "num", ayuda: "El porcentaje de tu inversión que querrías en este activo. Con él, Inversión te dice a dónde llevar tu próxima aportación para acercarte (sin vender nada)." },
       { k: "ter", l: "Gastos corrientes (% al año, opcional)", t: "num", ayuda: "El TER del fondo o ETF (p. ej. 0,06). Con él verás cuánto te cuesta al año." },
       { k: "estado", l: "Estado", t: "opc", opc: [["activo", "Lo tengo"], ["vendido", "Vendido"]] }],
-    fila: (r) => [r.nombre, r.clase, r.valor != null ? eur(r.valor, 0) : "—", r.fecha_valor ? `a ${fechaCorta(r.fecha_valor)}` : ""], cols: ["Nombre", "Tipo", "Valor", ""] },
+    fila: (r) => [r.nombre, r.clase, r.valor != null ? eur(r.valor, 0) : "—", r.estado === "vendido" ? "vendido" : r.fecha_valor ? `a ${fechaCorta(r.fecha_valor)}` : ""], cols: ["Nombre", "Tipo", "Valor", ""] },
   aportacion: { uno: "aportación", plural: "Aportaciones", ayuda: "Compras (+) y ventas (−) de tus activos.",
     campos: [
       { k: "fecha", l: "Fecha", t: "fecha", req: true, defecto: () => hoy.toISODate() },
