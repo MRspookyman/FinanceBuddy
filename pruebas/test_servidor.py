@@ -313,6 +313,14 @@ class TestSeguridad(unittest.TestCase):
     def test_pagina(self):
         s, b = self.pedir("GET", "/")
         self.assertEqual(s, 200); self.assertIn(self.app.token.encode(), b)
+    def test_todas_las_pantallas_se_cargan(self):
+        """Un archivo de web/paneles que no esté en MODULOS no llega a la página (p. ej. «Mi año», anual.js)."""
+        s, b = self.pedir("GET", "/paneles.js")
+        self.assertEqual(s, 200)
+        modulos = json.loads(b)["modulos"]
+        carpeta = os.path.join(os.path.dirname(servidor.__file__), "web", "paneles")
+        self.assertEqual(sorted(modulos), sorted(f[:-3] for f in os.listdir(carpeta) if f.endswith(".js")))
+        self.assertLess(modulos.index("anual"), modulos.index("pantallas"))  # pantallas.js usa vistaAnual
 
 if __name__ == "__main__":
     unittest.main()

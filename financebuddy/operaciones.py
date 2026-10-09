@@ -33,6 +33,9 @@ def leer(ruta, alm, perfil_nombre=None, info=None):
     perfil, i, idx = rec
     ops, descartadas, raras = [], 0, []
     if info is not None: info["ilegibles"] = raras
+    # Importes: «1.234» es mil doscientos treinta y cuatro salvo que el archivo use el punto decimal («199.98 EUR»).
+    # Participaciones: el punto siempre es decimal («2.199» son 2,199: tres decimales en participaciones es lo normal)
+    miles = not L.punto_decimal(f[idx["importe"]] for f in crudas[i + 1:] if "importe" in idx and idx["importe"] < len(f))
     for n, f in enumerate(crudas[i + 1:], i + 2):
         cel = lambda k: f[idx[k]] if k in idx and idx[k] < len(f) else None
         fecha = L.fecha(cel("fecha"))
@@ -41,7 +44,7 @@ def leer(ruta, alm, perfil_nombre=None, info=None):
                 raras.append({"fila": n, "que": "la fecha", "valor": L.texto(cel("fecha")), "texto": L.texto(cel("activo")) or L.texto(cel("isin"))})
             continue
         if "estado" in idx and not L.norm(cel("estado")).startswith(ESTADOS_OK): descartadas += 1; continue
-        imp, part = L.numero(cel("importe")), L.numero(cel("participaciones"))
+        imp, part = L.numero(cel("importe"), miles), L.numero(cel("participaciones"), miles=False)
         if not imp and not part: descartadas += 1; continue
         tipo = L.norm(cel("tipo"))
         signo = -1 if re.match(r"venta|vender|reembolso|sell", tipo) else 1 if re.match(r"compra|comprar|suscripcion|buy", tipo) else None

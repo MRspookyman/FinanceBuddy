@@ -133,6 +133,20 @@ class TestBanco(Base):
         self.assertIn("no cuadran", r["mensaje"])
         self.assertEqual(len(self.movs()), 0)
 
+    def test_saldos_con_los_dias_al_reves_dentro_de_cada_dia_se_ordenan(self):
+        # Días de más reciente a más antiguo, pero cada día en orden cronológico: los saldos cuadran si se reordena dentro del día
+        ruta = os.path.join(self.c.banco, "mixto.csv")
+        escribir(ruta, "utf-8", "Fecha;Concepto;Importe;Saldo\n02/09/2026;Nomina Empresa SL;1500,00;2470,00\n02/09/2026;Bar Pepe;-30,00;2440,00\n"
+                                "01/09/2026;Mercadona;-20,00;980,00\n01/09/2026;Lidl;-10,00;970,00\n")
+        IM.crear_perfil(self.a, "Banco M", "banco", {"fecha": "Fecha", "concepto": "Concepto", "importe": "Importe", "saldo": "Saldo"}, "Nómina")
+        r = self.importar(ruta)
+        self.assertTrue(r["ok"], r.get("mensaje"))
+        self.assertEqual(r["nuevas"] + r["dudas"], 4)
+        self.assertEqual(self.a.config("saldo_extracto:Nómina"), {"fecha": "2026-09-02", "saldo": 2440.0})
+        # Si dentro del día no hay orden posible, sigue sin importarse
+        filas = [{"op": "2026-09-02", "texto": "A", "importe": 10.0, "saldo": 1010.0}, {"op": "2026-09-01", "texto": "B", "importe": -5.0, "saldo": 990.0}]
+        self.assertIn("no cuadran", IM.ordenar_y_comprobar_saldos(filas)[1])
+
     def test_apuntado_a_mano_no_se_duplica(self):
         self.a.guardar("movimiento", {"fecha": "2026-09-01", "clase": "gasto", "categoria": "Supermercado", "importe": 45.2, "concepto": "Súper", "cuenta": "Nómina"})
         r = self.importar(self.extracto())
@@ -783,6 +797,52 @@ class TestLectura(unittest.TestCase):
             self.assertIsNone(L.fecha(txt), txt)
     def test_el_signo_menos_tipografico(self):
         self.assertEqual((L.numero("−12,30"), L.numero("–1.234,56 €"), L.numero("–")), (-12.3, -1234.56, None))
+    def test_punto_de_miles_sin_decimales(self):
+        # «1.234» es mil doscientos treinta y cuatro (punto de miles español); lo demás se lee como antes
+        for txt, n in [("1.234", 1234), ("-1.500", -1500), ("1.500-", -1500), ("1.000 €", 1000), ("(2.000)", -2000), ("999.999", 999999),
+                       ("1.234,56", 1234.56), ("12.5", 12.5), ("12.50", 12.5), ("1,234.56", 1234.56), ("1234.567", 1234.567), ("0.123", 0.123),
+                       ("1.2345", 1.2345), ("1,234", 1.234), ("1.234.567", 1234567)]:
+            self.assertEqual(L.numero(txt), n, txt)
+        self.assertEqual(L.numero("1.234", miles=False), 1.234)
+    def test_punto_decimal_se_decide_por_archivo(self):
+        self.assertTrue(L.punto_decimal(["1.234", "12.50"]))  # «12.50»: el punto es la coma decimal
+        self.assertTrue(L.punto_decimal(["199.98 EUR"]))
+        self.assertFalse(L.punto_decimal(["1.234", "-45,20", "1.234,56", 12.5, None, ""]))
+    def test_numeros_de_excel_que_no_son_fechas(self):
+        self.assertIsNone(L.fecha(25000))  # un importe entero no es una fecha de 1968
+        self.assertIsNone(L.fecha(80000))
+        self.assertEqual(L.fecha(46295), "2026-09-30")  # número de serie de Excel de verdad
+        self.assertEqual(L.fecha(46295.5), "2026-09-30")
+        # Al adivinar columnas, una de números enteros no se toma por fechas sin ninguna fecha de verdad al lado
+        c = L.columnas_probables(["A", "B", "C"], [[46200, "Compra Lidl", 46100], [46201, "Nómina", 45000]])
+        self.assertEqual(c, {})
+        c = L.columnas_probables(["A", "B", "C"], [["01/09/2026", "Compra Lidl", 46100], ["02/09/2026", "Nómina", 45000]])
+        self.assertEqual((c["fecha"], c["concepto"], c["importe"]), ("A", "B", "C"))
+        # con el nombre «Fecha» en la cabecera, los números de serie sí valen
+        c = L.columnas_probables(["Fecha", "Concepto", "Importe"], [[46200, "Compra Lidl", -12.5]])
+        self.assertEqual(c["fecha"], "Fecha")
+
+class TestMilesAlImportar(Base):
+    PERFIL = {"nombre": "Banco de prueba", "tipo": "banco", "columnas": {"fecha": "fecha", "concepto": "concepto", "importe": "importe", "saldo": "saldo"}}
+    def leer(self, texto):
+        self.a.guardar("perfil", self.PERFIL)
+        ruta = os.path.join(self.c.banco, "b.csv"); escribir(ruta, "utf-8", texto)
+        return [(f["importe"], f.get("saldo")) for f in IM.leer(ruta, self.a, "banco", "Banco de prueba")[1]]
+
+    def test_formato_espanol(self):
+        self.assertEqual(self.leer("Fecha;Concepto;Importe;Saldo\n01/09/2026;Nómina;1.500;2.734,56\n02/09/2026;Lidl;-12,30;2.722,26\n"),
+                         [(1500.0, 2734.56), (-12.3, 2722.26)])
+    def test_archivo_con_punto_decimal_no_cambia(self):
+        # si el archivo escribe «12.50», su «1.234» es 1,234 como siempre (no se adivina fila a fila)
+        self.assertEqual(self.leer("Fecha;Concepto;Importe;Saldo\n01/09/2026;Café;-1.234;100.50\n02/09/2026;Lidl;-12.30;88.20\n"),
+                         [(-1.23, 100.5), (-12.3, 88.2)])
+    def test_participaciones_con_punto_son_decimales(self):
+        ruta = os.path.join(self.c.inversion, "o.csv")
+        escribir(ruta, "utf-8", "Fecha de la orden;ISIN;Importe estimado;Nº de participaciones;Estado\n"
+                                "14/04/2026;LU0034353002;1.500 EUR;2.199;Finalizada\n")
+        from financebuddy import operaciones as OP
+        ops = OP.leer(ruta, self.a)[1]
+        self.assertEqual([(o["importe"], o["part"]) for o in ops], [(1500.0, 2.199)])
 
 if __name__ == "__main__":
     unittest.main()

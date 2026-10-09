@@ -48,6 +48,19 @@ function chart(padre, render) {
     new ResizeObserver(() => { const w = Math.floor(wrap.clientWidth); if (w && Math.abs(w - ancho) > 8) paint(); }).observe(wrap);
   }
 }
+// Lo que dice el gráfico, para quien no lo ve (aria-label): de qué a qué va y, por serie, el último valor, el máximo y el mínimo.
+function resumenGrafico(tipo, etiquetas, series) {
+  const partes = series.map((se) => {
+    const pts = se.valores.map((v, i) => [v, i]).filter(([v]) => v != null);
+    if (!pts.length) return "";
+    const [vu, iu] = pts[pts.length - 1];
+    const max = pts.reduce((a, b) => (b[0] >= a[0] ? b : a)), min = pts.reduce((a, b) => (b[0] < a[0] ? b : a));
+    return `${se.nombre ? se.nombre + ": " : ""}último ${eur(vu, 0)} (${etiquetas[iu]}), máximo ${eur(max[0], 0)} (${etiquetas[max[1]]})`
+      + (min[0] < max[0] ? `, mínimo ${eur(min[0], 0)} (${etiquetas[min[1]]})` : "");
+  }).filter(Boolean);
+  const texto = `${tipo} de ${etiquetas[0]} a ${etiquetas[etiquetas.length - 1]}. ${partes.join(". ")}.`;
+  return typeof FB !== "undefined" && FB.enmascarar ? FB.enmascarar(texto) : texto;
+}
 function ejeY(s, ticks, Y, L, W, R) {
   for (const v of ticks) {
     const y = Y(v).toFixed(1);
@@ -63,7 +76,7 @@ function columnas(padre, { etiquetas, series, titulos, alto = 210 }) {
     const Y = (v) => T + (hi - v) * (H - T - B) / (hi - lo);
     const n = etiquetas.length, gw = (W - L - R) / n, k = series.length;
     const bw = Math.max(3, Math.min(24, (gw * 0.72 - (k - 1) * 2) / k)), grupo = bw * k + (k - 1) * 2;
-    const s = [`<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img">`];
+    const s = [`<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(resumenGrafico("Gráfico de columnas", etiquetas, series))}">`];
     ejeY(s, ticks.filter((v) => v !== 0), Y, L, W, R);
     const cabe = Math.max(1, Math.floor((W - L - R) / 38)), paso = Math.ceil(n / cabe);
     etiquetas.forEach((et, i) => {
@@ -95,7 +108,7 @@ function lineas(padre, { etiquetas, series, marcas, etiquetasX, alto = 200 }) {
     const { lo, hi, ticks } = niceTicks(0, Math.max(1, ...todos));
     const n = etiquetas.length;
     const X = (i) => L + (n > 1 ? i * (W - L - R) / (n - 1) : 0), Y = (v) => T + (hi - v) * (H - T - B) / (hi - lo);
-    const s = [`<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img">`];
+    const s = [`<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(resumenGrafico("Gráfico de líneas", etiquetas, series))}">`];
     ejeY(s, ticks.filter((v) => v !== 0), Y, L, W, R);
     s.push(`<line class="base" x1="${L}" x2="${W - R}" y1="${Y(0).toFixed(1)}" y2="${Y(0).toFixed(1)}"/>`);
     // El punto del final de una serie continua (y, si solo hay un dato, ese punto solo: si no, la serie no se vería)

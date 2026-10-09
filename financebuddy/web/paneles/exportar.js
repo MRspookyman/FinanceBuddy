@@ -130,7 +130,7 @@ function generarResumen(ocultar) {
       { nombre: ocultar ? "Metido (índice)" : "Metido", color: "#7A6F63", rayas: true, valores: ev.aportado.map((v) => (ocultar ? indice(v, idx0) : v)) }], { fmt: ocultar ? fmtIndice : (v) => compact(v).replace("+", "") }) : "";
     sec.push(tarjetaHtml("Inversión", tilesHtml([ocultar ? null : { l: "Vale hoy", v: eur(I.total, 0) }, ocultar ? null : { l: "Has metido", v: eur(I.aportadoTodo, 0) },
       isFinite(pct0) ? { l: "Ganancia sobre lo metido", v: pct(pct0, true), t: tone(pct0), s: ocultar ? "" : eurS(I.gan, 0) } : null,
-      isFinite(I.tir) ? { l: "Rentabilidad anual (TIR)", v: pct(I.tir, true), t: tone(I.tir), s: I.tirCorta ? "menos de un año: orientativa" : "" } : null])
+      isFinite(I.tir) ? { l: "Rentabilidad anual", v: pct(I.tir, true), t: tone(I.tir), s: I.tirCorta ? "menos de un año: orientativa" : "" } : null])
       + barraReparto(tabla) + graf,
       ocultar ? "Índice: 100 es lo metido al empezar. Entre paréntesis, lo que ha ganado o perdido cada activo sobre lo que metiste en él." : ""));
   }

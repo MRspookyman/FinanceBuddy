@@ -139,21 +139,41 @@ def _lote(uno, items):
     with ThreadPoolExecutor(HILOS) as ex: return list(ex.map(envuelto, items))
 
 # ───────────── qué se envía ─────────────
-RE_BIZUM = re.compile(r"^\s*bizum\s+(?:(a favor de|a)|de)\s+.*?(?:\bconcepto\b[:\s]*(.*))?$", re.I)
+RE_BIZUM = re.compile(r"^.*?\bbizum\b\s+.*?(?:\bconcepto\b[:\s]*(.*))?$", re.I)  # «Bizum a…», «Pago Bizum a…», «Envio Bizum…»
 # Transferencia de/a alguien: si no es una empresa o entidad, su nombre no se envía
-RE_TRANSF = re.compile(r"^\s*(transferencia(?:\s+inmediata)?(?:\s+recibida|\s+emitida)?)\s+(a favor de|de|a)\s+(.+?)(,?\s*\bconcepto\b.*)?$", re.I)
+RE_TRANSF = re.compile(r"^(.*?)\b(transferencia(?:\s+inmediata)?(?:\s+recibida|\s+emitida)?)\s+(a favor de|de|a)\s+(.+?)(,?\s*\bconcepto\b.*)?$", re.I)
 RE_EMPRESA = re.compile(r"\b(s\.?\s?l\.?u?|s\.?\s?a\.?u?|s\.?\s?coop|sociedad|club|asociaci|fundaci|ayuntamiento|universidad|colegio|comunidad|"
                         r"banco|seguros|tesoreria|agencia|ministerio|servicios|solutions|technologies|group|gmbh|ltd|inc)\b", re.I)
+# «Recibo Juan Perez Garcia alquiler», «Pago a Ana Ruiz»: tras la palabra, de 2 a 4 palabras que acaban en un apellido corriente
+RE_PAGO = re.compile(r"\b(recibo|pago|env[ií]o|abono|cargo)(\s+(?:a favor de|a|de|para))?\s+([^\W\d_][\w'-]*(?:\s+[^\W\d_][\w'-]*){1,3})", re.I)
+NO_NOMBRE = {"movil", "en", "con", "tarjeta", "tarj", "compra", "domiciliado", "domiciliacion", "recibo", "pago", "cuota", "factura", "y",
+             "clinica", "dental", "farmacia", "ferreteria", "academia", "gimnasio", "bar", "restaurante", "taller", "autoescuela",
+             "peluqueria", "asesoria", "gestoria", "abogados", "inmobiliaria", "optica", "hermanos", "hnos"}
+APELLIDOS = set("""garcia rodriguez gonzalez fernandez lopez martinez sanchez perez gomez martin jimenez ruiz hernandez diaz moreno munoz
+    alvarez romero alonso gutierrez navarro torres dominguez vazquez ramos gil ramirez serrano blanco molina morales suarez ortega delgado
+    castro ortiz rubio marin sanz nunez iglesias medina garrido cortes castillo santos lozano guerrero cano prieto mendez cruz calvo gallego
+    vidal leon marquez herrera pena flores cabrera campos vega fuentes carrasco diez caballero reyes nieto aguilar pascual santana herrero
+    lorenzo montero hidalgo gimenez ibanez ferrer duran santiago benitez mora vicente vargas arias carmona crespo roman pastor soto saez
+    velasco moya soler parra esteban bravo gallardo rojas""".split())
+def _sin_persona(m):
+    palabras = m.group(3).split()
+    claves = [L.norm(w) for w in palabras]
+    if claves[0] in NO_NOMBRE or RE_EMPRESA.search(" ".join(claves)): return m.group(0)
+    ult = max((i for i, w in enumerate(claves) if i > 0 and w in APELLIDOS), default=None)
+    if ult is None or any(w in NO_NOMBRE for w in claves[:ult + 1]): return m.group(0)
+    return f"{m.group(1)}{m.group(2) or ''} una persona" + "".join(" " + w for w in palabras[ult + 1:])
+
 def saneado(texto, importe, donde="una cuenta bancaria en España"):
     """El texto que se manda a Jev: sin nombres de personas en los Bizum, números de tarjeta/cuenta ni correos."""
     t = str(texto or "")
     m = RE_BIZUM.match(t)
     if m:
-        concepto = (m.group(2) or "").strip()
+        concepto = (m.group(1) or "").strip()
         t = f"Bizum {'enviado' if importe < 0 else 'recibido'}" + (f". Concepto: {concepto}" if concepto and not re.fullmatch(r"(?i)sin concepto", concepto) else " sin concepto")
     m = RE_TRANSF.match(t)
-    if m and not RE_EMPRESA.search(L.norm(m.group(3))):
-        t = f"{m.group(1)} {m.group(2)} una persona{m.group(4) or ''}"
+    if m and not RE_EMPRESA.search(L.norm(m.group(4))):
+        t = f"{m.group(1)}{m.group(2)} {m.group(3)} una persona{m.group(5) or ''}"
+    t = RE_PAGO.sub(_sin_persona, t)
     t = re.sub(r"(?i)\b(?:c/|calle|cl\.?|avda\.?|avenida|plaza|pza\.?|paseo|camino|ctra\.?|carretera)\s*[^\W\d_][\w ºª.-]*?\s*,?\s*\d+\s*[\w.º-]*", "", t)  # direcciones
     for w in _ocultar: t = re.sub(r"(?i)(?<!\w)" + re.escape(w) + r"(?!\w)", "", t)  # tu nombre
     t = re.sub(r"\b[A-Z]{2}\d{2}(?:\s?[\dA-Z]{4}){3,7}\b", "", t)          # IBAN

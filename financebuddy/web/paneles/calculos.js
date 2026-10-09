@@ -30,6 +30,28 @@ function tasa12(key) {
   const ing = sum(s.map((x) => x.ingresos)), gas = sum(s.map((x) => x.gastos));
   return { ing, gas, tasa: ing > 0 ? (ing - gas) / ing : NaN, meses: s.filter((x) => x.ingresos || x.gastos).length };
 }
+// Un año de «tu mes» (enero a diciembre por keyDe: con día de inicio 28, «enero» empieza el 28 de diciembre). Solo cuentan
+// los meses con movimientos propios (no los que solo tienen fijos automáticos) y lo ya ocurrido. `hasta`: último mes que
+// entra (para comparar con el mismo trozo del año anterior). Mejor y peor mes: por ahorro, entre los meses ya acabados.
+function resumenAño(año, ms = movimientos(), hasta = `${año}-12`) {
+  const keys = Array.from({ length: 12 }, (_, i) => `${año}-${String(i + 1).padStart(2, "0")}`).filter((k) => k <= hasta);
+  const reales = ms.filter((m) => !m.previsto && keys.includes(keyDe(m.fecha)));
+  const propios = new Set(reales.filter((m) => !m.auto).map((m) => keyDe(m.fecha)));
+  const filas = keys.map((key) => ({ key, ingresos: 0, gastos: 0, datos: propios.has(key) }));
+  const gastoCat = new Map(), ingresoCat = new Map();
+  for (const m of reales) {
+    const f = filas.find((x) => x.key === keyDe(m.fecha));
+    if (!f.datos) continue;
+    if (m.clase === "ingreso") { f.ingresos += m.importe; ingresoCat.set(m.categoria || "Otros", (ingresoCat.get(m.categoria || "Otros") || 0) + m.importe); }
+    if (m.gasto) { f.gastos += m.gasto; gastoCat.set(m.categoria || "Otros", (gastoCat.get(m.categoria || "Otros") || 0) + m.gasto); }
+  }
+  for (const f of filas) f.ahorro = f.ingresos - f.gastos;
+  const con = filas.filter((f) => f.datos), acabados = con.filter((f) => f.key < hoyKey);
+  const ingresos = sum(con.map((f) => f.ingresos)), gastos = sum(con.map((f) => f.gastos));
+  const orden = [...acabados].sort((a, b) => b.ahorro - a.ahorro);
+  return { año, keys, filas, meses: con.length, ingresos, gastos, ahorro: ingresos - gastos, tasa: ingresos > 0 ? (ingresos - gastos) / ingresos : NaN,
+    gastoCat, ingresoCat, mejor: orden.length >= 2 ? orden[0] : null, peor: orden.length >= 2 ? orden[orden.length - 1] : null };
+}
 // ───────────── inversión ─────────────
 // El `valor` de un activo es a `fecha_valor`; las aportaciones posteriores aún no están dentro → se suman.
 const aportTrasValor = (a) => a.fechaValor ? sum(aportacionesReales().filter((x) => x.activo === a.nombre && x.fecha > a.fechaValor.endOf("day")).map((x) => x.importe)) : 0;
@@ -165,10 +187,10 @@ function saludInversion(soloDe) {
         texto: `«${a.nombre}» solo tiene ventas (${eur(-sum(normales.map((x) => x.importe)), 0)}) y ninguna compra. ¿Era dinero que pasaste desde tu banco?` });
     if (traspasos.has(a.nombre)) continue;  // lo demás de este activo sobra hasta aclarar eso
     else if (P.conPart && P.part < 0 && !P.vendido)
-      add({ clave: `negativas|${a.nombre}|${nf(P.part, 0, 4)}`, nivel: "error", activo: a, accion: { text: "Cuadrar", ruta: ficha(a) },
+      add({ clave: `negativas|${a.nombre}|${nf(P.part, 0, 4)}`, nivel: "error", activo: a, accion: { text: "Ajustar participaciones", ruta: ficha(a) },
         texto: `«${a.nombre}»: salen ${nf(-P.part, 0, 4)} participaciones vendidas de más. Falta alguna compra (o sobra una venta).` });
     if (P.vendido) continue;
-    if (P.faltan) add({ clave: `sinpart|${a.nombre}|${P.faltan}`, nivel: P.faltan < normales.length ? "aviso" : "info", activo: a, accion: { text: "Cuadrar", ruta: ficha(a) },
+    if (P.faltan) add({ clave: `sinpart|${a.nombre}|${P.faltan}`, nivel: P.faltan < normales.length ? "aviso" : "info", activo: a, accion: { text: "Ajustar participaciones", ruta: ficha(a) },
       texto: P.faltan < normales.length ? `${P.faltan} de ${normales.length} operaciones de «${a.nombre}» no dicen cuántas participaciones: dile a la app cuántas tienes y verás tu precio medio.`
         : `«${a.nombre}»: ninguna operación dice cuántas participaciones compraste. Si las anotas, la app estima su valor y tu precio medio.` });
     if (P.supuestas) add({ clave: `supuestas|${a.nombre}|${P.supuestas}`, nivel: "aviso", activo: a, accion: { text: "Revisar", ruta: ficha(a) },
@@ -250,6 +272,31 @@ function rentabilidadPeriodo(ev, meses) {
   if (v0 == null || v1 == null) return { ok: false, motivo: `falta el valor de ${mesLbl(ev.keys[i]).toLowerCase()}: anota los valores de fin de mes o activa los precios` };
   const metido = ev.aportado[n] - ev.aportado[i], gan = v1 - v0 - metido, base = v0 + metido / 2;
   return { ok: true, desde: ev.keys[i], v0, v1, metido, gan, r: base > 0 ? gan / base : NaN };
+}
+// Lo mismo para un año natural: del valor de fin de diciembre anterior al de fin de diciembre (o al de hoy, en el año en
+// curso). Si falta alguno, desde el primer mes del año con valor y hasta el último: `desde` y `hasta` dicen cuáles son.
+function rentabilidadAño(ev, año) {
+  if (!ev || ev.keys.length < 2) return { ok: false, motivo: "aún no hay historial de tu inversión" };
+  const idx = ev.keys.map((k, i) => i).filter((i) => ev.keys[i] >= `${año - 1}-12` && ev.keys[i] <= `${año}-12` && ev.valor[i] != null);
+  if (idx.length < 2) return { ok: false, motivo: `faltan valores de tu inversión en ${año}: anota los valores de fin de mes o activa los precios` };
+  const i = idx[0], n = idx[idx.length - 1];
+  const v0 = ev.valor[i], v1 = ev.valor[n], metido = ev.aportado[n] - ev.aportado[i], gan = v1 - v0 - metido, base = v0 + metido / 2;
+  return { ok: true, desde: ev.keys[i], hasta: ev.keys[n], v0, v1, metido, gan, r: base > 0 ? gan / base : NaN };
+}
+// Tu patrimonio en un año natural: el último registro de saldos de cada mes (y, en el año en curso, el estimado de hoy en
+// este mes). `inicio`: el último registro de antes del año o, si no lo hay, el primero del año (`dentro`), para ver cuánto ha cambiado.
+function patrimonioAño(año, P = patrimonio(), netoHoy = null) {
+  const keys = Array.from({ length: 12 }, (_, i) => `${año}-${String(i + 1).padStart(2, "0")}`);
+  const valores = keys.map((k) => { const r = P.filter((x) => keyCal(x.fecha) === k); return r.length ? r[r.length - 1].neto : null; });
+  const conHoy = netoHoy != null && hoy.year === año;
+  if (conHoy) { valores[hoy.month - 1] = netoHoy; for (let i = hoy.month; i < 12; i++) valores[i] = null; }
+  const antes = P.filter((x) => x.fecha.year < año), delAño = P.filter((x) => x.fecha.year === año);
+  const ini = antes.length ? antes[antes.length - 1] : delAño[0] || null;
+  const conValor = valores.map((v, i) => [v, i]).filter(([v]) => v != null);
+  const fin = conValor.length ? conValor[conValor.length - 1] : null;
+  const mismo = !!ini && !antes.length && !!fin && keys[fin[1]] === keyCal(ini.fecha) && fin[0] === ini.neto;  // el principio y el final son el mismo dato: no hay cambio que medir
+  return { keys, valores, inicio: ini ? ini.neto : null, fechaInicio: ini ? ini.fecha : null, dentro: !!ini && !antes.length, fin: fin ? fin[0] : null, mesFin: fin ? keys[fin[1]] : null,
+    cambio: ini && fin && !mismo ? fin[0] - ini.neto : null };
 }
 // Compras (y ventas) de cada mes: lo que has metido en tu inversión. Los traspasos entre fondos (vender uno para comprar
 // otro) no son dinero nuevo: no cuentan.

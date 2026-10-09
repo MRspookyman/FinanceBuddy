@@ -29,13 +29,15 @@ def leer(ruta, alm, tipo=None, perfil_nombre=None, info=None):
     perfil, i, idx = rec
     if info is not None: info.update(L.datos_cabecera(crudas[:i]))
     filas, raras = [], []
+    # «1.234» es mil doscientos treinta y cuatro, salvo que el archivo use el punto como coma decimal («12.50»)
+    miles = not L.punto_decimal(f[idx[k]] for f in crudas[i + 1:] for k in ("importe", "cargo", "abono", "saldo") if k in idx and idx[k] < len(f))
     for n, f in enumerate(crudas[i + 1:], i + 2):  # n: la fila tal como se ve al abrir el archivo (la primera es la 1)
         cel = lambda k: f[idx[k]] if k in idx and idx[k] < len(f) else None
         op = L.fecha(cel("fecha"))
         crudo = [cel("importe")] if "importe" in idx else [cel("cargo"), cel("abono")]
-        if "importe" in idx: imp = L.numero(crudo[0])
+        if "importe" in idx: imp = L.numero(crudo[0], miles)
         else:
-            cargo, abono = L.numero(crudo[0]), L.numero(crudo[1])
+            cargo, abono = L.numero(crudo[0], miles), L.numero(crudo[1], miles)
             imp = None if cargo is None and abono is None else (abono or 0) - abs(cargo or 0)
         if not op or imp is None:
             # Con cifras donde va la fecha y donde va el importe, era un movimiento (una línea en blanco o un total sin fecha, no)
@@ -49,7 +51,7 @@ def leer(ruta, alm, tipo=None, perfil_nombre=None, info=None):
         val = L.fecha(cel("fecha_valor")) if "fecha_valor" in idx else None
         if val: fila["val"] = val
         if "saldo" in idx:
-            s = L.numero(cel("saldo"))
+            s = L.numero(cel("saldo"), miles)
             if s is not None: fila["saldo"] = round(s, 2)
         filas.append(fila)
     if info is not None: info["ilegibles"] = raras
@@ -93,10 +95,43 @@ def ordenar_y_comprobar_saldos(filas):
         return None
     i = roto(filas)
     if i is None: return filas, None
-    if roto(list(reversed(filas))) is None and filas[0]["op"] == filas[-1]["op"]: return list(reversed(filas)), None
+    otro = ordenar_dentro_del_dia(filas)  # p. ej., días de más reciente a más antiguo pero cada día en orden cronológico
+    if otro is not None: return otro, None
     a = filas[i]
     return filas, (f"Los saldos del archivo no cuadran en el movimiento del {fmt(a['op'])} «{a['texto'][:50]}» ({a['importe']:+.2f} €). "
                    "Puede que falten filas o que las columnas de importe y saldo no sean las correctas. No se ha importado nada.")
+
+def ordenar_dentro_del_dia(filas):
+    """Filas de la más reciente a la más antigua por día, pero con el orden dentro de cada día desconocido: las ordena para que
+    cada saldo salga del anterior. Devuelve la lista nueva o None si no hay forma (o las fechas no van seguidas)."""
+    grupos = []
+    for f in filas:
+        if grupos and grupos[-1][0]["op"] == f["op"]: grupos[-1].append(f)
+        else: grupos.append([f])
+    if len(grupos) != len({g[0]["op"] for g in grupos}) or any(len(g) > 300 for g in grupos): return None
+    salida, previo = [], None
+    for g in reversed(grupos):  # del día más antiguo al más reciente
+        cadena = cadena_del_dia(g[::-1], previo)
+        if cadena is None: return None
+        salida = cadena[::-1] + salida
+        previo = cadena[-1]["saldo"]
+    return salida
+
+def cadena_del_dia(grupo, previo):
+    """Ordena las filas de un día de la más antigua a la más reciente de forma que cada saldo sea el anterior más su importe.
+    `previo`: saldo con el que se cerró el día anterior (None en el más antiguo del archivo)."""
+    usadas, orden, pasos = [False] * len(grupo), [], [0]
+    def seguir(saldo):
+        if len(orden) == len(grupo): return True
+        pasos[0] += 1
+        if pasos[0] > 20000: return False
+        for j, f in enumerate(grupo):
+            if usadas[j] or (saldo is not None and abs(f["saldo"] - f["importe"] - saldo) > 0.005): continue
+            usadas[j] = True; orden.append(f)
+            if seguir(f["saldo"]): return True
+            usadas[j] = False; orden.pop()
+        return False
+    return orden if seguir(previo) else None
 
 def fmt(iso): return "/".join(reversed(iso.split("-")))
 

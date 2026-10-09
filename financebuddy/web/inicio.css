@@ -12,7 +12,7 @@ a.fb-chip:hover{border-color:var(--ink-3)}
 /* portada: la cifra del mes sobre tinta; dentro, los colores base se redefinen para que todo lo que cuelga se lea */
 .fb-hero,.fb-bienvenida{color:#fff;background:var(--tinta);
  --ink:#fff;--ink-2:rgba(255,255,255,.7);--ink-3:rgba(255,255,255,.56);--line:rgba(255,255,255,.14);--surface:rgba(255,255,255,.09);--surface-2:rgba(255,255,255,.09);
- --brand:var(--brand-hi);--brand-soft:rgba(255,255,255,.1);--fin-up:#5FD9A0;--fin-down:#FF8E7A;--amber:#F5BE55;--coral:#FF9270}
+ --brand:var(--brand-hi);--brand-soft:rgba(255,255,255,.1);--fin-up:#5FD9A0;--fin-down:#FF8E7A;--amber:#F5BE55;--coral:#FF9270;--amber-t:#F5BE55;--coral-t:#FF9270}
 body.theme-dark .fb-hero,body.theme-dark .fb-bienvenida{box-shadow:inset 0 0 0 1px rgba(255,255,255,.07)}
 .fb-hero{display:grid;grid-template-columns:minmax(300px,1fr) minmax(0,1.2fr) auto;column-gap:36px;align-items:center;padding:26px 30px;margin-bottom:var(--g);border-radius:16px}
 .fb-hero .iz{grid-column:1;display:flex;flex-direction:column;align-items:flex-start;min-width:0}
@@ -21,7 +21,7 @@ body.theme-dark .fb-hero,body.theme-dark .fb-bienvenida{box-shadow:inset 0 0 0 1
 .fb-hero .graf .l{margin-bottom:6px}
 .fb-hero .v{font-size:clamp(3.2em,6vw,4.6em);font-weight:650;letter-spacing:-.015em;line-height:1;margin:10px 0 18px;color:var(--brand)}
 .fb-hero .v small{font-size:.32em;font-weight:650;letter-spacing:0;white-space:nowrap}
-.fb-hero.pasado .v{color:var(--coral)} .fb-hero.alto .v{color:var(--amber)} .fb-hero.neutro .v{color:var(--ink)}
+.fb-hero.pasado .v{color:var(--coral-t)} .fb-hero.alto .v{color:var(--amber-t)} .fb-hero.neutro .v{color:var(--ink)}
 .fb-hero .s{font-size:.9em;color:var(--ink-2);margin-top:4px;max-width:560px}
 .fb-hero .pills{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
 .fb-hero .pill{all:unset;cursor:pointer;padding:6px 12px;border-radius:8px;font-size:.84em;font-weight:600;color:var(--ink);background:var(--surface);border:1px solid var(--line);text-decoration:none}
@@ -78,6 +78,7 @@ a.fb-hero-link{color:var(--brand)}
 .fb-stat .ic{display:none}
 .fb-stat .l{font-size:.8em;color:var(--ink-2);font-weight:700;letter-spacing:.07em;text-transform:uppercase}
 .fb-stat .v{font-size:1.8em;font-weight:650;line-height:1.1;white-space:nowrap}
+.fb-stat .s{font-size:.86em;color:var(--ink-2)}
 .fb-stat.entra{border-top-color:var(--mint)} .fb-stat.sale{border-top-color:var(--coral)} .fb-stat.ahorro{border-top-color:var(--brand)}
 /* barras de la semana */
 .fb-semana{display:grid;grid-template-columns:repeat(7,1fr);gap:8px;align-items:end;height:150px;margin:8px 0 6px;position:relative}

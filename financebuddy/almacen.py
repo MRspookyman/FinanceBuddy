@@ -1,5 +1,5 @@
 # Base de datos: un archivo SQLite con una tabla de registros (JSON por registro, ver modelo.py) y la configuración.
-import datetime, glob, json, os, re, shutil, sqlite3, threading
+import datetime, glob, json, os, pathlib, re, shutil, sqlite3, threading
 from contextlib import contextmanager
 from . import modelo
 
@@ -42,6 +42,24 @@ def ultima_copia(carpeta):
     """La copia de seguridad más reciente de una carpeta Copias, o None."""
     copias = copias_de(carpeta)
     return copias[-1] if copias else None
+
+def comprobar_copia(ruta):
+    """Antes de restaurar una copia: que sea una base de FinanceBuddy entera y no de una versión más nueva de la app.
+    La abre solo para leer. Lanza ValueError con el motivo en español; si no, no hace nada."""
+    try:
+        con = sqlite3.connect(pathlib.Path(os.path.abspath(ruta)).as_uri() + "?mode=ro&immutable=1", uri=True)  # sin -wal ni -shm al lado
+        try:
+            if con.execute("PRAGMA integrity_check").fetchone()[0] != "ok": raise sqlite3.DatabaseError("integridad")
+            tablas = {r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+            if not {"registros", "config"} <= tablas: raise ValueError("Esa copia no es de FinanceBuddy: no la restauro. Tus datos no se han tocado.")
+            f = con.execute("SELECT valor FROM config WHERE clave='version_esquema'").fetchone()
+        finally: con.close()
+    except sqlite3.DatabaseError:
+        raise ValueError("Esa copia está dañada y no se puede usar. Tus datos no se han tocado: elige otra copia.")
+    try: v = json.loads(f[0]) if f else None
+    except ValueError: v = None
+    if isinstance(v, int) and v > VERSION_ESQUEMA:
+        raise ValueError("Esa copia es de una versión más nueva de FinanceBuddy: actualiza la app para restaurarla. Tus datos no se han tocado.")
 
 def restaurar_archivo(db, copia):
     """Aparta el datos.db dañado («datos.db.roto …») y deja la copia en su lugar. → ruta del archivo apartado."""

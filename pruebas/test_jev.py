@@ -87,6 +87,25 @@ class TestJev(unittest.TestCase):
         t = jev.saneado("PAGO MOVIL EN ITV JAEN-VEIASA, JAEN ES, TARJ. :*904020", -48.62)
         self.assertNotIn("904020", t); self.assertIn("ITV JAEN", t); self.assertIn("Sale dinero: 48.62 €", t)
 
+    def test_saneado_bizum_que_no_va_al_principio(self):
+        t = jev.saneado("Pago Bizum a Juan Perez Garcia concepto cena", -20)
+        self.assertNotIn("Juan", t); self.assertNotIn("Perez", t); self.assertIn("Bizum enviado. Concepto: cena", t)
+
+    def test_saneado_transferencia_bizum(self):
+        t = jev.saneado("Transferencia Bizum de Maria Lopez", 15)
+        self.assertNotIn("Maria", t); self.assertNotIn("Lopez", t); self.assertIn("Bizum recibido sin concepto", t)
+
+    def test_saneado_envio_bizum_sin_preposicion(self):
+        t = jev.saneado("Envio Bizum Juan Perez Gomez", -5)
+        self.assertNotIn("Juan", t); self.assertNotIn("Gomez", t); self.assertIn("Bizum enviado", t)
+
+    def test_saneado_recibo_de_una_persona(self):
+        t = jev.saneado("Recibo Juan Perez Garcia alquiler", -600)
+        self.assertNotIn("Juan", t); self.assertNotIn("Garcia", t); self.assertIn("Recibo una persona alquiler", t)
+        # Lo que no es una persona se queda: un comercio con apellido tras «Pago Movil En» o una empresa
+        self.assertIn("Ferreteria Lopez", jev.saneado("Pago Movil En Ferreteria Lopez, Madrid", -12.5))
+        self.assertIn("Iberdrola Clientes", jev.saneado("Recibo Iberdrola Clientes Sau", -50))
+
     def test_sin_clave_no_hace_nada(self):
         r = self.importar()
         self.assertNotIn("Jev", r["mensaje"]); self.assertEqual(RECIBIDO, [])

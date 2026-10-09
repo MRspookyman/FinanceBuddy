@@ -72,7 +72,7 @@ def _mes(t):
 def fecha(v):
     if isinstance(v, datetime.datetime): return v.date().isoformat()
     if isinstance(v, datetime.date): return v.isoformat()
-    if isinstance(v, (int, float)) and 20000 < v < 80000:  # número de serie de Excel
+    if isinstance(v, (int, float)) and 32874 <= v < 73051:  # número de serie de Excel (de 1990 a 2099)
         return (datetime.date(1899, 12, 30) + datetime.timedelta(days=int(v))).isoformat()
     s = str(v or "").strip()
     for f in ("%d/%m/%Y", "%d-%m-%Y", "%Y-%m-%d", "%d/%m/%y", "%d-%m-%y", "%d.%m.%Y", "%Y/%m/%d", "%Y-%m-%d %H:%M:%S", "%d/%m/%Y %H:%M:%S", "%d/%m/%Y %H:%M"):
@@ -93,8 +93,10 @@ def con_cifras(v):
     en blanco, un rótulo o un total sin fecha, no."""
     return v is not None and not isinstance(v, bool) and bool(re.search(r"\d", str(v)))
 
-def numero(v):
-    """1.234,56 · -12,30 · 1,234.56 · 1234.5 · «12,30 €» → float. None si no es un número."""
+def numero(v, miles=True):
+    """1.234,56 · -12,30 · 1,234.56 · 1234.5 · «12,30 €» → float. None si no es un número.
+    «1.234» (un solo punto, sin coma y tres cifras detrás) es 1234, con el punto de miles español; con miles=False (columnas
+    de participaciones, o un archivo que usa el punto como coma decimal: ver punto_decimal) es 1,234."""
     if isinstance(v, bool) or v is None: return None
     if isinstance(v, (int, float)): return float(v)
     s = str(v).strip().replace("€", "").replace("EUR", "").replace("\xa0", "").replace(" ", "")
@@ -106,10 +108,17 @@ def numero(v):
     if "," in s and "." in s:
         s = s.replace(".", "").replace(",", ".") if s.rfind(",") > s.rfind(".") else s.replace(",", "")
     elif "," in s: s = s.replace(",", ".") if s.count(",") == 1 else s.replace(",", "")
-    elif s.count(".") > 1: s = s.replace(".", "")  # 1.234.567 (un solo punto se toma como decimal)
+    elif s.count(".") > 1: s = s.replace(".", "")  # 1.234.567
+    elif miles and re.fullmatch(r"[+-]?[1-9]\d{0,2}\.\d{3}", s): s = s.replace(".", "")  # 1.234 (otro punto solo, decimal: 12.5)
     try: n = float(s)
     except ValueError: return None
     return -n if neg else n
+
+def punto_decimal(valores):
+    """¿Las cifras usan el punto como coma decimal («12.50», «1234.5»)? Entonces un «1.234» de esas mismas columnas es 1,234
+    y no mil doscientos treinta y cuatro. Se decide por archivo, mirando todos los valores (no fila a fila)."""
+    return any(isinstance(v, str) and "," not in v and v.count(".") == 1 and numero(v, miles=False) is not None
+               and numero(v) == numero(v, miles=False) for v in valores)
 
 def texto(v):
     if v is None: return ""
@@ -204,9 +213,10 @@ def columnas_probables(cabecera, ejemplos):
     cab = [norm(c) for c in cabecera]
     def valores(j):
         return [f[j] for f in ejemplos if j < len(f) and texto(f[j])]
-    def es_fecha(j):
+    def es_fecha(j, por_nombre=True):
+        # Una celda de número (45930) puede ser una fecha de Excel o un importe: por el contenido solo, hace falta alguna fecha de verdad
         v = valores(j)
-        return bool(v) and all(fecha(x) for x in v)
+        return bool(v) and all(fecha(x) for x in v) and (por_nombre or any(not isinstance(x, (int, float)) for x in v))
     def es_numero(j, vacia_vale=False):
         v = valores(j)
         if not v: return vacia_vale  # en «Debe/Haber» cada fila rellena solo una de las dos columnas
@@ -225,7 +235,7 @@ def columnas_probables(cabecera, ejemplos):
     if "fecha" not in out and "fecha_valor" in out: out["fecha"] = out.pop("fecha_valor")  # solo hay fecha valor: esa es la fecha
     # Sin nombres reconocibles, por el contenido: la primera columna con fechas y la primera con números distintos del saldo
     if "fecha" not in out:
-        j = next((j for j in range(len(cab)) if j not in usadas and es_fecha(j)), None)
+        j = next((j for j in range(len(cab)) if j not in usadas and es_fecha(j, por_nombre=False)), None)
         if j is not None: out["fecha"] = texto(cabecera[j]); usadas.add(j)
     if "importe" not in out and not ("cargo" in out and "abono" in out):
         j = next((j for j in range(len(cab)) if j not in usadas and es_numero(j)), None)

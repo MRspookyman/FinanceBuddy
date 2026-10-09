@@ -245,4 +245,36 @@ caso("Copias en un solo disco: avisa con datos de verdad y sin segunda carpeta; 
 caso("El ejemplo no tiene comisiones, cobros repetidos ni aviso de copias", !F.avisos().some((a) => /^comision:|^repetido:|^copias:/.test(String(a.clave).replace("inicio:", ""))),
   JSON.stringify(F.avisos().map((a) => a.clave)));
 
+// Mi año: el año del ejemplo (mayo a septiembre de 2026) suma lo mismo que sus meses, y solo cuentan meses con movimientos propios.
+const R26 = F.resumenAño(2026);
+const K26 = R26.keys.filter((k) => F.finMes(k).real.some((m) => !m.auto));
+caso("Mi año 2026 del ejemplo: 5 meses, y lo que entró y salió es la suma de esos meses",
+  R26.meses === 5 && K26.length === 5 && cerca(R26.ingresos, suma(K26.map((k) => F.finMes(k).ingresos))) && cerca(R26.gastos, suma(K26.map((k) => F.finMes(k).gastos))),
+  [R26.meses, R26.ingresos, R26.gastos]);
+caso("Mi año: lo gastado por categoría suma el total, y el mejor y el peor mes son meses ya acabados",
+  cerca(suma([...R26.gastoCat.values()]), R26.gastos) && R26.mejor && R26.peor && R26.mejor.key < F.hoyKey && R26.peor.key < F.hoyKey && R26.mejor.ahorro >= R26.peor.ahorro,
+  [R26.mejor && R26.mejor.key, R26.peor && R26.peor.key]);
+const mA = (fecha, clase, importe, categoria, mas = {}) => ({ fecha: d0(fecha), clase, importe, categoria, auto: false, previsto: false,
+  gasto: clase === "gasto" ? importe : clase === "reembolso" ? -importe : 0, ...mas });
+const MOV25 = [mA("2025-01-10", "ingreso", 1000, "Nómina"), mA("2025-01-15", "gasto", 400, "Supermercado"), mA("2025-02-05", "gasto", 900, "Viajes"),
+  mA("2025-02-20", "ingreso", 1000, "Nómina"), mA("2025-02-21", "reembolso", 100, "Viajes"), mA("2025-03-01", "ingreso", 1850, "Nómina", { auto: true }),
+  mA("2025-04-02", "gasto", 50, "Ocio", { previsto: true }), mA("2024-12-31", "gasto", 999, "Ocio")];
+const R25 = F.resumenAño(2025, MOV25);
+caso("Mi año: sin el mes con solo fijos automáticos, lo previsto ni lo de otro año; el reembolso resta (2.000 € entran, 1.200 € salen)",
+  R25.meses === 2 && cerca(R25.ingresos, 2000) && cerca(R25.gastos, 1200) && cerca(R25.ahorro, 800) && cerca(R25.gastoCat.get("Viajes"), 800) && !R25.gastoCat.has("Ocio"),
+  [R25.meses, R25.ingresos, R25.gastos, JSON.stringify([...R25.gastoCat])]);
+caso("Mi año: mejor mes enero (600 €), peor febrero (200 €); hasta enero solo cuenta enero",
+  R25.mejor.key === "2025-01" && cerca(R25.mejor.ahorro, 600) && R25.peor.key === "2025-02" && cerca(R25.peor.ahorro, 200) && F.resumenAño(2025, MOV25, "2025-01").meses === 1 && cerca(F.resumenAño(2025, MOV25, "2025-01").gastos, 400),
+  [R25.mejor && R25.mejor.key, R25.peor && R25.peor.key]);
+const EVA = { keys: ["2025-11", "2025-12", "2026-01", "2026-02", "2026-03"], aportado: [1000, 1000, 1100, 1200, 1200], valor: [1000, 1050, null, 1300, 1320] };
+const RAÑ = F.rentabilidadAño(EVA, 2026);
+caso("Rentabilidad del año: de fin de diciembre (1.050 €) a marzo (1.320 €) metiendo 200 € → gana 70 € (6,1 %)",
+  RAÑ.ok && RAÑ.desde === "2025-12" && RAÑ.hasta === "2026-03" && cerca(RAÑ.metido, 200) && cerca(RAÑ.gan, 70) && cerca(RAÑ.r, 70 / 1150, 1e-9), JSON.stringify(RAÑ));
+caso("Rentabilidad del año: sin valores de ese año no se calcula", !F.rentabilidadAño(EVA, 2024).ok && !F.rentabilidadAño(null, 2026).ok);
+const PSA = [{ fecha: d0("2025-12-31"), neto: 10000 }, { fecha: d0("2026-01-15"), neto: 10200 }, { fecha: d0("2026-01-31"), neto: 10500 }, { fecha: d0("2026-03-31"), neto: 11000 }];
+const PA = F.patrimonioAño(2026, PSA, 12000), PA2 = F.patrimonioAño(2026, PSA), PA25 = F.patrimonioAño(2025, PSA);
+caso("Patrimonio del año: el último registro de cada mes, hoy (septiembre) el estimado y nada después; cambia 2.000 € desde el 31/12 (sin saldos del año anterior, desde el primero del año)",
+  PA.valores[0] === 10500 && PA.valores[1] === null && PA.valores[2] === 11000 && PA.valores[8] === 12000 && PA.valores[9] === null && PA.inicio === 10000 && PA.cambio === 2000 && PA.mesFin === "2026-09"
+  && PA2.fin === 11000 && PA2.mesFin === "2026-03" && PA25.dentro && PA25.cambio === null && F.patrimonioAño(2026, PSA.slice(1), 12000).cambio === 1800 && PA25.fin === 10000, JSON.stringify([PA.valores, PA.cambio, PA2.fin, PA25.cambio]));
+
 return casos;

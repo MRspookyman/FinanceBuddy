@@ -158,7 +158,7 @@ function vistaAjustes() {
   const iC = fr2.createEl("input", { attr: { type: "text", placeholder: "C:\\Users\\…\\FinanceBuddy", "aria-label": "Carpeta de datos" } }); iC.value = DB.info.carpeta;
   const bC = fr2.createEl("button", { cls: "fb-btn sec", text: "Cambiar" });
   bC.onclick = async () => { const r = await FB.api("/api/carpeta", { carpeta: iC.value }); FB.aviso(r.mensaje || "Hecho", !r.ok); await FB.recargar(); FB.ir("#inicio"); };
-  det2.createDiv({ cls: "fin-note", text: "Si la carpeta no tiene datos, se empieza de cero allí (tus datos actuales siguen en la carpeta de antes)." });
+  det2.createDiv({ cls: "fin-note", text: "La carpeta tiene que existir (créala antes en el Explorador si es nueva). Si no tiene datos, se empieza de cero allí (tus datos actuales siguen en la carpeta de antes)." });
   const det3 = pC.createEl("details"); det3.createEl("summary", { text: "Borrar todos los datos" });
   det3.createDiv({ cls: "fin-note", text: "Se guarda una copia antes. Escribe BORRAR para confirmar." });
   const fr3 = det3.createDiv({ cls: "fb-fila" });

@@ -66,7 +66,7 @@ function vistaInicio() {
     prevision: (padre) => { if (actual && estimacion()) tarjetaPrevision(panel(padre, "Tus próximos meses", { text: "Fijos", ruta: "#gestionar/recurrente" }, "Lo que tendrás en tus cuentas al acabar cada mes si todo sigue igual: parte de lo que tienes hoy y suma tus fijos, tus aportaciones y lo que sueles gastar de verdad (tu media, no tu límite).")); },
     objetivos: (padre) => { if (objetivosActivos().length || recordatoriosCercanos().length) tarjetaObjetivos(panel(padre, "Objetivos y recordatorios", { text: "Editar", ruta: "#gestionar/objetivo" })); },
     semana: (padre) => { if (actual) tarjetaSemana(panel(padre, "Esta semana", { text: `${S.lunes.toFormat("d/M")} – ${S.domingo.toFormat("d/M")}` }), S); },
-    meses: (padre) => tarjetaMeses(panel(padre, "Tus últimos meses")),
+    meses: (padre) => tarjetaMeses(panel(padre, "Tus últimos meses", { text: "Mi año", ruta: "#anual" })),
   };
   // La portada va primero y la franja de avisos justo debajo (o arriba del todo si la portada está oculta o movida).
   const visibles = panelesInicio().filter((p) => p.visible);
@@ -330,7 +330,7 @@ function tarjetaPatrimonio(p) {
     n.appendText(`Anotaste ${eur(ult.neto, 0)} el ${ult.fecha.toFormat("dd/MM")}; desde entonces ${eurS(dAn, 0)} por los movimientos y el cambio de valor de tu inversión. `);
     enlace(n, "Anotar saldos de hoy →", "#cerrar");
   }
-  enlace(p.createDiv({ cls: "fin-note" }), "Tus hitos →", "#inversion");
+  enlace(p.createDiv({ cls: "fin-note" }), "Tus metas de patrimonio →", "#inversion");
 }
 
 // Evolución en pequeño: área suave a todo lo ancho (sin ejes), con el último punto marcado.
@@ -424,7 +424,10 @@ function tarjetaMeses(p) {
 // ───────────── movimientos ─────────────
 function vistaMovimientos() {
   cabecera("Movimientos", true, "Todo lo que ha entrado y salido. Pulsa uno para cambiarlo.");
-  enlace(root.createDiv({ cls: "fin-note" }), "+ Apuntar un gasto a mano", "#apuntar");
+  const notaMov = root.createDiv({ cls: "fin-note" });
+  enlace(notaMov, "+ Apuntar un gasto a mano", "#apuntar");
+  notaMov.appendText(" · ");
+  enlace(notaMov, "Mi año: el año entero comparado con el anterior →", "#anual");
   const M = finMes(mes);
   const g = root.createDiv({ cls: "fb-stats" });
   const st = (cls, ic, l, v) => { const c = g.createDiv({ cls: "fb-stat " + cls }); c.createDiv({ cls: "ic", text: ic }); c.createDiv({ cls: "l", text: l }); c.createDiv({ cls: "v", text: v }); };

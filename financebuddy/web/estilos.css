@@ -11,6 +11,8 @@ body{margin:0;font-family:"Segoe UI Variable Text","Segoe UI",system-ui,-apple-s
  --tinta:#10151C;--on-brand:#fff;
  --brand:#1B7558;--brand-hi:#62D3A6;--brand-soft:color-mix(in srgb,var(--brand) 11%,var(--surface));
  --coral:#DD5F36;--mint:#16804F;--rose:#CF362B;--amber:#B87A00;
+ /* coral y ámbar para TEXTO: los de arriba no llegan a 4,5:1 sobre blanco (rellenos y bordes siguen con los de arriba) */
+ --coral-t:#B4461F;--amber-t:#8F5E00;
  --aurora:var(--brand);
  --shadow:none;--shadow-s:0 12px 32px -8px rgba(16,21,28,.22),0 0 0 1px rgba(16,21,28,.06);
  --r:12px;--r-s:10px;--g:14px;
@@ -30,7 +32,7 @@ body.theme-dark{color-scheme:dark;
  --bg:#0B0E12;--surface:#141920;--surface-2:#1C222B;--line:#29313B;--ink:#E9EDF2;--ink-2:#A4AFBC;--ink-3:#8793A2;
  --tinta:#1A212A;--on-brand:#0B0E12;
  --brand:var(--brand-hi);--brand-soft:color-mix(in srgb,var(--brand) 16%,var(--surface));
- --coral:#FF9270;--mint:#4FD08E;--rose:#FF7A6B;--amber:#F2B84B;
+ --coral:#FF9270;--mint:#4FD08E;--rose:#FF7A6B;--amber:#F2B84B;--coral-t:var(--coral);--amber-t:var(--amber);
  --shadow-s:0 14px 36px -8px rgba(0,0,0,.7),0 0 0 1px rgba(255,255,255,.06);--hover:rgba(255,255,255,.05);
  --fin-s2:#FF9270;--fin-s3:#EFC455;--fin-s4:#AB9DFF;--fin-s5:#7DBBEE;--fin-s6:#F58DB6;--fin-s7:#BCC777;--fin-s8:#6ED3D3;--fin-up:#4FD08E;--fin-down:#FF7A6B}
 a{color:var(--brand)}

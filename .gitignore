@@ -14,3 +14,6 @@ Copias/
 *.xlsx
 *.xls
 *.csv
+
+# Informes de los agentes de revisión
+.claude/informes/

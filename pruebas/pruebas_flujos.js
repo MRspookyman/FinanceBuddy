@@ -431,5 +431,27 @@ return (async () => {
     if (!plano(fila.parentElement).includes("No se puede cambiar con datos de ejemplo")) return "no dice por qué no se puede: " + plano(fila.parentElement).slice(-200);
   });
 
+  // 22. Mi año: desde Movimientos, el año con lo que salió frente a los mismos meses del anterior, y se puede ver el año pasado
+  await caso("Mi año: compara con el año anterior por categoría y deja elegir el año", async () => {
+    const r = await FB.api("/api/guardar", { tipo: "movimiento", datos: { fecha: "2025-06-10", clase: "gasto", categoria: "Viajes", importe: 300, concepto: "Hotel de prueba", cuenta: "Cuenta nómina" } });
+    if (!r.ok) return "no se guarda el gasto del año pasado: " + r.mensaje;
+    await FB.recargar();
+    if (!(await ir("#movimientos"))) return "no se abre Movimientos";
+    const l = await hasta(() => todos("a").find((a) => a.getAttribute("href") === "#anual"));
+    if (!l) return "Movimientos no lleva a Mi año";
+    l.click();
+    if (!(await hasta(() => app().dataset.vista === "anual" && app().querySelector(".fb-stats")))) return "no se abre Mi año";
+    const sale = porTexto(".fb-stat", "Salió");
+    if (!sale || !plano(sale).includes("2025: 300 €")) return "«Salió» no se compara con 2025: " + (sale ? plano(sale) : "no está");
+    const fila = todos(".fin-table tr").find((tr) => plano(tr).startsWith("Viajes"));
+    if (!fila || !plano(fila).includes("300 €")) return "la categoría Viajes no trae lo de 2025: " + (fila ? plano(fila) : "no está");
+    if (!porTexto(".fin-panel", "Tu patrimonio en 2026")) return "falta el patrimonio del año";
+    const b = porTexto(".fb-chips button", "2025");
+    if (!b) return "no se puede elegir 2025";
+    b.click();
+    if (!(await hasta(() => { const s = porTexto(".fb-stat", "Salió"); return s && plano(s).includes("300 €") && !plano(s).includes("2024:"); }))) return "al elegir 2025 no sale lo de ese año";
+    if (!porTexto(".fin-note", "De 2024 no hay movimientos")) return "no dice que no hay año anterior con el que comparar";
+  });
+
   return casos;
 })();

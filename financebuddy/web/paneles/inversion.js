@@ -52,7 +52,7 @@ function vistaInversion() {
     { l: "Has metido", v: eur(I.aportadoTodo, 0), s: `${I.filas.reduce((s, f) => s + f.operaciones, 0)} compras y ventas` },
     ...(per === "total" ? [
     isFinite(I.gan) && I.aportado > 0 ? { l: "Ganancia", v: (I.estimados ? "≈ " : "") + eurS(I.gan, 0), t: tone(I.gan), s: `${pct(pct0, true)} sobre lo metido${I.estimados ? " · estimada" : ""}${I.dividendos ? ` · con ${eur(I.dividendos, 0)} de dividendos` : ""}` } : null,
-    isFinite(I.tir) ? { l: "Rentabilidad anual", v: pct(I.tir, true), t: tone(I.tir), s: I.tirCorta ? "menos de un año: orientativa" : I.tirParcial ? "de los activos con datos" : "TIR, cuenta cuándo metiste cada euro" } : null,
+    isFinite(I.tir) ? { l: "Rentabilidad anual", v: pct(I.tir, true), t: tone(I.tir), s: I.tirCorta ? "menos de un año: orientativa" : I.tirParcial ? "de los activos con datos" : "cuenta cuándo metiste cada euro" } : null,
     ] : tilesPeriodo(rentabilidadPeriodo(evolucionInversion(solo), Number(per)), per === "1" ? "este mes" : "1 año")),
     efectivo != null ? { l: "Sin invertir", v: eur(efectivo, 0), s: nombresBroker() } : null,
     INT.n ? { l: `Intereses ${hoy.year}`, v: eur(INT.año, 2), s: INT.comisiones ? `comisiones ${eur(INT.comisiones, 2)}` : "del dinero sin invertir" } : null,
@@ -72,9 +72,8 @@ function vistaInversion() {
   panelHitos(root);
 }
 
-// Hitos: las cifras redondas que tu patrimonio ha ido cruzando, la barra hacia la siguiente y cuánto tardarías al ritmo actual
+// Metas: las cifras redondas que tu patrimonio ha ido cruzando, la barra hacia la siguiente y cuánto tardarías al ritmo actual
 // (lo que metes al mes de media el último año y tu rentabilidad, con un tope prudente del 5 %).
-const compactoEur = (v) => (v >= 1e6 ? `${nf(v / 1e6, 0, 1)} M€` : v >= 1000 ? `${nf(v / 1000, 0, 1)} k€` : `${nf(v, 0, 0)} €`);
 function panelHitos(padre) {
   const E = estimacion();
   if (!E) return;
@@ -82,23 +81,23 @@ function panelHitos(padre) {
   const m12 = aportacionesMes(12), i0 = m12.findIndex((x) => x.compras || x.ventas);
   const apo = i0 < 0 ? 0 : sum(m12.map((x) => x.compras - x.ventas)) / (m12.length - i0);
   const rent = isFinite(R.tir) && !R.tirCorta ? Math.min(0.05, Math.max(0, R.tir)) : 0.05;
-  const p = panel(padre, "Hitos", null, "Las cifras redondas que tu patrimonio ha ido cruzando. La fecha es la del primer registro de saldos que lo supera.");
+  const p = panel(padre, "Metas de patrimonio", null, "Las cifras redondas que tu patrimonio ha ido cruzando. La fecha es la del primer registro de saldos que lo supera.");
   const H = hitosPatrimonio(P.map((x) => ({ fecha: x.fecha, neto: x.neto })), neto, hoy);
   const fila = p.createDiv({ cls: "fb-hitos" });
   for (const h of H.logrados.filter((x) => !x.inicial).slice(-5)) {  // los que ya tenías al empezar no se celebran
     const c = fila.createDiv({ cls: "h ok" });
-    c.createDiv({ cls: "v", text: `✓ ${compactoEur(h.valor)}` });
+    c.createDiv({ cls: "v", text: `✓ ${eur(h.valor, 0)}` });
     c.createDiv({ cls: "s", text: h.hoy ? "ya, según tu estimación de hoy" : h.fecha.setLocale("es").toFormat("LLL yyyy").replace(".", "") });
   }
   for (const h of H.proximos) {
     const c = fila.createDiv({ cls: "h" });
-    c.createDiv({ cls: "v", text: compactoEur(h.valor) });
+    c.createDiv({ cls: "v", text: eur(h.valor, 0) });
     c.createDiv({ cls: "s", text: `faltan ${eur(h.falta, 0)}` });
   }
-  if (!H.siguiente) { p.createDiv({ cls: "fin-note", text: "Has superado todos los hitos de la lista. 🎉" }); return; }
+  if (!H.siguiente) { p.createDiv({ cls: "fin-note", text: "Has superado todas las metas de la lista. 🎉" }); return; }
   const previo = H.logrados.length ? H.logrados[H.logrados.length - 1].valor : 0;
   const frac = Math.max(0, Math.min(1, (neto - previo) / (H.siguiente - previo)));
-  p.createDiv({ cls: "fin-note", text: `Próximo: ${compactoEur(H.siguiente)} · llevas el ${nf(frac * 100, 0, 0)} % del camino desde ${compactoEur(previo) || "0"}.` });
+  p.createDiv({ cls: "fin-note", text: `Próximo: ${eur(H.siguiente, 0)} · llevas el ${nf(frac * 100, 0, 0)} % del camino desde ${eur(previo, 0)}.` });
   const b = p.createDiv({ cls: "fb-barra fina" }); b.createDiv().style.width = `${(frac * 100).toFixed(1)}%`;
   const m = mesesHasta50(neto, apo, rent, H.siguiente);
   if (m != null && m > 0) {
@@ -339,7 +338,7 @@ function panelSalud(padre, S, { titulo = "Revisa tu inversión", max = 4 } = {})
 
 // ───────────── ficha de un activo ─────────────
 // Todo lo de un activo en una pantalla: cuánto tienes y a qué precio, cada operación (de dónde viene, editable) y las
-// herramientas para cuando lo importado no cuadra: cuadrar con tu bróker, unir con otro activo o deshacerlo.
+// herramientas para cuando lo importado no cuadra: ajustar las participaciones a tu bróker, unir con otro activo o deshacerlo.
 const ORIGEN_OP = (x) => x.p.ajuste ? "ajuste" : x.p.ext_fecha && x.p.orden ? "extracto + órdenes" : x.p.ext_fecha ? "extracto" : x.p.orden ? "órdenes" : "a mano";
 function vistaActivo() {
   const [id, que, otro] = params;
@@ -367,15 +366,15 @@ function vistaActivo() {
   ]);
   panelSalud(root, saludInversion(a.nombre), { titulo: "Revisa este activo", max: 10 });
 
-  // Cuadrar con el bróker
-  const pc = panel(root, "Cuadrar con tu bróker", null, "Si lo importado no cuadra, dile a la app lo que ves en tu bróker. Se añade un ajuste de participaciones (sin dinero) y, si lo pones, se anota lo que vale.");
+  // Ajustar las participaciones a las del bróker
+  const pc = panel(root, "Ajustar participaciones", null, "Si lo importado no cuadra, dile a la app lo que ves en tu bróker. Se añade un ajuste de participaciones (sin dinero) y, si lo pones, se anota lo que vale.");
   if (que === "cuadrar") pc.classList.add("resalta");
   const cuenta = P.contadas;
   pc.createDiv({ cls: "fin-note", text: `La app cuenta ${nf(cuenta, 0, 4)} participaciones${P.sinPart ? ` (${P.sinPart} operaci${P.sinPart === 1 ? "ón no dice" : "ones no dicen"} cuántas)` : ""}. ¿Cuántas te dice tu bróker que tienes hoy?` });
   const fc = pc.createDiv({ cls: "fb-fila fb-cuadrar" });
   const iP = fc.createEl("input", { attr: { type: "number", step: "any", min: "0", placeholder: "Participaciones", "aria-label": "Participaciones que tienes" } });
   const iV = fc.createEl("input", { attr: { type: "number", step: "0.01", min: "0", placeholder: "Lo que vale hoy (€, opcional)", "aria-label": "Valor de hoy" } });
-  const bC = fc.createEl("button", { cls: "fb-btn", text: "Cuadrar" });
+  const bC = fc.createEl("button", { cls: "fb-btn", text: "Ajustar participaciones" });
   const prev = pc.createDiv({ cls: "fin-note" });
   iP.oninput = () => { const v = parseFloat(iP.value); prev.setText(isFinite(v) ? (Math.abs(v - cuenta) < 1e-9 ? "Ya cuadra: no hace falta ajuste." : `Se añadirá un ajuste de ${v - cuenta > 0 ? "+" : ""}${nf(v - cuenta, 0, 6)} participaciones.`) : ""); };
   bC.onclick = async () => {
@@ -501,7 +500,7 @@ function estadoPrecios(padre, I) {
     const m = (C.activos || {})[a.nombre], act = activos().find((x) => x.nombre === a.nombre);
     const fallo = ((C.resultado || {}).fallos || []).find((f) => String(f.que).split(", ").includes(a.nombre));
     if (!m) motivos.push([a, fallo ? `no se pudo obtener su precio (${fallo.motivo})` : "aún no tiene precio: pulsa «Actualizar precios»", `#editar/activo/${a.id}`, "Revisar"]);
-    else if (act && !posicion(act).conPart) motivos.push([a, "tiene precio, pero no se sabe cuántas participaciones tienes", `#activo/${a.id}/cuadrar`, "Cuadrar con el bróker"]);
+    else if (act && !posicion(act).conPart) motivos.push([a, "tiene precio, pero no se sabe cuántas participaciones tienes", `#activo/${a.id}/cuadrar`, "Ajustar participaciones"]);
     else motivos.push([a, "su precio es antiguo y hay un valor anotado más nuevo", "#valores", "Ver"]);
   }
   for (const a of A.filter((x) => !x.fuente_precio).slice(0, 6)) motivos.push([a, "no tiene fuente de precio", `#editar/activo/${a.id}`, "Buscar el precio"]);

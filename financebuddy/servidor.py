@@ -2,10 +2,10 @@
 # Solo escucha en 127.0.0.1 y cada arranque genera una clave que la página envía en la cabecera X-FB-Token.
 import base64, calendar, datetime, http.server, io, json, mimetypes, os, re, secrets, socketserver, tempfile, threading, traceback, urllib.parse
 from . import VERSION, actualizaciones, autoarranque, bizums, cartera, clasificar as C, detectar, exportar, importar as IM, jev, modelo, ordenar, plantilla, precios, rutas, secreto
-from .almacen import Almacen
+from .almacen import Almacen, comprobar_copia
 
 mimetypes.add_type("font/woff2", ".woff2")
-MODULOS = ["datos", "calculos", "calculos_saldos", "calculos_avisos", "componentes", "graficos", "inicio", "inversion", "renta", "precios", "exportar", "formularios",
+MODULOS = ["datos", "calculos", "calculos_saldos", "calculos_avisos", "componentes", "graficos", "inicio", "inversion", "renta", "anual", "precios", "exportar", "formularios",
            "bienvenida", "importar", "revisar", "fijos", "cierre", "ajustes", "gestionar", "pantallas"]  # el orden es el de la concatenación: no lo cambies
 MAX_SUBIDA = 25 * 1024 * 1024
 ACENTOS = ["salvia", "violeta", "azul", "verde", "coral", "rosa", "grafito"]  # colores de acento (estilos.css: body[data-acento])
@@ -316,8 +316,14 @@ class App:
         return {"ok": True, "mensaje": f"Valores actualizados ({n})."}
 
     def cambiar_carpeta(self, d):
-        nueva = os.path.abspath(os.path.expandvars(str(d.get("carpeta") or "").strip().strip('"')))
-        if not nueva or len(nueva) < 4: raise ValueError("Escribe una carpeta válida.")
+        escrita = os.path.expandvars(str(d.get("carpeta") or "").strip().strip('"'))
+        if not escrita: raise ValueError("Escribe una carpeta válida.")
+        if not os.path.isabs(escrita): raise ValueError(f"Escribe la ruta completa de la carpeta (por ejemplo, C:\\Users\\…\\FinanceBuddy). Sigues con {self.carpeta.raiz}.")
+        nueva = os.path.abspath(escrita)
+        # Una ruta mal escrita no crea una carpeta vacía (parecería que se han perdido los datos): la carpeta tiene que existir
+        if not os.path.isdir(nueva):
+            que = "es un archivo, no una carpeta" if os.path.exists(nueva) else "no existe (¿está bien escrita?). Si quieres empezar allí, créala antes en el Explorador"
+            raise ValueError(f"No se ha podido usar «{nueva}»: {que}. Sigues con {self.carpeta.raiz}.")
         try:
             self.abrir(nueva)
         except Exception as e:  # la carpeta de antes sigue abierta: solo hay que contar qué ha pasado
@@ -348,6 +354,7 @@ class App:
         nombre = os.path.basename(str(d.get("copia") or ""))
         origen = os.path.join(self.carpeta.copias, nombre)
         if not nombre.endswith(".db") or not os.path.exists(origen): raise ValueError("No encuentro esa copia.")
+        comprobar_copia(origen)  # dañada o de una versión más nueva: se dice y no se toca nada
         self.copia("antes de restaurar", forzar=True)
         import sqlite3
         src = sqlite3.connect(origen)
@@ -565,6 +572,7 @@ class Manejador(http.server.BaseHTTPRequestHandler):
         self.send_response(codigo)
         self.send_header("Content-Type", tipo); self.send_header("Content-Length", str(len(datos)))
         self.send_header("Cache-Control", "no-store"); self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Frame-Options", "DENY"); self.send_header("Content-Security-Policy", "frame-ancestors 'none'")  # otra web no puede meter la app en un marco
         self.end_headers(); self.wfile.write(datos)
 
     def _json(self, obj, codigo=200): self._enviar(codigo, json.dumps(obj, ensure_ascii=False))
@@ -609,8 +617,14 @@ class Manejador(http.server.BaseHTTPRequestHandler):
     def do_POST(self):
         u = urllib.parse.urlparse(self.path)
         if not self._autorizado(): return self._json({"error": "no autorizado"}, 403)
-        n = int(self.headers.get("Content-Length") or 0)
-        if n > MAX_SUBIDA * 1.4: return self._json({"ok": False, "mensaje": "Demasiado grande"}, 413)
+        largo = (self.headers.get("Content-Length") or "0").strip()
+        if not (largo.isascii() and largo.isdigit()):  # negativo, con letras o vacío de cifras: no se lee nada
+            self.close_connection = True
+            return self._json({"ok": False, "mensaje": "Petición no válida"}, 400)
+        n = int(largo)
+        if n > MAX_SUBIDA * 1.4:
+            self.close_connection = True  # el cuerpo no se ha leído: no se puede seguir usando esta conexión
+            return self._json({"ok": False, "mensaje": "Demasiado grande"}, 413)
         try:
             d = json.loads(self.rfile.read(n) or b"{}")
             if u.path == "/api/salir":

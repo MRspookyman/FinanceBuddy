@@ -29,11 +29,24 @@ class TestCarpetaYBaseDatos(unittest.TestCase):
 
     def test_cambiar_de_carpeta_bien(self):
         otra = os.path.join(self.dir, "otra")
+        os.makedirs(otra)  # una carpeta nueva y vacía: se empieza de cero allí
         r = self.app.manejar("/api/carpeta", {"carpeta": otra})
         self.assertTrue(r["ok"])
         self.assertEqual(self.app.carpeta.raiz, os.path.abspath(otra))
         # y la carpeta elegida se recuerda para la próxima vez (en el ajustes.json apartado, no en el del usuario)
         self.assertEqual(rutas.leer_ajustes().get("datos"), os.path.abspath(otra))
+        self.assertNotEqual(rutas.AJUSTES, self.ajustes_reales)
+
+    def test_una_ruta_que_no_existe_no_crea_nada_ni_se_apunta(self):
+        rutas.guardar_ajustes({"datos": self.dir})
+        with self.assertRaises(ValueError) as e:
+            self.app.manejar("/api/carpeta", {"carpeta": os.path.join(self.dir, "Docuemntos", "FinanceBuddy")})
+        self.assertIn("no existe", str(e.exception)); self.assertIn("Sigues con", str(e.exception))
+        self.assertFalse(os.path.exists(os.path.join(self.dir, "Docuemntos")), "una ruta mal escrita no crea carpetas")
+        for mal in ("FinanceBuddy", "   ", ""):  # sin la ruta completa (iría a parar a la carpeta desde la que se abrió la app) o vacía
+            with self.assertRaises(ValueError): self.app.manejar("/api/carpeta", {"carpeta": mal})
+        self.assertEqual(self.app.carpeta.raiz, os.path.abspath(self.dir))
+        self.assertEqual(rutas.leer_ajustes(), {"datos": self.dir})  # ajustes.json (el apartado) sigue igual
         self.assertNotEqual(rutas.AJUSTES, self.ajustes_reales)
 
     def test_base_danada_se_reconoce_y_se_recupera_con_una_copia(self):
@@ -110,6 +123,7 @@ class TestCarpetaYBaseDatos(unittest.TestCase):
         d = os.path.join(self.dir, "pruebas")
         app = servidor.App(d, fija=True)
         try:
+            os.makedirs(os.path.join(self.dir, "otra"))
             app.manejar("/api/carpeta", {"carpeta": os.path.join(self.dir, "otra")})
             self.assertEqual(rutas.leer_ajustes()["datos"], os.path.join(self.dir, "los-de-verdad"))
             app.ejemplo = True
@@ -137,6 +151,24 @@ class TestCarpetaYBaseDatos(unittest.TestCase):
         self.assertEqual([c["nombre"] for c in self.app.alm.todos("cuenta")], ["La de antes", "La de después"])
         with self.assertRaises(ValueError): self.app.manejar("/api/restaurar", {"copia": "..\\datos.db"})
         with self.assertRaises(ValueError): self.app.manejar("/api/restaurar", {"copia": "no-existe.db"})
+
+    def test_una_copia_danada_o_mas_nueva_no_se_restaura(self):
+        import sqlite3
+        self.app.manejar("/api/guardar", {"tipo": "cuenta", "datos": {"nombre": "La de ahora"}})
+        copias = self.app.carpeta.copias
+        with open(os.path.join(copias, "datos 2026-01-01 rota.db"), "wb") as fh: fh.write(b"esto no es una base de datos" * 50)
+        nueva = os.path.join(copias, "datos 2026-01-02 futura.db")
+        alm = Almacen(nueva); alm.set_config("version_esquema", almacen.VERSION_ESQUEMA + 1); alm.cerrar()
+        for sufijo in ("-wal", "-shm"):
+            if os.path.exists(nueva + sufijo): os.remove(nueva + sufijo)
+        con = sqlite3.connect(os.path.join(copias, "datos 2026-01-03 otra.db")); con.execute("CREATE TABLE x(a)"); con.commit(); con.close()
+        antes = set(os.listdir(copias))
+        for nombre, motivo in (("datos 2026-01-01 rota.db", "dañada"), ("datos 2026-01-02 futura.db", "versión más nueva"), ("datos 2026-01-03 otra.db", "no es de FinanceBuddy")):
+            with self.assertRaises(ValueError) as e: self.app.manejar("/api/restaurar", {"copia": nombre})
+            self.assertIn(motivo, str(e.exception)); self.assertIn("no se han tocado", str(e.exception))
+        self.assertEqual([c["nombre"] for c in self.app.alm.todos("cuenta")], ["La de ahora"])
+        self.assertEqual(self.app.alm.config("version_esquema"), almacen.VERSION_ESQUEMA)
+        self.assertEqual(set(os.listdir(copias)), antes, "si no se restaura, tampoco se hace la copia de «antes de restaurar»")
 
     def test_si_ya_hay_una_app_abierta_la_segunda_no_toca_los_datos(self):
         srv = servidor.crear(self.app, 8795)
@@ -280,6 +312,38 @@ class TestColumnasDeUnBancoNuevo(unittest.TestCase):
             self.assertEqual(len(app.alm.todos("movimiento")), 2)
             app.alm.cerrar()
         finally: shutil.rmtree(d, ignore_errors=True)
+
+class TestCabecerasDelServidor(unittest.TestCase):
+    def setUp(self):
+        self.dir = tempfile.mkdtemp()
+        self.app = servidor.App(self.dir, fija=True)
+        self.srv = servidor.crear(self.app, 0)  # un puerto libre cualquiera (nunca el 8765 de la app de verdad)
+        threading.Thread(target=self.srv.serve_forever, daemon=True).start()
+    def tearDown(self):
+        self.srv.shutdown(); self.srv.server_close()
+        self.app.alm.cerrar(); shutil.rmtree(self.dir, ignore_errors=True)
+    def pedir(self, metodo, ruta, largo=None, cuerpo=b""):
+        import http.client
+        con = http.client.HTTPConnection("127.0.0.1", self.srv.server_address[1], timeout=10)
+        try:
+            con.putrequest(metodo, ruta, skip_accept_encoding=True)
+            con.putheader("X-FB-Token", self.app.token)
+            if largo is not None: con.putheader("Content-Length", largo)
+            con.endheaders(cuerpo or None)
+            r = con.getresponse(); r.read()
+            return r
+        finally: con.close()
+
+    def test_no_se_puede_meter_en_un_marco(self):
+        for r in (self.pedir("GET", "/"), self.pedir("GET", "/api/datos"), self.pedir("GET", "/no-existe")):
+            self.assertEqual(r.getheader("X-Frame-Options"), "DENY")
+            self.assertEqual(r.getheader("Content-Security-Policy"), "frame-ancestors 'none'")
+
+    def test_content_length_raro_se_rechaza(self):
+        for largo in ("-5", "abc", "12a", "1e3", "+3"):
+            self.assertEqual(self.pedir("POST", "/api/copias_no", largo).status, 400, largo)
+        self.assertEqual(self.pedir("POST", "/api/regla/probar", str(10 ** 12)).status, 413)
+        self.assertEqual(self.pedir("POST", "/api/exportar_datos_no", "2", b"{}").status, 404)  # uno normal sigue funcionando
 
 class TestRutasDeArchivos(unittest.TestCase):
     def test_dentro_de(self):

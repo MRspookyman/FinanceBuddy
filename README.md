@@ -7,7 +7,7 @@ Tus finanzas personales **en tu ordenador**. Importas los extractos de tu banco 
 - a dónde va tu dinero (gastos por categoría) y de dónde viene;
 - cuánto tienes en cada cuenta y cómo va tu **inversión**.
 
-Pantallas: **Inicio**, **Movimientos**, **Inversión** (con tus **hitos** y **Para la renta**), **Importar** y **Ajustes**.
+Pantallas: **Inicio**, **Movimientos** (con **Mi año**), **Inversión** (con tus **metas de patrimonio** y **Para la renta**), **Importar** y **Ajustes**.
 
 Nada sale de tu ordenador: no hay cuentas, ni nube, ni conexión con el banco. Los datos se guardan en un archivo de tu carpeta Documentos.
 Hay tres cosas **opcionales y apagadas de serie** que sí se conectan a internet si tú las activas, cada una con su explicación de
@@ -53,7 +53,7 @@ Sin valor anotado, un activo con participaciones se estima con el precio de su �
 **Reparto ideal** (*Inversión*): dices qué porcentaje quieres en cada activo y la app te enseña en cuánto te has desviado y
 **a dónde llevar la próxima aportación** para acercarte, sin vender nada. Es información, no asesoramiento financiero.
 
-**Hitos** (al final de *Inversión*): las cifras redondas de patrimonio (1 k€, 2,5 k€, 5 k€…) con la fecha en que las cruzaste, la barra
+**Metas de patrimonio** (al final de *Inversión*): las cifras redondas de patrimonio (1.000 €, 2.500 €, 5.000 €…) con la fecha en que las cruzaste, la barra
 hacia la siguiente y cuánto tardarías al ritmo actual. **Solo largo plazo**: desmarca un activo («Inversión a
 largo plazo») para dejar fuera un colchón o una apuesta de las cifras.
 
@@ -64,6 +64,11 @@ preparar la declaración, no asesoramiento fiscal. En cada dividendo puedes anot
 bruto, lo ya retenido y **lo que te saldría a pagar** (tramos del ahorro, restando las pérdidas de los cuatro años anteriores), y
 «Descargar el año (CSV)» lo saca a Excel. Tipos de activo: fondo, ETF, acción, cripto, materias primas, plan de pensiones,
 bono e inmueble.
+
+**Mi año** (*Movimientos → Mi año*): lo que entró, salió y ahorraste en el año, mes a mes y por categoría, comparado con el
+año anterior (en el año en curso, con los mismos meses del anterior); tu mejor y tu peor mes, tu patrimonio de enero a diciembre
+y lo que metiste y ganó tu inversión. Ingresos y gastos van por *tu mes* (el día en que empieza, en *Ajustes*); patrimonio e
+inversión, por mes natural. Solo cuentan los meses con movimientos importados o apuntados.
 
 **Precios por internet (opcional, apagado de serie)** (*Ajustes → Precios por internet*): en vez de anotar a mano lo que vale cada
 fondo, ETF o cripto, la app lo consulta a **Yahoo Finance, Morningstar o CoinGecko**. Solo sale el identificador del producto
@@ -87,7 +92,7 @@ porcentajes se ven). **I** = importar; **A** = apuntar un movimiento; **1 a 5** 
 tu banco tomado por venta, participaciones vendidas de más, operaciones sin participaciones, compras que no se sabe si
 fueron ventas, posibles duplicados, el mismo activo dos veces, valores viejos) y cada aviso lleva a la **ficha del
 activo**: todas sus operaciones con su precio y de dónde vienen (extracto, órdenes, a mano), editables una a una;
-**Cuadrar con tu bróker** (escribes las participaciones que ves en el bróker y se añade un ajuste sin dinero); **Unir
+**Ajustar participaciones** (escribes las participaciones que ves en el bróker y se añade un ajuste sin dinero); **Unir
 con otro activo**; y «Era dinero traspasado desde mi banco» o borrar el activo con sus operaciones (lo que venía del
 extracto de la cuenta no reaparece al reimportarlo; lo que venía del archivo de órdenes, sí).
 
@@ -271,7 +276,7 @@ pruebas/           pruebas (Python y cálculos en el navegador)
 ```
 
 Los módulos de `web/paneles/` se concatenan y comparten ámbito **en el orden de `servidor.MODULOS`**: `datos`, `calculos`,
-`calculos_saldos`, `calculos_avisos`, `componentes`, `graficos`, `inicio`, `inversion`, `renta`, `precios`, `exportar`,
+`calculos_saldos`, `calculos_avisos`, `componentes`, `graficos`, `inicio`, `inversion`, `renta`, `anual`, `precios`, `exportar`,
 `formularios`, `bienvenida`, `importar`, `revisar`, `fijos`, `cierre`, `ajustes`, `gestionar`, `pantallas`. Si añades uno,
 ponlo en esa lista en su sitio.
 
