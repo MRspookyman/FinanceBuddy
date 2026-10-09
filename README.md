@@ -39,6 +39,8 @@ Solo para **Windows**. Todo en español y en euros.
      ese mes se te volverá a pedir cuando acabe.
 6. Con dos o más meses importados, *Ajustes → Detectar fijos*: la app encuentra tus nóminas, alquiler y recibos (lo que se repite cada mes) y te los propone; también te enseña **de dónde viene tu dinero**.
 
+Mientras empiezas, el Inicio enseña **Primeros pasos**: estos pasos en una lista que se tacha sola según los vas haciendo. Con «Ocultar» no vuelve a salir.
+
 **Inversión**: lo que vale y lo que has metido en cada activo, ganancia y rentabilidad anual, evolución, cuánto
 aportas cada mes (y cuántos meses seguidos), reparto por tipo (fondos, ETF, cripto, materias primas), participaciones y
 precio medio (si el extracto del bróker las trae, como MyInvestor: «… @ 2»), gastos corrientes, intereses del dinero
@@ -62,13 +64,16 @@ primero que compraste); un traspaso entre fondos no es venta y el nuevo hereda e
 detectan en el extracto o se anotan a mano) y lo que no se puede calcular (ventas sin participaciones). Es una ayuda para
 preparar la declaración, no asesoramiento fiscal. En cada dividendo puedes anotar la **retención**; con ella la pantalla enseña el
 bruto, lo ya retenido y **lo que te saldría a pagar** (tramos del ahorro, restando las pérdidas de los cuatro años anteriores), y
-«Descargar el año (CSV)» lo saca a Excel. Tipos de activo: fondo, ETF, acción, cripto, materias primas, plan de pensiones,
+«Descargar el año (CSV)» lo saca a Excel. Una venta con pérdidas en la que compraste lo mismo en los dos meses de antes o de
+después (un año en fondos de inversión) se marca como «podría no contar»: Hacienda no deja restar esa pérdida hasta que vendas lo
+que compraste. Se sigue restando, pero la pantalla te dice cuánto saldría si no contara. Tipos de activo: fondo, ETF, acción, cripto, materias primas, plan de pensiones,
 bono e inmueble.
 
-**Mi año** (*Movimientos → Mi año*): lo que entró, salió y ahorraste en el año, mes a mes y por categoría, comparado con el
+**Mi año** (*Inicio → Mi año*, *Movimientos → Mi año* o la tecla **G**): lo que entró, salió y ahorraste en el año, mes a mes y por categoría, comparado con el
 año anterior (en el año en curso, con los mismos meses del anterior); tu mejor y tu peor mes, tu patrimonio de enero a diciembre
 y lo que metiste y ganó tu inversión. Ingresos y gastos van por *tu mes* (el día en que empieza, en *Ajustes*); patrimonio e
-inversión, por mes natural. Solo cuentan los meses con movimientos importados o apuntados.
+inversión, por mes natural. Solo cuentan los meses con movimientos importados o apuntados. Pulsa un mes o una categoría para ver
+sus movimientos.
 
 **Precios por internet (opcional, apagado de serie)** (*Ajustes → Precios por internet*): en vez de anotar a mano lo que vale cada
 fondo, ETF o cripto, la app lo consulta a **Yahoo Finance, Morningstar o CoinGecko**. Solo sale el identificador del producto
@@ -86,7 +91,8 @@ código fuente del archivo revela cuánto dinero es. La **plantilla de Excel** c
 la categoría que elijas). **Aviso de versión** (opcional): una consulta pública a GitHub como mucho al día.
 
 **Modo discreto y atajos**: el botón *Discreto* (tecla **D**) desenfoca los importes para mirar la app con gente al lado (los
-porcentajes se ven). **I** = importar; **A** = apuntar un movimiento; **1 a 5** = las secciones del menú; **?** = ver todos los atajos.
+porcentajes se ven). **I** = importar; **A** = apuntar un movimiento; **R** = Por revisar; **G** = Mi año; **/** = buscar; **← →** = mes anterior o
+siguiente (en Mi año, el año); **1, 2, 3…** = las secciones del menú, en su orden; **?** = ver todos los atajos.
 
 **Cuando lo importado no cuadra**: *Inversión* avisa en **Revisa tu inversión** de lo que ve raro (un traspaso desde
 tu banco tomado por venta, participaciones vendidas de más, operaciones sin participaciones, compras que no se sabe si
@@ -166,8 +172,8 @@ que no tienes dados de alta (un seguro, un recibo que no llega cada mes), y te d
 mes) y con «Hecho» pasan solos a su siguiente fecha. En *Fijos* ves lo que suman al mes y al año.
 
 **Avisos** (*Inicio*): además de lo de siempre, la app te dice si **te han cobrado una comisión**, si un **cobro parece repetido**
-(mismo comercio e importe en dos días) y si tus **copias de seguridad están solo en el mismo disco** que tus datos. Cada uno se
-quita con su × y no vuelve.
+(mismo comercio e importe en dos días), si una **aportación fija no ha llegado** a tu bróker (la orden se paró o falló el cargo) y si
+tus **copias de seguridad están solo en el mismo disco** que tus datos. Cada uno se quita con su × y no vuelve.
 
 **Avisos de Windows** (*Ajustes*, apagados de serie y sin internet): con la app en marcha, Windows te avisa de los recordatorios
 (una vez al día) y de cuándo toca importar (una vez a la semana). Para que lleguen sin tener que abrirla, activa también *Abrir

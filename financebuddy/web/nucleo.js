@@ -78,18 +78,31 @@
   const alternarDiscreto = () => { discreto = !discreto; try { localStorage.setItem("fb-discreto", discreto ? "1" : "0"); } catch (_) {} aplicarDiscreto(); };
   document.getElementById("discreto").onclick = alternarDiscreto;
   // Atajos de teclado (fuera de los campos de texto) y su ayuda (tecla ? o el botón de la barra)
-  const ATAJOS = [["?", "Ver u ocultar esta ayuda"], ["1 … 5", "Ir a una sección del menú"], ["I", "Importar un extracto"], ["A", "Apuntar un movimiento a mano"],
+  // Las secciones del menú cambian (Por revisar solo sale si hay algo): el «1 … N» de la ayuda se cuenta al abrirla.
+  const ATAJOS = (n) => [["?", "Ver u ocultar esta ayuda"], [n > 1 ? `1 … ${n}` : "1", "Ir a una sección del menú, en su orden"], ["← →", "Mes anterior o siguiente (en Mi año, el año)"],
+    ["/", "Buscar: en la lista que ves o en tus movimientos"], ["I", "Importar un extracto"], ["A", "Apuntar un movimiento a mano"], ["R", "Ir a Por revisar"], ["G", "Ir a Mi año"],
     ["D", "Modo discreto: desenfocar los importes"], ["Esc", "Cerrar esta ayuda"]];
   const alternarAtajos = () => {
     let d = document.getElementById("atajos");
     if (!d) {
       d = document.body.appendChild(document.createElement("dialog")); d.id = "atajos"; d.setAttribute("aria-label", "Atajos de teclado");
-      d.innerHTML = `<h3>Atajos de teclado</h3><dl>${ATAJOS.map(([k, t]) => `<div><dt><kbd>${k}</kbd></dt><dd>${t}</dd></div>`).join("")}</dl>`
-        + `<p>También puedes soltar un Excel o CSV del banco en cualquier pantalla para importarlo.</p><button type="button" class="fb-btn sec">Cerrar</button>`;
-      d.querySelector("button").onclick = () => d.close();
       d.addEventListener("click", (e) => { if (e.target === d) d.close(); });  // clic fuera del cuadro
     }
-    if (d.open) d.close(); else d.showModal();
+    if (d.open) { d.close(); return; }
+    d.innerHTML = `<h3>Atajos de teclado</h3><dl>${ATAJOS(document.querySelectorAll("#menu a").length).map(([k, t]) => `<div><dt><kbd>${k}</kbd></dt><dd>${t}</dd></div>`).join("")}</dl>`
+      + `<p>También puedes soltar un Excel o CSV del banco en cualquier pantalla para importarlo.</p><button type="button" class="fb-btn sec">Cerrar</button>`;
+    d.querySelector("button").onclick = () => d.close();
+    d.showModal();
+  };
+  // ←/→: el botón de mes de la pantalla (Inicio, Movimientos) o, en Mi año, el año de al lado (los años van del más nuevo al más viejo)
+  const pulsarMes = (atras) => {
+    const app = document.getElementById("app");
+    const b = app.querySelector(`.fin-mes button[title="${atras ? "Mes anterior" : "Mes siguiente"}"]`);
+    if (b) { if (!b.disabled) b.click(); return true; }
+    const act = app.querySelector('.fb-chips[aria-label="Año"] button.act');
+    const otro = act && (atras ? act.nextElementSibling : act.previousElementSibling);
+    if (otro) otro.click();
+    return !!act;
   };
   document.getElementById("ayuda").onclick = alternarAtajos;
   // Los menús desplegables («Más») se cierran al pulsar fuera o al elegir una opción
@@ -101,8 +114,20 @@
     if (e.key === "d" || e.key === "D") { e.preventDefault(); alternarDiscreto(); return; }
     if (e.key === "i" || e.key === "I") { e.preventDefault(); FB.ir("#importar"); return; }
     if (e.key === "a" || e.key === "A") { e.preventDefault(); FB.ir("#apuntar"); return; }
+    if (e.key === "r" || e.key === "R") { e.preventDefault(); FB.ir("#revisar"); return; }
+    if (e.key === "g" || e.key === "G") { e.preventDefault(); FB.ir("#anual"); return; }
+    if (e.key === "/") {
+      e.preventDefault();
+      const s = document.querySelector("#app input.fin-search");
+      if (s) s.focus(); else { FB._buscar = true; FB.ir("#movimientos/lista"); }
+      return;
+    }
+    if ((e.key === "ArrowLeft" || e.key === "ArrowRight") && !e.shiftKey && !(e.target && e.target.closest && e.target.closest("dialog, [role=slider], [role=tablist]"))) {
+      if (pulsarMes(e.key === "ArrowLeft")) e.preventDefault();
+      return;
+    }
     const n = parseInt(e.key, 10);
-    if (n >= 1 && n <= 6) { const a = document.querySelectorAll("#menu a")[n - 1]; if (a) { e.preventDefault(); FB.ir(a.getAttribute("href")); } }
+    if (n >= 1 && n <= 9) { const a = document.querySelectorAll("#menu a")[n - 1]; if (a) { e.preventDefault(); FB.ir(a.getAttribute("href")); } }
   });
 
   // Soltar un Excel/CSV en cualquier pantalla lleva a Importar y lo sube
@@ -277,6 +302,7 @@
     catch (e) { log("Error: " + (e.stack || e)); }
     if (discreto) aplicarDiscreto();
     window.scrollTo(0, 0);
+    if (FB._buscar) { FB._buscar = false; const s = app.querySelector("input.fin-search"); if (s) s.focus(); }  // tecla «/» desde otra pantalla
     if (entra) { app.dataset.entra = ""; FB._tEntra = setTimeout(() => delete app.dataset.entra, 900); if (!discreto) contarCifras(app); }
   }
   FB.montar = montar;

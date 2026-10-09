@@ -47,6 +47,7 @@ function chart(padre, render) {
   if (typeof ResizeObserver !== "undefined") {
     new ResizeObserver(() => { const w = Math.floor(wrap.clientWidth); if (w && Math.abs(w - ancho) > 8) paint(); }).observe(wrap);
   }
+  return wrap;
 }
 // Lo que dice el gráfico, para quien no lo ve (aria-label): de qué a qué va y, por serie, el último valor, el máximo y el mínimo.
 function resumenGrafico(tipo, etiquetas, series) {
@@ -68,8 +69,9 @@ function ejeY(s, ticks, Y, L, W, R) {
     s.push(`<text x="${L - 8}" y="${(+y + 4).toFixed(1)}" text-anchor="end">${esc(ejeFmt(v))}</text>`);
   }
 }
-function columnas(padre, { etiquetas, series, titulos, alto = 210 }) {
-  chart(padre, (W) => {
+// alPulsar(i): al pulsar la columna i (con ratón; quien usa el teclado tiene la misma acción en la tabla de al lado).
+function columnas(padre, { etiquetas, series, titulos, alto = 210, alPulsar }) {
+  const wrap = chart(padre, (W) => {
     const H = alto, L = 46, R = 6, T = 10, B = 24;
     const todos = series.flatMap((s) => s.valores);
     const { lo, hi, ticks } = niceTicks(Math.min(0, ...todos), Math.max(0, ...todos));
@@ -96,6 +98,10 @@ function columnas(padre, { etiquetas, series, titulos, alto = 210 }) {
     s.push(`<line class="base" x1="${L}" x2="${W - R}" y1="${y0}" y2="${y0}"/><text x="${L - 8}" y="${(+y0 + 4).toFixed(1)}" text-anchor="end">0</text>`);
     return s.join("") + "</svg>";
   });
+  if (alPulsar && wrap.addEventListener) {
+    wrap.classList.add("pulsable");
+    wrap.addEventListener("click", (e) => { const g = e.target.closest && e.target.closest("g.col"); if (g) alPulsar([...wrap.querySelectorAll("g.col")].indexOf(g)); });
+  }
 }
 
 // Líneas sobre los días de un mes (gasto acumulado). series: [{ nombre, color, valores (null = sin dato), discontinua, area }].

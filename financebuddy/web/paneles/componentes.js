@@ -221,7 +221,7 @@ function plegable(padre, titulo, pintar, { abierto = false, extra } = {}) {
   if (abierto) { d.open = true; llenar(); }
   return d;
 }
-// Lista de filas «etiqueta … valor» (con subtítulo opcional). items: { l, v, s?, t?, ruta?, dot? }
+// Lista de filas «etiqueta … valor» (con subtítulo opcional). items: { l, v, s?, t?, ruta?, onclick?, dot? }
 function filasDato(padre, items) {
   const box = padre.createDiv({ cls: "fin-rows" });
   for (const it of items.filter(Boolean)) {
@@ -229,7 +229,7 @@ function filasDato(padre, items) {
     const l = r.createDiv({ cls: "l" });
     const n = l.createDiv({ cls: "n" });
     if (it.dot) setVar(n.createSpan({ cls: "fin-dot" }), "--dc", it.dot);
-    if (it.ruta) enlace(n, it.l, it.ruta); else n.appendText(it.l);
+    if (it.ruta) enlace(n, it.l, it.ruta); else if (it.onclick) accion(n, it.l, it.onclick); else n.appendText(it.l);
     if (it.h) ayuda(n, it.h);
     if (it.s) l.createDiv({ cls: "s", text: it.s });
     r.createDiv({ cls: "v " + (it.t || ""), text: it.v });

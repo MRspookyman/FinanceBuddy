@@ -5,6 +5,14 @@
 .fb-cab-der{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .fb-saludo .fb-personalizar{align-self:center;font-size:.86em;font-weight:600;color:var(--ink-2);text-decoration:none;padding:7px 12px;border-radius:8px;border:1px solid var(--line);background:var(--surface)}
 .fb-saludo .fb-personalizar:hover{color:var(--ink);border-color:var(--ink-3)}
+/* primeros pasos: casillas que se tachan solas */
+.fb-pasos{margin-bottom:16px}
+.fb-pasos-lista{list-style:none;margin:0 0 12px;padding:0;display:grid;gap:8px}
+.fb-pasos-lista li{display:flex;align-items:flex-start;gap:10px}
+.fb-pasos-lista .c{flex:none;width:18px;height:18px;margin-top:1px;border:1.5px solid var(--ink-3);border-radius:5px;display:inline-grid;place-items:center;font-size:12px;font-weight:700;line-height:1}
+.fb-pasos-lista li.hecho .c{background:var(--brand);border-color:var(--brand);color:var(--on-brand)}
+.fb-pasos-lista li.hecho .t{text-decoration:line-through;color:var(--ink-2)}
+.fb-pasos-lista .s{color:var(--ink-2);font-size:.9em}
 .fb-chip{display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border-radius:6px;font-size:.82em;font-weight:650;color:var(--ink);background:var(--surface);border:1px solid var(--line);text-decoration:none}
 .fb-chip.aviso{background:color-mix(in srgb,var(--amber) 18%,var(--surface));border-color:transparent}
 .fb-chip.brand{color:var(--brand);background:var(--brand-soft);border-color:transparent}

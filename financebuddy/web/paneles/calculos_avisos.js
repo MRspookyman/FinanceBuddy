@@ -38,6 +38,42 @@ function fijosSinCobrar() {
   return recurrentes().filter((r) => r.clase !== "aportacion" && !r.meses && !(r.hasta && r.hasta < hoy) && ult.has(r.nombre) && fd.diff(ult.get(r.nombre), "days").days > 62)
     .map((r) => ({ id: r.p.id, nombre: r.nombre, clase: r.clase, ultima: ult.get(r.nombre) }));
 }
+// Aportaciones fijas que no han llegado (fijosSinCobrar deja fuera las aportaciones): mientras falta la real, la app pone una
+// automática, así que si la orden se canceló o falló el cargo nadie lo diría y la previsión la seguiría contando.
+// Solo las que alguna vez casaron con una aportación real, y la última vez que tocaba hasta `ref` (el último día con datos
+// del bróker) con `margen` días de cortesía. recs: como recurrentes() · aports: [{ fecha, recurrente, auto }].
+function aportacionesSinLlegar(recs, aports, ref, margen = 5) {
+  if (!ref) return [];
+  const out = [];
+  for (const r of recs.filter((r) => r.clase === "aportacion" && r.activoInv && r.desde && !(r.hasta && r.hasta < ref))) {
+    const suyas = aports.filter((a) => !a.auto && a.recurrente === r.nombre && a.fecha);
+    if (!suyas.length) continue;
+    const primera = suyas.reduce((m, a) => (a.fecha < m ? a.fecha : m), suyas[0].fecha);
+    let toca = null;
+    for (let d = ref.startOf("month"), i = 0; i < 13 && !toca; i++, d = d.minus({ months: 1 })) {
+      const f = d.set({ day: Math.min(r.dia, d.daysInMonth) });
+      if (f < r.desde.startOf("day") || (r.meses && !r.meses.includes(d.month))) continue;
+      if (f.plus({ days: margen }) <= ref) toca = f;
+    }
+    if (!toca || toca < primera.startOf("month")) continue;
+    const mesToca = toca.toFormat("yyyy-MM");
+    if (suyas.some((a) => a.fecha.toFormat("yyyy-MM") === mesToca)) continue;
+    out.push({ id: r.p.id, nombre: r.nombre, activo: r.activoInv, fecha: toca, mes: mesToca });
+  }
+  return out;
+}
+// «Primeros pasos» del Inicio: lo que conviene hacer al empezar, cada paso hecho o no según lo que ya hay.
+// e: { cuentas, movimientos, pendientes, fijos, limite, saldos } (cuántos hay de cada cosa; limite: el límite de gasto).
+function primerosPasos(e) {
+  return [
+    { id: "cuentas", t: "Dar de alta tus cuentas", s: "la del banco, la de ahorro, la del bróker…", ruta: "#gestionar/cuenta", hecho: e.cuentas > 0 },
+    { id: "importar", t: "Importar el extracto de tu banco", s: "el Excel o CSV que descargas de tu banco", ruta: "#importar", hecho: e.movimientos > 0 },
+    { id: "revisar", t: "Revisar lo que la app no ha sabido clasificar", s: e.pendientes ? `quedan ${e.pendientes}` : "después de importar", ruta: "#revisar", hecho: e.movimientos > 0 && !e.pendientes },
+    { id: "fijos", t: "Revisar tus fijos", s: "nómina, alquiler, recibos: la app los busca en tus movimientos", ruta: "#fijos", hecho: e.fijos > 0 },
+    { id: "limite", t: "Poner un límite de gasto al mes", s: "lo que quieres gastar en comer fuera, compras, ocio…", ruta: "#ajustes", hecho: e.limite > 0 },
+    { id: "saldos", t: "Anotar cuánto tienes en cada cuenta", s: "así la app sabe cuánto tienes y cuánto tendrás", ruta: "#cerrar", hecho: e.saldos > 0 },
+  ];
+}
 // Qué avisos van a la vista en el Inicio y cuáles plegados («y N avisos más»). Arriba, como mucho `max` de los que piden
 // actuar (warn); el resto de esos y las notas (info), plegados. Fuera: lo de «Por revisar» (ya está en el menú, con su número)
 // y las notas que repiten una de las acciones que ya salen arriba (`rutasArriba`).
@@ -113,7 +149,11 @@ function avisos() {
   const nPend = (DB.pendientes || []).length;
   if (nPend) add("warn", `${nPend} movimiento${nPend > 1 ? "s" : ""} por revisar: la app no ha sabido clasificarlo${nPend > 1 ? "s" : ""} sola`, "#revisar");
   for (const x of subidasFijos()) add("warn", `${x.nombre} ha subido: de ${eur(x.antes, 2)} a ${eur(x.ahora, 2)}`, "#gestionar/recurrente", `subida:${x.nombre}:${x.ahora}`);
-  for (const x of fijosSinCobrar()) add("info", `${x.nombre} no aparece en tus movimientos desde el ${x.ultima.toFormat("dd/MM")} · si ya no lo ${x.clase === "ingreso" ? "cobras" : "pagas"}, desactívalo: sigue contando cada mes`, `#editar/recurrente/${x.id}`, `sincobrar:${x.id}:${x.ultima.toISODate()}`);
+  const ultAport = aportacionesReales().filter((a) => !a.auto).reduce((m, a) => (!m || a.fecha > m ? a.fecha : m), null);
+  // Hasta donde llegan los datos del bróker; sin nada importado en un mes, se mira igual (puede que lo que falte sea su extracto).
+  const refAport = ultAport ? DateTime.max(ultAport, hoy.minus({ days: 30 })) : null;
+  for (const x of aportacionesSinLlegar(recurrentes(), aportacionesReales(), refAport)) add("warn", `La aportación de ${mesLbl(x.mes).toLowerCase()} a ${x.activo} no ha llegado (${x.nombre}, la esperabas el ${x.fecha.toFormat("dd/MM")}) · mira tu bróker; si la has parado, desactívala: la previsión la sigue contando`, `#editar/recurrente/${x.id}`, `aporta:${x.id}:${x.mes}`);
+  for (const x of fijosSinCobrar()) add("info",`${x.nombre} no aparece en tus movimientos desde el ${x.ultima.toFormat("dd/MM")} · si ya no lo ${x.clase === "ingreso" ? "cobras" : "pagas"}, desactívalo: sigue contando cada mes`, `#editar/recurrente/${x.id}`, `sincobrar:${x.id}:${x.ultima.toISODate()}`);
   // Lo que trae el extracto y conviene mirar: una comisión (se puede reclamar o evitar) y un cobro que parece repetido.
   // Cada uno lleva el movimiento en su clave: quitado con su ×, no vuelve.
   for (const m of comisionesRecientes(movimientos(), hoy).sort((a, b) => a.fecha - b.fecha).slice(-3)) add("warn", `Te han cobrado una comisión: ${m.concepto} · ${eur(m.importe, 2)} el ${m.fecha.toFormat("dd/MM")}`, `#editar/movimiento/${m.p.id}`, `comision:${m.p.id}`);
@@ -300,6 +340,26 @@ function fifoVentas(ops) {
   }
   return { ventas, sinDatos: [...sinDatos], traspasos: pareja.size };
 }
+// Regla de los dos meses: Hacienda no deja restar la pérdida de una venta si compraste lo mismo en los dos meses de antes o de
+// después (un año en fondos de inversión, que no cotizan); se resta cuando vendas lo que compraste. Solo se marca como dudosa:
+// el resultado no cambia, porque la app no sabe si para Hacienda es «lo mismo» (otra clase del fondo, otro ISIN…).
+// Las compras de antes solo cuentan si después de vender te quedan participaciones. Cripto, planes de pensiones y lo demás, fuera.
+// ops y ventas: los de fifoVentas · claseDe(activo) → su clase (fondo, etf, accion…).
+const MESES_RECOMPRA = { fondo: 12, etf: 2, accion: 2, bono: 2 };
+function reglaDosMeses(ops, ventas, claseDe) {
+  const out = [];
+  for (const v of ventas.filter((v) => v.resultado < -0.005)) {
+    const meses = MESES_RECOMPRA[claseDe(v.activo)];
+    if (!meses) continue;
+    const suyas = ops.filter((o) => o.activo === v.activo && !o.ajuste).sort((a, b) => a.fecha - b.fecha);
+    const desde = v.fecha.minus({ months: meses }), hasta = v.fecha.plus({ months: meses });
+    const compras = suyas.filter((o) => o.importe > 0 && o.fecha >= desde && o.fecha <= hasta);
+    const quedan = sum(suyas.filter((o) => o.fecha <= v.fecha && o.part != null && isFinite(o.part)).map((o) => o.part));
+    const c = compras.find((o) => o.fecha > v.fecha) || (quedan > 1e-6 ? compras.filter((o) => o.fecha <= v.fecha).pop() : null);
+    if (c) out.push({ id: v.id, fecha: v.fecha, activo: v.activo, perdida: -v.resultado, compra: c.fecha, meses });
+  }
+  return out;
+}
 // ───────────── estimación de la renta (base del ahorro) ─────────────
 // Tramos estatales + autonómicos de la base del ahorro (desde 2025): [hasta, tipo].
 const TRAMOS_AHORRO = [[6000, 0.19], [50000, 0.21], [200000, 0.23], [300000, 0.27], [Infinity, 0.30]];
@@ -311,7 +371,8 @@ function cuotaAhorro(base) {
 // Año a año: el resultado de las ventas se junta con las pérdidas que arrastras (las de los 4 años anteriores, primero las más
 // viejas); una pérdida puede restar además hasta el 25 % de los dividendos del año. Lo que no se compensa queda pendiente.
 // años: [{ año, ventas (ganancia − pérdida), dividendos (brutos), retenido }] → Map año → { base, cuota, retenido, diferencia,
-// pendAntes, usado, pendDespues }. Orientativo: no conoce tus otras rentas del ahorro ni la regla de los dos meses.
+// pendAntes, usado, pendDespues }. Orientativo: no conoce tus otras rentas del ahorro, y las pérdidas que podrían caer en la
+// regla de los dos meses (reglaDosMeses) cuentan como las demás.
 function rentaPorAño(años) {
   const out = new Map();
   let pend = [];

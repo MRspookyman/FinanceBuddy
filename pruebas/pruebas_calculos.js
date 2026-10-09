@@ -277,4 +277,43 @@ caso("Patrimonio del año: el último registro de cada mes, hoy (septiembre) el 
   PA.valores[0] === 10500 && PA.valores[1] === null && PA.valores[2] === 11000 && PA.valores[8] === 12000 && PA.valores[9] === null && PA.inicio === 10000 && PA.cambio === 2000 && PA.mesFin === "2026-09"
   && PA2.fin === 11000 && PA2.mesFin === "2026-03" && PA25.dentro && PA25.cambio === null && F.patrimonioAño(2026, PSA.slice(1), 12000).cambio === 1800 && PA25.fin === 10000, JSON.stringify([PA.valores, PA.cambio, PA2.fin, PA25.cambio]));
 
+// Aportación fija que no llega (fijosSinCobrar deja fuera las aportaciones a propósito). Fijos y aportaciones de mentira.
+const rA = (id, nombre, dia, desde, mas = {}) => ({ p: { id }, nombre, clase: "aportacion", dia, desde: d0(desde), hasta: null, meses: null, activoInv: "Fondo " + id, ...mas });
+const apA = (fecha, recurrente, auto = false) => ({ fecha: d0(fecha), recurrente, auto });
+const meses8 = (n, dia) => ["01", "02", "03", "04", "05", "06", "07", "08"].map((m) => apA(`2026-${m}-${dia}`, n));
+const SL = F.aportacionesSinLlegar([rA(1, "Plan A", 5, "2026-01-05"), rA(2, "Plan B", 5, "2026-01-05"), rA(3, "Plan C", 5, "2026-01-05"), rA(4, "Plan D", 28, "2026-01-28"),
+  rA(5, "Plan E", 5, "2026-01-05", { hasta: d0("2026-08-31") }), { ...rA(6, "Gasto", 5, "2026-01-05"), clase: "gasto" }],
+  [...meses8("Plan A", "05"), apA("2026-09-05", "Plan A", true), ...meses8("Plan B", "05"), apA("2026-09-06", "Plan B"), apA("2026-09-05", "Plan C", true),
+    ...meses8("Plan D", "28"), ...meses8("Plan E", "05"), ...meses8("Gasto", "05")], d0("2026-09-30"));
+caso("Aportación que no llega: avisa de la de septiembre de A (solo hay la automática); no de B (llegó un día tarde), C (nunca casó con una real), D (aún no toca: el 28 + 5 días de margen), E (terminada) ni de un gasto",
+  SL.length === 1 && SL[0].id === 1 && SL[0].mes === "2026-09" && SL[0].fecha.toISODate() === "2026-09-05" && SL[0].activo === "Fondo 1", JSON.stringify(SL.map((x) => [x.id, x.mes])));
+caso("Aportación que no llega: hasta el 9 de septiembre todavía no toca avisar (5 días de margen)", F.aportacionesSinLlegar([rA(1, "Plan A", 5, "2026-01-05")], meses8("Plan A", "05"), d0("2026-09-09")).length === 0
+  && F.aportacionesSinLlegar([rA(1, "Plan A", 5, "2026-01-05")], meses8("Plan A", "05"), d0("2026-09-10")).length === 1);
+caso("Aportaciones del ejemplo: todas han llegado, ningún aviso", !F.avisos().some((a) => /^inicio:aporta:/.test(a.clave)) && F.aportacionesSinLlegar(F.recurrentes(), F.aportaciones(), F.hoy).length === 0,
+  JSON.stringify(F.avisos().map((a) => a.clave)));
+
+// Regla de los dos meses en «Para la renta»: se marca la venta con pérdidas, sin cambiar su resultado.
+const CL = { F: "fondo", E: "etf", A: "accion", B: "accion", C: "cripto", G: "accion" };
+const OPS2 = [
+  op(1, "2026-01-10", "F", 1000, 10), op(2, "2026-03-01", "F", -800, -10), op(3, "2026-09-01", "F", 100, 1),       // fondo: recompra a los 6 meses (plazo de un año)
+  op(4, "2026-01-10", "E", 1000, 10), op(5, "2026-03-01", "E", -800, -10), op(6, "2026-06-01", "E", 100, 1),       // ETF: recompra a los 3 meses (fuera de los dos)
+  op(7, "2026-01-10", "A", 1000, 10), op(8, "2026-02-15", "A", 400, 5), op(9, "2026-03-01", "A", -700, -10),      // acción: compró 15 días antes y le quedan 5
+  op(10, "2026-02-15", "B", 1000, 10), op(11, "2026-03-01", "B", -900, -10),                                       // acción: compró antes pero lo vendió todo
+  op(12, "2026-01-10", "C", 1000, 1), op(13, "2026-03-01", "C", -500, -1), op(14, "2026-03-10", "C", 500, 1),      // cripto: no entra
+  op(15, "2026-01-10", "G", 1000, 10), op(16, "2026-03-01", "G", -1500, -10), op(17, "2026-03-10", "G", 100, 1),   // con ganancia: no entra
+];
+const FV2 = F.fifoVentas(OPS2), D2 = F.reglaDosMeses(OPS2, FV2.ventas, (n) => CL[n]);
+caso("Dos meses: marca el fondo (recompra en un año) y la acción con compra reciente que sigues teniendo; no el ETF de 3 meses después, la acción vendida entera, la cripto ni una ganancia",
+  D2.map((x) => x.activo).sort().join() === "A,F" && cerca(D2.find((x) => x.activo === "F").perdida, 200) && D2.find((x) => x.activo === "F").meses === 12 && cerca(D2.find((x) => x.activo === "A").perdida, 300)
+  && D2.find((x) => x.activo === "A").compra.toISODate() === "2026-02-15", JSON.stringify(D2.map((x) => [x.activo, x.perdida, x.compra.toISODate(), x.meses])));
+caso("Dos meses: el resultado de las ventas no cambia (solo se marca)", cerca(FV2.ventas.find((v) => v.activo === "F").resultado, -200) && cerca(FV2.ventas.find((v) => v.activo === "A").resultado, -300));
+
+// Primeros pasos: cada casilla se tacha sola según lo que ya hay
+const PP0 = F.primerosPasos({ cuentas: 1, movimientos: 0, pendientes: 0, fijos: 0, limite: 0, saldos: 0 });
+const PP1 = F.primerosPasos({ cuentas: 2, movimientos: 80, pendientes: 3, fijos: 4, limite: 600, saldos: 1 });
+caso("Primeros pasos: con solo las cuentas, lo demás por hacer (y sin importar, revisar no cuenta como hecho)",
+  PP0.filter((x) => x.hecho).map((x) => x.id).join() === "cuentas" && PP0.length === 6, JSON.stringify(PP0.map((x) => [x.id, x.hecho])));
+caso("Primeros pasos: con dudas por revisar, solo falta eso y dice cuántas quedan",
+  PP1.filter((x) => !x.hecho).map((x) => x.id).join() === "revisar" && /quedan 3/.test(PP1.find((x) => x.id === "revisar").s), JSON.stringify(PP1.map((x) => [x.id, x.hecho])));
+
 return casos;

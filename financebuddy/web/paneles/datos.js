@@ -93,6 +93,8 @@ const cambiarMes = (key) => { mes = key; guardarEstado({ mes }); render(); };
 // Filtro de categoría en Gastos (se puede fijar desde el Resumen antes de abrir Gastos; se consume una vez).
 let filtroCat = (vista === "gastos" || vista === "movimientos") && estado0.filtroCat ? estado0.filtroCat : null;
 if (filtroCat) guardarEstado({ filtroCat: null });
+// «Todo el año» en la lista de Movimientos, pedido desde Mi año (también se consume una vez: FB.estado se vacía al navegar).
+if (vista === "movimientos" && estado0.hist) { FB.estado.hist = estado0.hist; guardarEstado({ hist: null }); }
 let busqueda = "";
 
 // ───────────── registros ─────────────

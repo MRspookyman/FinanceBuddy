@@ -18,6 +18,9 @@ function vistaAnual() {
   const enCurso = año === añoHoy && hasta < `${año}-12`;
   const tramo = enCurso ? `de enero a ${mesLbl(hasta).split(" ")[0].toLowerCase()}` : "el año entero";
   const hayB = B.meses > 0;
+  // Pulsar un mes lleva a sus movimientos; una categoría, a los suyos de todo el año
+  const verMes = (key) => () => { guardarEstado({ mes: key, filtroCat: null, hist: null }); FB.ir("#movimientos/lista"); };
+  const verCat = (cat) => () => { guardarEstado({ mes: hasta, filtroCat: cat, hist: "año" }); FB.ir("#movimientos/lista"); };
   // «2025: 1.234 € (+5 %)»: la misma cifra del año anterior, en neutro (más gasto no es una pérdida)
   const frente = (a, b) => (hayB ? `${año - 1}: ${eur(b, 0)}${b > 0 ? ` (${pct((a - b) / b, true)})` : ""}` : "");
 
@@ -30,17 +33,19 @@ function vistaAnual() {
     + (hayB ? `Se compara con ${tramo === "el año entero" ? "todo" : "los mismos meses de"} ${año - 1} (${B.meses} mes${B.meses === 1 ? "" : "es"} con movimientos).` : `De ${año - 1} no hay movimientos con los que comparar.`) });
 
   // Mes a mes: entró y salió, con lo que salió el año anterior al lado
-  const pM = panel(root, "Mes a mes", null, "Cada mes es «tu mes»: si en Ajustes tu mes empieza otro día, va de ese día al mismo del mes siguiente.");
+  const pM = panel(root, "Mes a mes", null, "Cada mes es «tu mes»: si en Ajustes tu mes empieza otro día, va de ese día al mismo del mes siguiente. Pulsa un mes para ver sus movimientos.");
   const K = A.keys;
   columnas(pM, { alto: 200, etiquetas: K.map(mesCorto), titulos: K.map(mesLbl),
-    series: [{ nombre: "Entró", color: "var(--mint)", valores: A.filas.map((f) => f.ingresos) }, { nombre: "Salió", color: "var(--coral)", valores: A.filas.map((f) => f.gastos) }] });
+    series: [{ nombre: "Entró", color: "var(--mint)", valores: A.filas.map((f) => f.ingresos) }, { nombre: "Salió", color: "var(--coral)", valores: A.filas.map((f) => f.gastos) }],
+    alPulsar: (i) => { if (A.filas[i] && A.filas[i].datos) verMes(K[i])(); } });
   leyenda(pM, [["Entró", "var(--mint)"], ["Salió", "var(--coral)"]]);
   if (A.mejor) pM.createDiv({ cls: "fin-note", text: `Tu mejor mes: ${mesLbl(A.mejor.key).split(" ")[0].toLowerCase()} (ahorraste ${eurS(A.mejor.ahorro, 0)}). El peor: ${mesLbl(A.peor.key).split(" ")[0].toLowerCase()} (${eurS(A.peor.ahorro, 0)}).` });
   plegable(pM, "Ver la tabla mes a mes", (c) => {
     tabla(c, [{ t: "Mes" }, { t: "Entró", num: true }, { t: "Salió", num: true }, { t: "Ahorro", num: true }, { t: `Salió en ${año - 1}`, num: true, opt: true }],
       [...A.filas.map((f, i) => {
         const b = B.filas[i];
-        return [mesLbl(f.key).split(" ")[0], f.datos ? eur(f.ingresos, 0) : "—", f.datos ? eur(f.gastos, 0) : "—", f.datos ? { text: eurS(f.ahorro, 0), cls: f.ahorro < 0 ? "neg" : "" } : "—", b && b.datos ? eur(b.gastos, 0) : "—"];
+        const nombre = mesLbl(f.key).split(" ")[0];
+        return [f.datos ? { text: nombre, onclick: verMes(f.key), title: `Ver los movimientos de ${mesLbl(f.key).toLowerCase()}` } : nombre, f.datos ? eur(f.ingresos, 0) : "—", f.datos ? eur(f.gastos, 0) : "—", f.datos ? { text: eurS(f.ahorro, 0), cls: f.ahorro < 0 ? "neg" : "" } : "—", b && b.datos ? eur(b.gastos, 0) : "—"];
       }), conFila(["Total", eur(A.ingresos, 0), eur(A.gastos, 0), { text: eurS(A.ahorro, 0), cls: A.ahorro < 0 ? "neg" : "" }, hayB ? eur(B.gastos, 0) : "—"], "total")]);
   });
 
@@ -53,7 +58,7 @@ function vistaAnual() {
     const dif = (n) => (A.gastoCat.get(n) || 0) - (B.gastoCat.get(n) || 0);
     const pg = paginacion(nombres, "anual_cat", () => FB.montar());
     tabla(pC, [{ t: "Categoría" }, { t: String(año), num: true }, { t: String(año - 1), num: true }, { t: "Diferencia", num: true }],
-      [...pg.parte.map((n) => [{ text: n, dot: catColor(n) }, eur(A.gastoCat.get(n) || 0, 0), hayB ? eur(B.gastoCat.get(n) || 0, 0) : "—", hayB ? eurS(dif(n), 0) : "—"]),
+      [...pg.parte.map((n) => [A.gastoCat.has(n) ? { text: n, dot: catColor(n), onclick: verCat(n), title: `Ver los movimientos de ${n} en ${año}` } : { text: n, dot: catColor(n) },eur(A.gastoCat.get(n) || 0, 0), hayB ? eur(B.gastoCat.get(n) || 0, 0) : "—", hayB ? eurS(dif(n), 0) : "—"]),
         conFila(["Total", eur(A.gastos, 0), hayB ? eur(B.gastos, 0) : "—", hayB ? eurS(A.gastos - B.gastos, 0) : "—"], "total")]);
     pg.pie(pC);
     if (hayB) {
@@ -63,7 +68,7 @@ function vistaAnual() {
   }
   if (A.ingresoCat.size) {
     const pI = panel(root, "De dónde entró", { text: eur(A.ingresos, 0) });
-    filasDato(pI, [...A.ingresoCat].sort((a, b) => b[1] - a[1]).map(([n, v]) => ({ l: n, dot: catColor(n), v: eur(v, 0), s: hayB ? `${año - 1}: ${eur(B.ingresoCat.get(n) || 0, 0)}` : "" })));
+    filasDato(pI, [...A.ingresoCat].sort((a, b) => b[1] - a[1]).map(([n, v]) => ({ l: n, dot: catColor(n), v: eur(v, 0), s: hayB ? `${año - 1}: ${eur(B.ingresoCat.get(n) || 0, 0)}` : "", onclick: verCat(n) })));
   }
 
   // Patrimonio (mes natural): de enero a diciembre

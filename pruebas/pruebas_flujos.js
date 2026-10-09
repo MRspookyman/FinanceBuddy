@@ -453,5 +453,89 @@ return (async () => {
     if (!porTexto(".fin-note", "De 2024 no hay movimientos")) return "no dice que no hay año anterior con el que comparar";
   });
 
+  // 23. Mi año desde el Inicio, y de sus tablas a los movimientos: una categoría abre la lista de todo ese año filtrada; un mes, ese mes
+  await caso("Mi año: enlace fijo en el Inicio, y cada categoría y cada mes llevan a sus movimientos", async () => {
+    if (!(await ir("#inicio"))) return "no se abre el Inicio";
+    const l = await hasta(() => todos(".fb-saludo a").find((a) => a.getAttribute("href") === "#anual"));
+    if (!l) return "el Inicio no lleva a Mi año";
+    l.click();
+    if (!(await hasta(() => app().dataset.vista === "anual" && app().querySelector(".fb-stats")))) return "no se abre Mi año";
+    porTexto(".fb-chips button", "2025").click();
+    const cat = await hasta(() => porTexto(".fb-chips button.act", "2025") && todos(".fin-table td a").find((a) => plano(a) === "Viajes"));
+    if (!cat) return "en 2025, la categoría Viajes no se puede pulsar";
+    cat.click();
+    if (!(await hasta(() => app().dataset.vista === "movimientos" && porTexto(".fb-seg.mini button.act", "Todo 2025")))) return "no abre la lista de todo 2025: " + plano(app()).slice(0, 200);
+    if (!porTexto(".fb-chips button.act", "Viajes")) return "la lista no está filtrada por Viajes";
+    if (!(await hasta(() => porTexto(".fb-item", "Hotel de prueba")))) return "no sale el gasto de Viajes de 2025";
+    if (!(await ir("#anual"))) return "no se vuelve a abrir Mi año";
+    const det = await hasta(() => porTexto("details.fin-more", "Ver la tabla mes a mes"));
+    if (!det) return "no está la tabla mes a mes";
+    det.open = true;
+    const ago = await hasta(() => todos("a.fin-link", det).find((a) => plano(a).toLowerCase() === "agosto"));
+    if (!ago) return "el mes de agosto no se puede pulsar";
+    ago.click();
+    if (!(await hasta(() => app().dataset.vista === "movimientos" && /agosto 2026/i.test(plano(app().querySelector(".fin-mes .lbl") || app()))))) return "no abre los movimientos de agosto";
+    if (porTexto(".fb-seg.mini button.act", "Todo 2026")) return "un mes no debería abrir el año entero";
+    const hoyB = app().querySelector('.fin-mes button[title="Volver al mes actual"]');
+    if (hoyB) hoyB.click();  // los flujos que siguen miran el mes en curso
+    if (!(await hasta(() => !app().querySelector('.fin-mes button[title="Volver al mes actual"]')))) return "no vuelve al mes actual";
+  });
+
+  // 24. Atajos de teclado: G, ← →, / y R; dentro de un campo de texto no hacen nada; la ayuda cuenta las secciones que hay
+  await caso("Atajos: G abre Mi año, ← → cambian el año y el mes, / lleva al buscador y R a Por revisar", async () => {
+    const tecla = (key, el) => (el || document.body).dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true }));
+    if (!(await ir("#inicio"))) return "no se abre el Inicio";
+    tecla("g");
+    const añoAct = () => plano(app().querySelector('.fb-chips[aria-label="Año"] button.act') || app()).trim();
+    if (!(await hasta(() => app().dataset.vista === "anual" && añoAct() === "2026"))) return "G no abre Mi año en 2026";
+    tecla("ArrowLeft");
+    if (!(await hasta(() => añoAct() === "2025"))) return "← no pasa a 2025: " + añoAct();
+    tecla("ArrowRight");
+    if (!(await hasta(() => añoAct() === "2026"))) return "→ no vuelve a 2026: " + añoAct();
+    if (!(await ir("#inicio"))) return "no se vuelve al Inicio";
+    const lbl = () => plano(app().querySelector(".fin-mes .lbl") || app()).toLowerCase();
+    tecla("ArrowLeft");
+    if (!(await hasta(() => lbl().includes("agosto 2026")))) return "← no pasa al mes anterior: " + lbl();
+    tecla("ArrowRight");
+    if (!(await hasta(() => lbl().includes("septiembre 2026")))) return "→ no vuelve a septiembre: " + lbl();
+    tecla("/");
+    const busca = await hasta(() => app().dataset.vista === "movimientos" && document.activeElement && document.activeElement.matches("input.fin-search") && document.activeElement);
+    if (!busca) return "/ no lleva al buscador de Movimientos con el cursor puesto";
+    tecla("g", busca);
+    await dormir(300);
+    if (app().dataset.vista !== "movimientos") return "escribiendo en el buscador, la G no debería cambiar de pantalla";
+    busca.blur();
+    tecla("r");
+    if (!(await hasta(() => app().dataset.vista === "revisar"))) return "R no abre Por revisar";
+    tecla("?");
+    const d = await hasta(() => { const x = document.getElementById("atajos"); return x && x.open && x; });
+    if (!d) return "? no abre la ayuda";
+    const n = document.querySelectorAll("#menu a").length, txt = plano(d);
+    tecla("?");
+    if (!txt.includes(`1 … ${n}`)) return `la ayuda debería decir «1 … ${n}» (hay ${n} secciones): ${txt.slice(0, 160)}`;
+    for (const k of ["← →", "/", "R", "G"]) if (!todos("kbd", d).some((e) => plano(e) === k)) return `la ayuda no lista la tecla ${k}`;
+    if (d.open) return "? no cierra la ayuda";
+  });
+
+  // 25. Primeros pasos: en el Inicio de quien empieza, con lo que falta; «Ocultar» la quita para siempre
+  await caso("Primeros pasos: sale al empezar, se tacha sola y «Ocultar» la quita para siempre", async () => {
+    if (!(await ir("#inicio"))) return "no se abre el Inicio";
+    if (porTexto(".fin-panel", "Primeros pasos")) return "con meses ya cerrados no debería salir";
+    // el ejemplo ya lleva meses cerrados: sin sus cierres es el Inicio de alguien que empieza
+    for (const c of regs("cierre")) { const r = await FB.api("/api/borrar", { tipo: "cierre", id: c.id }); if (!r.ok) return "no se borra un cierre: " + r.mensaje; }
+    await FB.refrescar();
+    const t = await hasta(() => porTexto(".fin-panel", "Primeros pasos"));
+    if (!t) return "no sale la tarjeta";
+    const faltan = todos("li:not(.hecho)", t);
+    if (faltan.length !== 1 || !plano(faltan[0]).includes("Revisar lo que la app no ha sabido clasificar")) return "debería faltar solo revisar las dudas: " + faltan.map(plano).join(" | ");
+    if (!faltan[0].querySelector('a[href="#revisar"]')) return "lo que falta no lleva a su pantalla";
+    if (todos("li.hecho a", t).length) return "lo hecho no debería ser un enlace";
+    if (!plano(t).includes("5 de 6 hechos")) return "no dice cuántos lleva: " + plano(t).slice(0, 120);
+    porTexto("button", "Ocultar", t).click();
+    if (!(await hasta(() => (FB.DB.config.avisos_descartados || []).includes("inicio:primeros-pasos") && !porTexto(".fin-panel", "Primeros pasos")))) return "«Ocultar» no la quita";
+    await FB.refrescar();
+    if (porTexto(".fin-panel", "Primeros pasos")) return "vuelve a salir";
+  });
+
   return casos;
 })();

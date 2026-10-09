@@ -3,7 +3,8 @@
 // tener a mano los números de la declaración. Orientativo: no sustituye a un asesor ni al programa de Hacienda.
 function vistaRenta() {
   cabecera("Para la renta", false, "Lo que ganaste o perdiste al vender, y los dividendos cobrados, por año");
-  const R = fifoVentas(opsParaRenta());
+  const OPS = opsParaRenta(), R = fifoVentas(OPS);
+  const DUDOSAS = reglaDosMeses(OPS, R.ventas, claseActivo);
   const CB = cobros();
   const años = [...new Set([...R.ventas.map((v) => v.fecha.year), ...CB.map((c) => c.fecha.year)])].sort((a, b) => b - a);
   const bot = root.createDiv({ cls: "fb-filtros" });
@@ -30,22 +31,28 @@ function vistaRenta() {
     com ? { l: "Comisiones", v: eur(-com, 2), s: "custodia y similares" } : null,
   ]);
 
+  const DU = DUDOSAS.filter((x) => x.fecha.year === año), dudosa = new Set(DU.map((x) => x.id)), perdidaDudosa = sum(DU.map((x) => x.perdida));
   const pV = panel(root, `Ventas de ${año}`, null, "Cada venta resta el coste de las compras más antiguas de ese activo (FIFO). Los traspasos entre fondos no cuentan: no tributan y el coste pasa al fondo nuevo.");
   if (!V.length) vacio(pV, "Sin ventas este año");
   else {
     const pgV = paginacion(V, "renta_v", () => FB.montar());
     tabla(pV, [{ t: "Fecha" }, { t: "Activo" }, { t: "Particip.", num: true, opt: true }, { t: "Vendido por", num: true }, { t: "Coste", num: true }, { t: "Resultado", num: true }],
       [...pgV.parte.map((v) => [fechaCorta(v.fecha.toISODate()), { text: v.activo + (v.faltan > 1e-6 ? " ⚠" : ""), ruta: `#activo/${(DB.registros.activo || []).find((a) => a.nombre === v.activo)?.id ?? ""}` },
-        nf(v.unidades, 0, 4), eur(v.valor, 2), eur(v.coste, 2), { text: eurS(v.resultado, 2), cls: tone(v.resultado) }]),
+        nf(v.unidades, 0, 4), eur(v.valor, 2), eur(v.coste, 2), { text: eurS(v.resultado, 2), cls: tone(v.resultado), badge: dudosa.has(v.id) ? "podría no contar" : "" }]),
         conFila(["Total", "", "", eur(sum(V.map((v) => v.valor)), 2), eur(sum(V.map((v) => v.coste)), 2), { text: eurS(resultado, 2), cls: tone(resultado) }], "total")]);
     pgV.pie(pV);
     if (V.some((v) => v.faltan > 1e-6)) pV.createDiv({ cls: "fin-note", text: "⚠ Se vendieron más participaciones de las que constan comprados: falta alguna compra y el coste está incompleto. Revisa la ficha del activo." });
+    if (DU.length) pV.createDiv({ cls: "fin-note", text: `⚠ ${eur(perdidaDudosa, 2)} de pérdidas podrían no contar en ${año}: `
+      + DU.map((x) => `${x.activo} (${eurS(-x.perdida, 2)} el ${x.fecha.toFormat("dd/MM")}; compraste el ${x.compra.toFormat("dd/MM/yyyy")})`).join(", ")
+      + ". Hacienda no deja restar una pérdida si compras lo mismo en los dos meses de antes o de después de vender (en fondos de inversión, un año): se resta cuando vendas lo que compraste. Aquí se siguen restando; compruébalo con el informe fiscal de tu bróker." });
   }
   // Lo que saldría a pagar: ventas (con las pérdidas que arrastras de los 4 años anteriores) + dividendos, por los tramos del ahorro
-  const E = rentaPorAño(años.map((a) => {
+  // sinDudosas: lo mismo, pero sin restar las pérdidas que podrían no contar este año (solo para decir cuánto cambiaría)
+  const porAño = (sinDudosas) => rentaPorAño(años.map((a) => {
     const dv = CB.filter((c) => c.fecha.year === a && c.tipo === "dividendo");
-    return { año: a, ventas: sum(R.ventas.filter((v) => v.fecha.year === a).map((v) => v.resultado)), dividendos: sum(dv.map((c) => c.importe + c.retencion)), retenido: sum(dv.map((c) => c.retencion)) };
+    return { año: a, ventas: sum(R.ventas.filter((v) => v.fecha.year === a).map((v) => v.resultado)) + (sinDudosas && a === año ? perdidaDudosa : 0), dividendos: sum(dv.map((c) => c.importe + c.retencion)), retenido: sum(dv.map((c) => c.retencion)) };
   })).get(año);
+  const E = porAño(false);
   if (E && (V.length || DV.length)) {
     const pE = panel(root, `Lo que te saldría por ${año}`, { text: "estimación" }, "Suma el resultado de tus ventas y tus dividendos brutos, resta las pérdidas que arrastras de los cuatro años anteriores y aplica los tramos del ahorro: 19 % hasta 6.000 €, 21 % hasta 50.000 €, 23 % hasta 200.000 €, 27 % hasta 300.000 € y 30 % desde ahí.");
     filasDato(pE, [
@@ -57,6 +64,12 @@ function vistaRenta() {
       E.retenido ? { l: "Ya retenido", v: eur(-E.retenido, 2) } : null,
       E.retenido ? { l: E.diferencia >= 0 ? "Te quedaría por pagar" : "Te devolverían", v: eur(Math.abs(E.diferencia), 2) } : null,
     ]);
+    if (DU.length) {
+      const E2 = porAño(true);
+      pE.createDiv({ cls: "fin-note", text: Math.abs(E2.cuota - E.cuota) >= 0.005
+        ? `Si no cuentan los ${eur(perdidaDudosa, 2)} de pérdidas marcados arriba, el impuesto sería ${eur(E2.cuota, 2)} en vez de ${eur(E.cuota, 2)}.`
+        : `Aunque no contaran los ${eur(perdidaDudosa, 2)} de pérdidas marcados arriba, el impuesto de ${año} sería el mismo (cambiaría lo que te queda por compensar).` });
+    }
     if (E.pendDespues > 0.005) pE.createDiv({ cls: "fin-note", text: `Te quedan ${eur(E.pendDespues, 2)} de pérdidas para compensar con ganancias de los próximos años (cada una vale cuatro años).` });
     pE.createDiv({ cls: "fin-note", text: "Solo cuenta lo que hay en esta app, como si no tuvieras más rentas del ahorro: faltan los intereses de tus cuentas y lo de otros brókers, que pueden subir el tramo." });
   }
@@ -66,5 +79,5 @@ function vistaRenta() {
     pgD.parte.map((c) => [{ text: fechaCorta(c.fecha.toISODate()), ruta: `#editar/cobro/${c.p.id}` }, c.activo, c.tipo === "comision" ? "Comisión" : "Dividendo", c.retencion ? eur(c.retencion, 2) : "", { text: (c.tipo === "comision" ? "−" : "+") + eur(c.importe, 2), cls: c.tipo === "comision" ? "neg" : "pos" }])); pgD.pie(pD); }
 
   if (R.sinDatos.length) root.createDiv({ cls: "fin-note", text: `No se pueden calcular las ventas de: ${R.sinDatos.join(", ")} (faltan participaciones en alguna operación). Ábrelos y cuádralos con tu bróker.` });
-  root.createDiv({ cls: "fin-note", text: "Orientativo: cálculo por FIFO con lo que hay anotado en la app. No aplica la regla de los dos meses para pérdidas, ni mira la fiscalidad de cada producto. Compáralo con el informe fiscal de tu bróker y consulta a un profesional si tienes dudas." });
+  root.createDiv({ cls: "fin-note", text: "Orientativo: cálculo por FIFO con lo que hay anotado en la app. Las pérdidas que podrían caer en la regla de los dos meses se marcan, pero se siguen restando; tampoco mira la fiscalidad de cada producto. Compáralo con el informe fiscal de tu bróker y consulta a un profesional si tienes dudas." });
 }

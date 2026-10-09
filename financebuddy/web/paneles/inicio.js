@@ -54,6 +54,9 @@ function vistaInicio() {
   box.createSpan({ cls: "lbl", text: mesLbl(mes) });
   btn("›", mesDT(mes).plus({ months: 1 }).toFormat("yyyy-MM"), "Mes siguiente", actual);
   if (!actual) btn("Hoy", hoyKey, "Volver al mes actual");
+  const año = enlace(der, "Mi año", "#anual");
+  año.className += " fb-personalizar";
+  año.title = "Lo que entró, salió y ahorraste en el año, comparado con el anterior";
   const per = enlace(der, "Personalizar", "#ajustes/inicio");
   per.className += " fb-personalizar";
   per.title = "Elige qué ves en el inicio y en qué orden";
@@ -71,6 +74,7 @@ function vistaInicio() {
   // La portada va primero y la franja de avisos justo debajo (o arriba del todo si la portada está oculta o movida).
   const visibles = panelesInicio().filter((p) => p.visible);
   const avisosArriba = actual && !(visibles[0] && visibles[0].id === "gasto");
+  if (actual) tarjetaPrimerosPasos(root);
   if (avisosArriba) franjaAvisos(root);
   let fila = null;
   visibles.forEach((p, i) => {
@@ -119,6 +123,34 @@ function franjaAvisos(padre) {
     d.createEl("summary", { text: filas.length ? `y ${resto.length} aviso${resto.length > 1 ? "s" : ""} más` : `${resto.length} aviso${resto.length > 1 ? "s" : ""}` });
     for (const a of resto) fila(d, deAviso(a));
   }
+}
+
+// «Primeros pasos»: mientras falte algo y lleves menos de dos meses cerrados (luego ya no es empezar). Cada paso se tacha solo
+// según lo que hay; «Ocultar» la quita para siempre (se guarda como un aviso descartado más, en config.avisos_descartados).
+const CLAVE_PASOS = "inicio:primeros-pasos";
+function tarjetaPrimerosPasos(padre) {
+  if (((DB.config || {}).avisos_descartados || []).includes(CLAVE_PASOS) || cierres().length >= 2) return;
+  const P = primerosPasos({ cuentas: cuentas().length, movimientos: registros("movimiento").length, pendientes: (DB.pendientes || []).length,
+    fijos: recurrentes().length, limite: limiteVar, saldos: patrimonio().length });
+  const hechos = P.filter((x) => x.hecho).length;
+  if (hechos === P.length) return;
+  const p = panel(padre, "Primeros pasos", { text: `${hechos} de ${P.length} hechos` });
+  p.classList.add("fb-pasos");
+  const l = p.createEl("ol", { cls: "fb-pasos-lista" });
+  for (const x of P) {
+    const li = l.createEl("li", { cls: x.hecho ? "hecho" : "" });
+    li.createSpan({ cls: "c", text: x.hecho ? "✓" : "", attr: { "aria-hidden": "true" } });
+    const n = li.createDiv({ cls: "n" });
+    if (x.hecho) { n.createSpan({ cls: "t", text: x.t }); n.createSpan({ cls: "s", text: " · hecho" }); }
+    else { enlace(n, x.t, x.ruta); if (x.s) n.createSpan({ cls: "s", text: ` · ${x.s}` }); }
+  }
+  const b = p.createEl("button", { cls: "fb-btn sec mini", text: "Ocultar", attr: { type: "button", "aria-label": "Ocultar los primeros pasos (no vuelven a salir)" } });
+  b.onclick = async () => {
+    const r = await FB.api("/api/config/descartar_aviso", { clave: CLAVE_PASOS });
+    if (!r.ok) { FB.aviso(r.mensaje || "No se ha podido ocultar", true); return; }
+    await FB.refrescar();
+    FB.aviso("Primeros pasos ocultos", false, { texto: "Volver a ponerlos", fn: async () => { await FB.api("/api/config/descartar_aviso", { clave: CLAVE_PASOS, volver: true }); await FB.refrescar(); } });
+  };
 }
 
 // La cifra grande de la portada. El sufijo va pegado al número, no solo en el rótulo pequeño de arriba: «72 €» significaba
