@@ -676,6 +676,35 @@ def recategorizar(alm, mid, d):
             alm.guardar("regla", {**(r or {}), "patron": patron, "categoria": cat, "clase": clase, "origen": "usuario"}, r["id"] if r else None)
     return f"Ahora es {cat}" + (f" · y {n} más de «{C.titulo(patron)}»" if n else "") + (" · lo recordaré" if d.get("recordar") and patron else "")
 
+def cambiar_categoria(alm, ids, categoria):
+    """La categoría desde la lista de Movimientos: la de uno (su fila) o la de varios a la vez, con `recategorizar` (solo ese
+    movimiento, sin parecidos ni regla). Una categoría de ingresos solo va a ingresos, y una de gastos a gastos y devoluciones.
+    Con varios, se quedan igual las partes de un movimiento dividido y lo que no encaja (traspasos, el otro tipo)."""
+    cat = str(categoria or "").strip()
+    c = next((x for x in alm.todos("categoria") if x["nombre"] == cat), None)
+    if not c: raise ValueError("Elige una categoría.")
+    de_ingreso = c.get("grupo") == "ingreso"
+    ids = list(dict.fromkeys(ids))
+    if not ids: raise ValueError("Elige al menos un movimiento.")
+    if len(ids) == 1:
+        m = alm.obtener("movimiento", ids[0])
+        if m and m.get("clase") in ("gasto", "ingreso", "reembolso") and (m["clase"] == "ingreso") != de_ingreso:
+            raise ValueError(f"«{cat}» es una categoría de {'ingresos' if de_ingreso else 'gastos'}: no vale para {'un gasto' if de_ingreso else 'un ingreso'}.")
+        return recategorizar(alm, ids[0], {"categoria": cat})
+    n, partes, otros = 0, 0, 0
+    with alm.transaccion():
+        for mid in ids:
+            m = alm.obtener("movimiento", mid)
+            if m and m.get("parte_de"): partes += 1; continue
+            if not m or m.get("clase") not in ("gasto", "ingreso", "reembolso") or (m["clase"] == "ingreso") != de_ingreso: otros += 1; continue
+            if m.get("categoria") != cat or m.get("sugerido"): recategorizar(alm, mid, {"categoria": cat})
+            n += 1
+    if not n: raise ValueError("Ninguno de los elegidos se puede pasar a esa categoría: " + ("son partes de un movimiento dividido: cámbialas una a una, en su fila." if partes and not otros else f"tienen que ser {'ingresos' if de_ingreso else 'gastos'}."))
+    tipo = ("un ingreso" if de_ingreso else "un gasto") if otros == 1 else ("ingresos" if de_ingreso else "gastos")
+    fuera = ([f"{partes} {'parte' if partes == 1 else 'partes'} de un movimiento dividido ({'cámbiala' if partes == 1 else 'cámbialas'} en su fila)"] if partes else []) + \
+            ([f"{otros} que no {'es' if otros == 1 else 'son'} {tipo}"] if otros else [])
+    return f"Pasados a {cat}: {n} movimiento{'s' if n != 1 else ''}" + (" · se quedan igual " + " y ".join(fuera) if fuera else "")
+
 # ───────────── dividir un movimiento en varias categorías ─────────────
 def partes_de(alm, m):
     """Las partes del movimiento dividido al que pertenece `m` (por id), o [] si no está dividido."""

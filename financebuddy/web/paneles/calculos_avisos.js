@@ -181,6 +181,10 @@ function avisos() {
   if (viejos.length) add("info", `Valor de la inversión sin actualizar hace más de un mes: ${viejos.map((a) => a.nombre).join(", ")}`, "#valores", `valores:${hoyCal}`);
   const malos = saludInversion().filter((x) => x.nivel === "error");
   if (malos.length) add("warn", `Tu inversión: ${malos.length === 1 ? "hay algo que no cuadra" : `${malos.length} cosas no cuadran`} (${malos.map((x) => x.activo.nombre).join(", ")}) · revísalo`, "#inversion", `salud:${hoyCal}:${malos.length}`);
+  // Tu reparto se ha alejado del objetivo que pusiste en Inversión (sin objetivo, nada)
+  const AR = avisoReparto(resumenInversion().filas);
+  if (AR) add("info", `Tu inversión se ha alejado de tu reparto ideal: ${AR.activo} ${AR.dif > 0 ? "pesa" : "se queda"} ${nf(Math.abs(AR.dif), 1, 1)} puntos ${AR.dif > 0 ? "más" : "menos"} de lo que querías (${nf(AR.actual, 1, 1)} % frente a ${nf(AR.objetivo, 1, 1)} %)`
+    + (AR.proxima ? ` · tu próxima aportación, mejor a ${AR.proxima}` : ""), "#inversion", `reparto:${AR.activo}:${hoyCal}`);
   const sinIni = A.filter((a) => a.aportadoIni == null);
   if (sinIni.length) add("info", `Falta cuánto habías aportado antes a ${sinIni.map((a) => a.nombre).join(", ")} · sin rentabilidad`, "#gestionar/activo", `sinini:${sinIni.length}`);
   const F = prevision();
@@ -279,6 +283,18 @@ function repartoAportacion(filas, importe = 0, banda = 5) {
   }
   for (const l of lineas) { l.dif = l.actual - l.objetivo; l.despues = T > 0 ? (100 * (l.f.valor + l.aporta)) / T : 0; l.difDespues = l.despues - l.objetivo; }
   return { lineas, total, importe: x, normalizado: Math.abs(sumaObj - 100) > 0.05, sumaObjetivos: sumaObj, dentro: !lineas.some((l) => Math.abs(l.dif) > banda) };
+}
+// Para el aviso del Inicio: el activo que más se ha alejado de tu reparto objetivo (fuera de la banda) y a cuál llevar la próxima
+// aportación. Con las mismas cuentas que «Tu reparto frente al ideal» de Inversión (repartoAportacion), para que digan lo mismo.
+// null sin objetivo o con todo dentro de la banda.
+function avisoReparto(filas, banda = 5) {
+  const R = repartoAportacion(filas, 0, banda);
+  if (!R || R.dentro) return null;
+  // El que más se aleja (a la décima de punto); empatados (con dos activos siempre lo están), el que se ha pasado: así el aviso
+  // dice qué pesa de más y a cuál aportar, en vez de nombrar dos veces el mismo
+  const peor = [...R.lineas].sort((a, b) => Math.round(Math.abs(b.dif) * 10) - Math.round(Math.abs(a.dif) * 10) || b.dif - a.dif)[0];
+  const debajo = R.lineas.filter((l) => l.dif < -banda).sort((a, b) => a.dif - b.dif)[0] || null;
+  return { activo: peor.f.nombre || peor.f.p.nombre, dif: peor.dif, actual: peor.actual, objetivo: peor.objetivo, proxima: debajo ? debajo.f.nombre || debajo.f.p.nombre : null };
 }
 // Meses que tardarías en llegar a `meta` con esos supuestos (null si no llega en 50 años).
 function mesesHasta50(inicial, apoMes, rentAnual, meta) {

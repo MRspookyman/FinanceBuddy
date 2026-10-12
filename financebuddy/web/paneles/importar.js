@@ -73,11 +73,39 @@ function filasSinLeer(card, lista, hecho) {
     + "\nCorrígelo en el archivo y vuelve a importarlo: lo que ya esté importado no se duplica.", "err");
   m.setAttribute("role", "alert");
 }
+// ¿Hay algo en la vista previa que pida mirarla entera? Filas que no se han podido leer, movimientos que quedarían por revisar o
+// activos que se crearían. Si no, basta con un resumen de una línea y un botón (previaSencilla).
+const previaConDudas = (V) => !!((V.ilegibles || []).length || V.dudas.n || (V.activos_nuevos || []).length);
+// La vista previa sin nada raro, en una frase: cuántos movimientos, de qué fechas, lo que entra y sale y el saldo que trae el extracto.
+function resumenPrevia(V) {
+  const M = V.movimientos, A = V.aportaciones, partes = [];
+  if (M.n) partes.push(`${M.n} movimiento${M.n === 1 ? "" : "s"} nuevo${M.n === 1 ? "" : "s"}${V.desde ? ` del ${fechaCorta(V.desde)} al ${fechaCorta(V.hasta)}` : ""}: entran ${eur(M.ingresos, 2)} y salen ${eur(M.gastos, 2)}${M.traspasos ? ` (y ${M.traspasos} traspaso${M.traspasos === 1 ? "" : "s"})` : ""}`);
+  if (A.n) partes.push(`${A.n} compra${A.n === 1 ? "" : "s"} y venta${A.n === 1 ? "" : "s"} de inversión`);
+  if (!M.n && !A.n) partes.push("Nada nuevo");
+  if (V.existentes) partes.push(`${V.existentes} ya estaba${V.existentes === 1 ? "" : "n"} y se omite${V.existentes === 1 ? "" : "n"}`);
+  if (V.sugeridos) partes.push(`${V.sugeridos} con categoría sugerida, por confirmar`);
+  if (V.saldo_final) partes.push(`saldo del extracto el ${fechaCorta(V.saldo_final.fecha)}: ${eur(V.saldo_final.saldo, 2)} (compáralo con tu banco)`);
+  return partes.join(" · ") + ".";
+}
 // Vista previa: lo que pasaría al importar (el mismo código, en una simulación que se deshace) con totales para comparar con tu banco.
+// Sin nada raro, se resume en una línea y se confirma con un botón; el detalle queda plegado.
 function tarjetaPrevia(card, r) {
-  const V = r.previa, M = V.movimientos, A = V.aportaciones;
+  const V = r.previa;
   card.classList.add("fb-previa");
-  card.createDiv({ cls: "top", text: `${r.archivo}: así quedaría (aún no se ha guardado nada)` });
+  const sencilla = !previaConDudas(V);
+  if (sencilla) card.classList.add("corta");
+  card.createDiv({ cls: "top", text: `${r.archivo}: ${sencilla ? "todo en orden, aún no se ha guardado nada" : "así quedaría (aún no se ha guardado nada)"}` });
+  if (sencilla) {
+    card.createDiv({ cls: "txt", text: resumenPrevia(V) });
+    botonesPrevia(card, r, "Importar");
+    plegable(card, "Ver el detalle", (c) => detallePrevia(c, V));
+    return;
+  }
+  detallePrevia(card, V);
+  botonesPrevia(card, r, "Importar ahora");
+}
+function detallePrevia(card, V) {
+  const M = V.movimientos, A = V.aportaciones;
   const t = [];
   if (M.n) t.push({ l: "Movimientos nuevos", v: String(M.n), s: V.desde ? `del ${fechaCorta(V.desde)} al ${fechaCorta(V.hasta)}` : "" }, { l: "Entra", v: eur(M.ingresos, 2), t: "pos" }, { l: "Sale", v: eur(M.gastos, 2), s: M.traspasos ? `+ ${M.traspasos} traspaso${M.traspasos > 1 ? "s" : ""}` : "" });
   if (A.n) t.push({ l: "Compras y ventas", v: String(A.n), s: `compras ${eur(A.compras, 0)}${A.ventas ? ` · ventas ${eur(A.ventas, 0)}` : ""}` });
@@ -92,8 +120,10 @@ function tarjetaPrevia(card, r) {
     V.muestra.map((m) => [fechaCorta(m.fecha), m.concepto, m.clase === "transferencia" ? "Entre tus cuentas" : { text: m.categoria, badge: m.sugerido ? "por confirmar" : "" }, { text: eurS(m.importe), cls: m.importe < 0 ? "neg" : "" }])));
   if (V.dudas.n) plegable(card, `Lo que quedaría por revisar (${V.dudas.n})`, (c) => tabla(c, [{ t: "Fecha" }, { t: "Texto del extracto" }, { t: "Importe", num: true }],
     V.dudas.muestra.map((m) => [fechaCorta(m.fecha), m.texto, eurS(m.importe)])));
+}
+function botonesPrevia(card, r, texto) {
   const f = card.createDiv({ cls: "fb-fila" });
-  const bOk = f.createEl("button", { cls: "fb-btn", text: "Importar ahora" });
+  const bOk = f.createEl("button", { cls: "fb-btn", text: texto });
   bOk.onclick = async () => {
     bOk.disabled = true;
     const x = await FB.api("/api/importar/reintentar", { ...(r.peticion || { archivo: r.archivo, tipo: r.tipo, cuenta: r.cuenta, perfil: r.perfil }), previa: false });
@@ -113,7 +143,7 @@ function resultadoImport(padre, r) {
     filasSinLeer(card, r.ilegibles, true);
     cuadreExtracto(card, r);
     if (r.sugeridas) enlace(card, `Ver o confirmar las ${r.sugeridas} categoría${r.sugeridas > 1 ? "s" : ""} sugerida${r.sugeridas > 1 ? "s" : ""} →`, "#revisar");
-    if (r.dudas) enlace(card, `Revisar ${r.dudas} movimiento${r.dudas > 1 ? "s" : ""} →`, "#revisar");
+    if (r.dudas) enlace(card.createDiv({ cls: "fb-fila" }), r.dudas > 1 ? `Revisar las ${r.dudas} dudas →` : "Revisar la duda →", "#revisar").className += " fb-btn";  // lo que toca hacer después: grande y a la vista
     if (r.tipo === "banco" && r.nuevas) enlace(card, "Detectar tus ingresos y gastos fijos →", "#fijos");
     if (r.jev_hallazgos) enlace(card, "✨ Revisar tus categorías →", "#revision");
     return;

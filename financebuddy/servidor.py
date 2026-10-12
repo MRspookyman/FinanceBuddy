@@ -424,6 +424,7 @@ class App:
                 if k in ("limite_variable",): a.set_config(k, modelo.numero(v) or 0)
                 elif k == "dia_inicio": a.set_config(k, min(28, max(1, int(modelo.numero(v) or 1))))  # día en que empieza «tu mes»
                 elif k == "colchon": a.set_config(k, max(0, modelo.numero(v) or 0))  # 0 = lo calcula la app
+                elif k == "meta_ahorro": a.set_config(k, max(0, modelo.numero(v) or 0))  # cuánto quieres ahorrar al mes (0 = sin meta)
                 elif k == "por_pagina":  # registros por página de las listas largas (10 a 200; 40 si no es un número)
                     try: n = int(modelo.numero(v) or 40)
                     except ValueError: n = 40
@@ -443,6 +444,11 @@ class App:
             self.deshacer_que = f"Confirmado{'s' if n != 1 else ''}: {n} movimiento{'s' if n != 1 else ''}"
             return {"ok": True, "mensaje": self.deshacer_que}
         if ruta == "/api/recategorizar": return {"ok": True, "mensaje": IM.recategorizar(a, int(d["id"]), d)}
+        if ruta == "/api/movimiento/categoria":  # desde la lista de Movimientos: la de una fila o la de varios elegidos (se puede deshacer)
+            foto = a.instantanea()
+            msg = IM.cambiar_categoria(a, [int(x) for x in (d.get("ids") or []) if str(x).isdigit()], d.get("categoria"))
+            self.deshacer, self.deshacer_que = foto, msg
+            return {"ok": True, "mensaje": msg}
         if ruta == "/api/parecidos": return {"ok": True, **IM.parecidos(a, int(d["id"]))}
         if ruta == "/api/movimiento/dividir":  # un cargo que son varias cosas: una parte por categoría (se puede deshacer y volver a juntar)
             foto = a.instantanea()

@@ -28,11 +28,16 @@ Solo para **Windows**. Todo en español y en euros.
    - La primera vez con un banco nuevo te pregunta qué columna es la fecha, el concepto y el importe. Solo esa vez.
    - **Vista previa**: antes de guardar nada te enseña lo que va a importar (movimientos nuevos, los que ya estaban, dudas, ingresos y
      gastos, saldo final y una muestra) para compararlo con tu banco. No se guarda hasta que lo confirmas (se puede desactivar).
+     Si no hay nada raro (ni filas que no se pueden leer, ni dudas por revisar, ni activos nuevos), se resume en una línea con
+     el saldo del extracto y se confirma con un solo botón, **Importar**; el detalle queda plegado. Si queda algo por revisar,
+     el resultado lleva un botón **Revisar las N dudas →**.
    - ¿Sin extracto? *Importar → Descargar la plantilla de Excel*: fecha, concepto, importe y un desplegable con tus categorías.
 4. **Por revisar**: lo que la app no sabe clasificar sola te lo pregunta, agrupado por comercio.
    - Un clic en la categoría (la más probable sale la primera, marcada con ✨) resuelve el grupo entero y lo recuerda.
    - **Aprende sola**: lo que ya clasificaste antes de un comercio se usa la siguiente vez, aunque no marques «recordar».
    - Si una categoría está mal, pulsa el movimiento y elige otra: puedes cambiar a la vez todos los del mismo comercio.
+   - O sin salir de *Movimientos → Lista*: cada fila lleva su categoría en un desplegable, y con las casillas eliges varios
+     y los pasas a otra de golpe (las partes de un movimiento dividido se cambian una a una). Se puede deshacer.
 5. Una vez al mes, *Ajustes → Actualizar saldos*: anotas lo que tienes en cada cuenta y el valor de tu inversión.
    - Así la app comprueba que no falta ningún movimiento.
    - Un mes queda cerrado con los saldos de su último día (o de después). Si los anotas a mitad de mes se guardan igual, pero
@@ -54,6 +59,7 @@ Sin valor anotado, un activo con participaciones se estima con el precio de su �
 
 **Reparto ideal** (*Inversión*): dices qué porcentaje quieres en cada activo y la app te enseña en cuánto te has desviado y
 **a dónde llevar la próxima aportación** para acercarte, sin vender nada. Es información, no asesoramiento financiero.
+Si un activo se sale más de 5 puntos de su porcentaje, el Inicio lo dice en una nota (se quita con su ×). Sin reparto ideal, no avisa.
 
 **Metas de patrimonio** (al final de *Inversión*): las cifras redondas de patrimonio (1.000 €, 2.500 €, 5.000 €…) con la fecha en que las cruzaste, la barra
 hacia la siguiente y cuánto tardarías al ritmo actual. **Solo largo plazo**: desmarca un activo («Inversión a
@@ -73,7 +79,9 @@ bono e inmueble.
 año anterior (en el año en curso, con los mismos meses del anterior); tu mejor y tu peor mes, tu patrimonio de enero a diciembre
 y lo que metiste y ganó tu inversión. Ingresos y gastos van por *tu mes* (el día en que empieza, en *Ajustes*); patrimonio e
 inversión, por mes natural. Solo cuentan los meses con movimientos importados o apuntados. Pulsa un mes o una categoría para ver
-sus movimientos.
+sus movimientos. **Dónde más gastas**: los diez comercios en los que más gasto variable dejaste ese año, con cuántas compras y
+lo que gastas de media en cada una (sin los fijos; un movimiento dividido cuenta como una compra y los Bizums enlazados a un gasto
+se restan), y lo que suman las compras de menos de 10 €. Pulsa un comercio para ver sus movimientos de ese año.
 
 **Precios por internet (opcional, apagado de serie)** (*Ajustes → Precios por internet*): en vez de anotar a mano lo que vale cada
 fondo, ETF o cripto, la app lo consulta a **Yahoo Finance, Morningstar o CoinGecko**. Solo sale el identificador del producto
@@ -163,7 +171,11 @@ categorías, reglas, inversión, aportaciones, dividendos, objetivos y recordato
 
 **A tu gusto** (*Ajustes*): tema automático, claro u oscuro y color de acento; qué paneles ves en el Inicio y en qué orden;
 cuántos registros por página en las listas largas; el día en que empieza tu mes y tu colchón;
-icono, color y presupuesto de cada categoría (con aviso si te pasas). En *Movimientos → Por categoría* ves cada una
+icono, color y presupuesto de cada categoría (con aviso si te pasas). *Ajustes → Categorías → Proponer presupuestos* te propone
+para cada categoría de gasto variable lo que gastas de media (redondeado a 10 €): marcas las que quieras y solo se guardan esas.
+**Quiero ahorrar al mes** (*Ajustes*, junto al límite): con una meta, la app te dice qué límite de gasto variable te la deja
+cumplir (lo que te entra − tus fijos − otros gastos fijos sin dar de alta − lo que inviertes − tu meta) y lo usas con un botón;
+el límite no cambia solo. En *Movimientos → Por categoría* ves cada una
 frente a tu media de los meses anteriores, y en el Inicio, el ritmo de gasto del mes frente a lo que sueles llevar.
 
 **Lo que viene** (*Inicio*): «Tus próximos meses» enseña cuánto tendrás en tus cuentas al acabar cada uno de los próximos doce

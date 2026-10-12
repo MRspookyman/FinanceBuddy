@@ -316,4 +316,39 @@ caso("Primeros pasos: con solo las cuentas, lo demás por hacer (y sin importar,
 caso("Primeros pasos: con dudas por revisar, solo falta eso y dice cuántas quedan",
   PP1.filter((x) => !x.hecho).map((x) => x.id).join() === "revisar" && /quedan 3/.test(PP1.find((x) => x.id === "revisar").s), JSON.stringify(PP1.map((x) => [x.id, x.hecho])));
 
+// Dónde más gastas: por comercio (movimientos de mentira). Mercadona en mayúsculas es el mismo; las dos partes de Ikea son una
+// compra; el Bizum enlazado resta de la cena; fuera el alquiler (fijo), lo automático, lo previsto, lo por revisar y lo de otro año.
+const mC = (id, fecha, concepto, importe, mas = {}) => ({ p: { id, ...(mas.p || {}) }, fecha: d0(fecha), clase: mas.clase || "gasto", categoria: mas.categoria || "Compras",
+  importe, concepto, auto: !!mas.auto, previsto: !!mas.previsto, pendiente: !!mas.pendiente });
+const PCx = F.porComercio([mC(1, "2026-03-02", "Mercadona", 45), mC(2, "2026-04-02", "Mercadona", 30), mC(3, "2026-05-02", "MERCADONA", 10),
+  mC(4, "2026-05-10", "Ikea", 50), mC(5, "2026-05-10", "Ikea", 20, { p: { parte_de: 4 } }), mC(6, "2026-06-01", "Restaurante Sol", 80),
+  mC(7, "2026-06-03", "Parte de Ana", 30, { clase: "reembolso", p: { reembolsa: 6 } }), mC(8, "2026-06-05", "Café Luna", 2.5), mC(9, "2026-06-06", "Café Luna", 2.5),
+  mC(10, "2026-06-01", "Alquiler", 700, { categoria: "Vivienda" }), mC(11, "2026-07-01", "Gimnasio", 30, { auto: true }), mC(12, "2026-12-01", "Ikea", 99, { previsto: true }),
+  mC(13, "2026-07-01", "Tienda rara", 60, { pendiente: true }), mC(14, "2025-07-01", "Mercadona", 500)], (m) => m.fecha.year === 2026, (c) => c === "Vivienda");
+caso("Por comercio: Mercadona 85 € en 3 compras, Ikea 70 € en una (sus dos partes), la cena 50 € (le restan el Bizum) y el café 5 €; sin fijos, automáticos, previstos, por revisar ni otro año",
+  JSON.stringify(PCx.lista.map((c) => [c.nombre, Math.round(c.total * 100) / 100, c.n])) === '[["Mercadona",85,3],["Ikea",70,1],["Restaurante Sol",50,1],["Café Luna",5,2]]'
+  && cerca(PCx.lista[0].medio, 85 / 3), JSON.stringify(PCx.lista));
+caso("Por comercio: compras de menos de 10 € (los dos cafés, 5 €)", PCx.pequeñas.n === 2 && cerca(PCx.pequeñas.total, 5), JSON.stringify(PCx.pequeñas));
+
+// Presupuestos sugeridos: la media de los meses de referencia redondeada a 10 €; solo categorías variables y visibles.
+const PSx = F.presupuestosSugeridos([{ nombre: "Super", grupo: "variable" }, { nombre: "Ocio", grupo: "variable", presupuesto: 100 }, { nombre: "Vivienda", grupo: "fijo" },
+  { nombre: "Viejo", grupo: "variable", oculta: true }, { nombre: "Poco", grupo: "variable" }],
+  [new Map([["Super", 300], ["Ocio", 80], ["Vivienda", 700], ["Viejo", 50], ["Poco", 6]]), new Map([["Super", 320], ["Ocio", 100]]), new Map([["Super", 334], ["Ocio", 75], ["Poco", -3]])]);
+caso("Presupuestos sugeridos: Supermercado 318 € de media → 320 €, Ocio 85 € → 90 € (y dice que ahora tiene 100 €); fuera lo fijo, lo oculto y lo que no llega a 10 €",
+  JSON.stringify(PSx.map((x) => [x.nombre, x.propuesta, x.actual])) === '[["Super",320,0],["Ocio",90,100]]', JSON.stringify(PSx));
+caso("Presupuestos sugeridos: sin meses de referencia, nada", F.presupuestosSugeridos([{ nombre: "Super", grupo: "variable" }], []).length === 0);
+
+// Aviso de rebalanceo: el activo que más se aleja de tu objetivo y a cuál llevar la próxima aportación; sin objetivo o dentro de la banda, nada.
+const AVR = F.avisoReparto([{ nombre: "A", valor: 7000, p: { objetivo: 50 } }, { nombre: "B", valor: 2000, p: { objetivo: 25 } }, { nombre: "C", valor: 1000, p: { objetivo: 25 } }]);
+caso("Rebalanceo: A pesa 20 puntos más (70 % frente a 50 %) y la próxima aportación, a C (15 puntos por debajo; B, a 5, está dentro)",
+  AVR && AVR.activo === "A" && cerca(AVR.dif, 20) && cerca(AVR.actual, 70) && cerca(AVR.objetivo, 50) && AVR.proxima === "C", JSON.stringify(AVR));
+caso("Rebalanceo: dentro de la banda de 5 puntos o sin objetivo, no avisa",
+  F.avisoReparto([{ nombre: "A", valor: 680, p: { objetivo: 70 } }, { nombre: "B", valor: 320, p: { objetivo: 30 } }]) === null && F.avisoReparto([{ nombre: "A", valor: 5, p: {} }]) === null);
+caso("Rebalanceo: el ejemplo no tiene reparto objetivo, así que no hay aviso", !F.avisos().some((a) => /^inicio:reparto:/.test(a.clave)), JSON.stringify(F.avisos().map((a) => a.clave)));
+
+// Meta de ahorro → límite de gasto variable: entra − fijos − gastos fijos sin dar de alta − aportaciones − meta, a 10 € hacia abajo.
+const LM = F.limitePorMeta(400, { ingresos: 1850, fijos: 812.9, suelto: 50, aportaciones: 200 }), LM2 = F.limitePorMeta(900, { ingresos: 1850, fijos: 812.9, suelto: 50, aportaciones: 200 });
+caso("Meta de ahorro: 1.850 − 812,90 − 50 − 200 − 400 = 387,10 € → límite de 380 €", LM.llega && cerca(LM.sobra, 387.1) && LM.limite === 380, JSON.stringify(LM));
+caso("Meta de ahorro: si no llega (faltan 112,90 €), no propone límite", !LM2.llega && LM2.limite === 0 && cerca(LM2.sobra, -112.9), JSON.stringify(LM2));
+
 return casos;

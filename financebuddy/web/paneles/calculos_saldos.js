@@ -183,6 +183,62 @@ function ritmoMes(key = hoyKey) {
   return { dm, dia, actual, media: med, nMeses: refs.length, hoyV: actual[dia - 1] || 0, mediaHoy: med ? med[dia - 1] : NaN };
 }
 
+// Presupuestos que se proponen a partir de lo que gastas: la media de los meses de referencia de cada categoría de gasto variable
+// (las ocultas, fuera), redondeada a 10 €. Solo se propone; se guarda lo que el usuario marque.
+// cats: [{ nombre, grupo, presupuesto, oculta }] · meses: [Map categoría → gasto] (uno por mes de referencia)
+// → [{ nombre, media, propuesta, actual }] de mayor a menor, sin las que darían menos de 10 €.
+function presupuestosSugeridos(cats, meses) {
+  if (!meses.length) return [];
+  return cats.filter((c) => (c.grupo || "variable") === "variable" && !c.oculta)
+    .map((c) => { const m = media(meses.map((x) => Math.max(0, x.get(c.nombre) || 0))); return { nombre: c.nombre, media: m, propuesta: Math.round(m / 10) * 10, actual: c.presupuesto || 0 }; })
+    .filter((x) => x.propuesta >= 10).sort((a, b) => b.media - a.media);
+}
+
+// ───────────── dónde más gastas: por comercio ─────────────
+// Gasto variable de un periodo por comercio. El comercio sale del concepto (el nombre limpio, normalizado con `comercioDe`):
+// el texto del extracto lleva la ciudad y la tarjeta y partiría un mismo comercio en varios. Lo que te devolvieron de un gasto
+// (un Bizum enlazado) resta en su comercio, y las partes de un movimiento dividido son una sola compra. Fuera los fijos (su
+// grupo), lo automático, lo previsto y lo que está por revisar.
+// ms: como movimientos() · dentro(m): si entra en el periodo · fijo(categoría): si es de grupo fijo · pequeña: tope de «compra pequeña».
+// → { lista: [{ clave, nombre, total, n, medio }] de mayor a menor, pequeñas: { n, total } }
+function porComercio(ms, dentro, fijo = () => false, pequeña = 10) {
+  const grupos = new Map(), deGasto = new Map(), compras = new Map();
+  for (const m of ms) {
+    if (m.clase !== "gasto" || m.auto || m.previsto || m.pendiente || !dentro(m) || fijo(m.categoria)) continue;
+    const clave = comercioDe({ concepto: m.concepto });
+    if (!clave) continue;
+    if (!grupos.has(clave)) grupos.set(clave, { clave, total: 0, compras: new Set(), nombres: new Map() });
+    const g = grupos.get(clave), id = m.p && m.p.id, compra = (m.p && m.p.parte_de) || id || m;
+    g.total += m.importe; g.compras.add(compra); g.nombres.set(m.concepto, (g.nombres.get(m.concepto) || 0) + 1);
+    if (id != null) deGasto.set(id, g);
+    compras.set(compra, (compras.get(compra) || 0) + m.importe);
+  }
+  for (const m of ms) if (m.clase === "reembolso" && !m.previsto && m.p && deGasto.has(m.p.reembolsa)) deGasto.get(m.p.reembolsa).total -= m.importe;
+  const lista = [...grupos.values()].filter((g) => g.total >= 0.5).map((g) => ({
+    clave: g.clave, nombre: [...g.nombres].sort((a, b) => b[1] - a[1])[0][0], total: g.total, n: g.compras.size, medio: g.total / g.compras.size,
+  })).sort((a, b) => b.total - a.total);
+  const peq = [...compras.values()].filter((v) => v < pequeña);
+  return { lista, pequeñas: { n: peq.length, total: sum(peq) } };
+}
+
+// ───────────── meta de ahorro → límite de gasto variable ─────────────
+// «Quiero ahorrar X al mes» (config.meta_ahorro): el límite de gasto variable que lo permite es lo que entra al mes menos lo que
+// sale sin que lo decidas (fijos, gastos fijos sin dar de alta y aportaciones a tu inversión) menos la meta. Redondeado a 10 €
+// hacia abajo para no quedarte corto. d: { ingresos, fijos, suelto, aportaciones } al mes → { limite, sobra, llega }.
+function limitePorMeta(meta, d) {
+  const sobra = d.ingresos - d.fijos - d.suelto - d.aportaciones - meta;
+  return { ...d, meta, sobra, limite: sobra > 0 ? Math.floor(sobra / 10) * 10 : 0, llega: sobra >= 10 };
+}
+const metaAhorro = () => Math.max(0, num(cfg.meta_ahorro));
+// Lo que entra y sale al mes, de media: los fijos que tienes en marcha (los de una vez al año, repartidos en 12) y los gastos fijos
+// sin dar de alta (prevision().sueltoEst). Sin ingresos fijos, lo que te entró de media en los últimos 3 meses cerrados con datos.
+function datosMeta() {
+  const T = totalesFijos(DB.registros.recurrente || [], hoy.toISODate());
+  const K = mesesHasta(mesAnterior(hoyKey), 3).filter(conDatos);
+  const ingresos = T.ingreso.n ? T.ingreso.mes : K.length ? media(K.map((k) => finMes(k).ingresos)) : 0;
+  return { ingresos, deFijos: !!T.ingreso.n, nMeses: K.length, fijos: T.gasto.mes, suelto: prevision().sueltoEst, aportaciones: T.aportacion.mes };
+}
+
 const hayIngresosFijos = () => recurrentes().some((r) => r.clase === "ingreso");
 
 // ───────────── qué hacer con tu dinero (plan de reparto) ─────────────
@@ -230,7 +286,10 @@ function planReparto() {
 // Y los gastos fijos que no están dados de alta (`suelto`): su media de hasta 12 meses cerrados con gastos, porque suelen ser
 // recibos de una vez al año o al trimestre (con 3 meses, un seguro anual saldría multiplicado por cuatro, o no saldría).
 // Las aportaciones se pagan primero con el efectivo del bróker; cuando se acaba, salen del banco (`agota`: primer mes así).
-function prevision(n = 12) {
+// sup: { gasto, ingresos } multiplican lo estimado (gasto variable y gastos fijos sin dar de alta) y los ingresos previstos;
+// sin él (1 y 1) es la previsión normal. Los fijos dados de alta y las aportaciones no cambian: son importes que ya conoces.
+function prevision(n = 12, sup = {}) {
+  const fG = sup.gasto ?? 1, fI = sup.ingresos ?? 1;
   const E = estimacion();
   const inicio = E ? E.c.Liquidez : 0;
   const brokerIni = E ? E.c["Efectivo bróker"] : 0;
@@ -250,11 +309,11 @@ function prevision(n = 12) {
   let saldo = inicio;
   const filas = mesesDesde(hoyKey, n).map((key) => {
     const pend = movimientos().filter((m) => m.previsto && keyDe(m.fecha) === key && !esDelBroker(m));
-    const ing = sum(pend.filter((m) => m.clase === "ingreso").map((m) => m.importe));
+    const ing = sum(pend.filter((m) => m.clase === "ingreso").map((m) => m.importe)) * fI;
     const fijos = sum(pend.map((m) => m.gasto));
     const apo = sum(aportaciones().filter((a) => a.previsto && keyDe(a.fecha) === key).map((a) => a.importe));
-    const variable = key === hoyKey ? queda(varEst, varMes) : varEst;
-    const suelto = key === hoyKey ? queda(sueltoEst, sueltoMes) : sueltoEst;
+    const variable = key === hoyKey ? queda(varEst * fG, varMes) : varEst * fG;
+    const suelto = key === hoyKey ? queda(sueltoEst * fG, sueltoMes) : sueltoEst * fG;
     const tr =sum(pend.filter(esABroker).map((m) => m.importe)) + sum(pend.filter(esAOtra).map((m) => m.importe)) - sum(pend.filter(esDeOtra).map((m) => m.importe));
     const pago = pagarAportacion(broker + sum(pend.filter(esABroker).map((m) => m.importe)), apo);
     broker = pago.broker;
@@ -267,5 +326,19 @@ function prevision(n = 12) {
   const minimo = (futuros.length ? futuros : filas).reduce((a, b) => (b.saldo < a.saldo ? b : a));
   const agota = brokerIni > 0 ? filas.find((f) => f.apoBanco > 0) : null;
   return { inicio, brokerIni, conRegistro: !!E, filas, varEst, varReal, nMesesReal: cerrados.length, fuenteVar, sueltoEst, nMesesSuelto: mesesSuelto.length, minimo, agota };
+}
+
+// ───────────── escenarios de la previsión ─────────────
+// Tres versiones de prevision() para no fiarse de una sola cifra. Prudente: gastas un 15 % más de lo estimado y te entra un 10 %
+// menos; optimista: gastas un 10 % menos y te entra lo previsto (no se cuenta con ingresos extra). Los porcentajes se pueden
+// cambiar en pantalla (solo mientras miras: no se guardan). aj: { prudente: { gasto, ingresos }, optimista: {…} } en % (+15 = un 15 % más).
+const ESCENARIOS = { prudente: { gasto: 15, ingresos: -10 }, optimista: { gasto: -10, ingresos: 0 } };
+function escenariosPrevision(aj = {}, n = 12) {
+  const sup = (id) => ({ ...ESCENARIOS[id], ...(aj[id] || {}) });
+  const uno = (id, nombre, p) => {
+    const F = p ? prevision(n, { gasto: 1 + p.gasto / 100, ingresos: 1 + p.ingresos / 100 }) : prevision(n);
+    return { id, nombre, gasto: p ? p.gasto : 0, ingresos: p ? p.ingresos : 0, F, final: F.filas[F.filas.length - 1], minimo: F.minimo };
+  };
+  return [uno("prudente", "Prudente", sup("prudente")), uno("normal", "Normal", null), uno("optimista", "Optimista", sup("optimista"))];
 }
 

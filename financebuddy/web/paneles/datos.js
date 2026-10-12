@@ -95,7 +95,9 @@ let filtroCat = (vista === "gastos" || vista === "movimientos") && estado0.filtr
 if (filtroCat) guardarEstado({ filtroCat: null });
 // «Todo el año» en la lista de Movimientos, pedido desde Mi año (también se consume una vez: FB.estado se vacía al navegar).
 if (vista === "movimientos" && estado0.hist) { FB.estado.hist = estado0.hist; guardarEstado({ hist: null }); }
-let busqueda = "";
+// Un comercio pedido desde «Dónde más gastas» (Mi año): la lista abre con él en el buscador (también se consume una vez).
+let busqueda = vista === "movimientos" && estado0.busqueda ? String(estado0.busqueda) : "";
+if (busqueda) guardarEstado({ busqueda: null });
 
 // ───────────── registros ─────────────
 // Cada registro lleva `file` (nombre y enlace para editarlo), como las notas de la versión anterior.

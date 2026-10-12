@@ -35,6 +35,29 @@ function vistaAjustes() {
   const f = pL.createDiv({ cls: "fb-fila" });
   const iL = f.createEl("input", { cls: "corto", attr: { type: "number", step: "10", "aria-label": "Tu límite de gasto variable al mes, en euros" } }); iL.value = limiteVar || "";
   alCambiar(iL, "limite", () => ({ limite_variable: iL.value }));
+  // Meta de ahorro: si la pones, la app calcula el límite que la permite (limitePorMeta); cambiarlo es cosa tuya, con el botón
+  const fA = pL.createDiv({ cls: "fb-fila" });
+  fA.createSpan({ cls: "fb-et", text: "Quiero ahorrar al mes" });
+  const iA = fA.createEl("input", { cls: "corto", attr: { type: "number", min: "0", step: "10", placeholder: "opcional", "aria-label": "Cuánto quieres ahorrar al mes, en euros, aparte de lo que ya inviertes" } }); iA.value = metaAhorro() || "";
+  alCambiar(iA, "meta", () => ({ meta_ahorro: iA.value || 0 }));
+  const meta = metaAhorro();
+  if (!(meta > 0)) pL.createDiv({ cls: "fin-note", text: "Opcional: aparte de lo que ya inviertes cada mes. Con una meta, la app te dice qué límite te la deja cumplir." });
+  else {
+    const L = limitePorMeta(meta, datosMeta());
+    if (!(L.ingresos > 0)) pL.createDiv({ cls: "fin-note", text: "Para calcular tu límite hace falta saber lo que te entra al mes: detecta tus ingresos fijos en Fijos o importa algún mes completo." });
+    else {
+      const resta = [[L.fijos, "de fijos"], [L.suelto, "de otros gastos fijos que no tienes dados de alta"], [L.aportaciones, "que inviertes"]].filter(([v]) => v >= 0.5).map(([v, t]) => ` − ${eur(v, 0)} ${t}`).join("");
+      pL.createDiv({ cls: "fin-note", text: `Te entran ${eur(L.ingresos, 0)} al mes (${L.deFijos ? "tus ingresos fijos" : `tu media de ${L.nMeses === 1 ? "el último mes" : `los últimos ${L.nMeses} meses`}`})${resta} − ${eur(meta, 0)} de tu meta = ${eur(L.sobra, 0)} para gasto variable.` });
+      if (!L.llega) mensaje(pL, `Con lo que te entra no llega para ahorrar ${eur(meta, 0)} al mes: te faltarían ${eur(-L.sobra, 0)} aunque no gastaras nada en gasto variable.`, "err");
+      else if (Math.abs(L.limite - limiteVar) < 1) pL.createDiv({ cls: "fin-note", text: `Tu límite de ${eur(limiteVar, 0)} ya es el de tu meta.` });
+      else {
+        const fU = pL.createDiv({ cls: "fb-fila" });
+        fU.createSpan({ text: `Con tu meta, tu límite sería ${eur(L.limite, 0)} al mes (${limiteVar > 0 ? `ahora es ${eur(limiteVar, 0)}` : "ahora no tienes"}).` });
+        const bU = fU.createEl("button", { cls: "fb-btn sec", text: `Usar ${eur(L.limite, 0)}`, attr: { type: "button", "aria-label": `Usar ${eur(L.limite, 0)} al mes como límite de gasto variable` } });
+        bU.onclick = () => guardarAjuste("/api/config", { limite_variable: L.limite });
+      }
+    }
+  }
 
   const pM = panel(g, "Tu mes y tu colchón");
   const fM = pM.createDiv({ cls: "fb-fila" });

@@ -30,9 +30,9 @@ Python (biblioteca estándar + `openpyxl`/`xlrd`/`pystray`) · SQLite · interfa
 
 ```bat
 python -m financebuddy --ejemplo --sin-navegador --puerto 8830 --hoy 2026-09-30   :: app con datos inventados
-python -m unittest discover -s pruebas -p "test_*.py" -t .     :: 228 pruebas de Python
-python pruebas\run.py --tests                                  :: 21 pantallas sin errores + 124 pruebas de cálculos
-python pruebas\run.py --flujos                                 :: 25 flujos con clics de verdad
+python -m unittest discover -s pruebas -p "test_*.py" -t .     :: 230 pruebas de Python
+python pruebas\run.py --tests                                  :: 21 pantallas sin errores + 133 pruebas de cálculos
+python pruebas\run.py --flujos                                 :: 31 flujos con clics de verdad
 python pruebas\run.py --capturas                               :: capturas en claro y oscuro (%TEMP%\fb-pruebas)
 python pruebas\evaluar_jev.py / evaluar_precios.py             :: contra los servicios reales (lo ejecuta el usuario)
 build.bat                                                      :: pasa TODO lo anterior y genera dist\FinanceBuddy\

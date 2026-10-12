@@ -66,6 +66,19 @@ function vistaAnual() {
       if (subidas.length) pC.createDiv({ cls: "fin-note", text: `Lo que más ha subido: ${subidas.map((n) => `${n.toLowerCase()} (${eurS(dif(n), 0)})`).join(", ")}.` });
     }
   }
+  // Dónde más gastas: los comercios del año (gasto variable), y lo que suman las compras pequeñas
+  const conMov = new Set(A.filas.filter((f) => f.datos).map((f) => f.key));
+  const PC = porComercio(movimientos(), (m) => conMov.has(keyDe(m.fecha)), (c) => grupoDe(c) === "fijo");
+  if (PC.lista.length) {
+    const pD = panel(root, "Dónde más gastas", { text: `${PC.lista.length} comercio${PC.lista.length === 1 ? "" : "s"}` }, "Tu gasto variable del año por comercio (sin los fijos). Si un Bizum está enlazado a un gasto, lo que te devolvieron se resta de su comercio. Pulsa uno para ver sus movimientos.");
+    const verCom = (nombre) => () => { guardarEstado({ mes: hasta, filtroCat: null, hist: "año", busqueda: nombre }); FB.ir("#movimientos/lista"); };
+    const TOP = 10, top = PC.lista.slice(0, TOP);
+    tabla(pD, [{ t: "Comercio" }, { t: "Gastado", num: true }, { t: "Compras", num: true }, { t: "De media", num: true, opt: true }],
+      top.map((c) => [{ text: c.nombre, onclick: verCom(c.nombre), title: `Ver los movimientos de ${c.nombre} en ${año}` }, eur(c.total, 0), String(c.n), eur(c.medio, 2)]));
+    const resto = PC.lista.slice(TOP);
+    if (resto.length) pD.createDiv({ cls: "fin-note", text: `Y ${resto.length} comercio${resto.length === 1 ? "" : "s"} más: ${eur(sum(resto.map((c) => c.total)), 0)}.` });
+    if (PC.pequeñas.n) pD.createDiv({ cls: "fin-note", text: `Compras de menos de 10 €: ${PC.pequeñas.n}, que suman ${eur(PC.pequeñas.total, 0)}${A.meses > 1 ? ` (unos ${eur(PC.pequeñas.total / A.meses, 0)} al mes)` : ""}.` });
+  }
   if (A.ingresoCat.size) {
     const pI = panel(root, "De dónde entró", { text: eur(A.ingresos, 0) });
     filasDato(pI, [...A.ingresoCat].sort((a, b) => b[1] - a[1]).map(([n, v]) => ({ l: n, dot: catColor(n), v: eur(v, 0), s: hayB ? `${año - 1}: ${eur(B.ingresoCat.get(n) || 0, 0)}` : "", onclick: verCat(n) })));

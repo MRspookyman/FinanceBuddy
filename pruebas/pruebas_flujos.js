@@ -537,5 +537,152 @@ return (async () => {
     if (porTexto(".fin-panel", "Primeros pasos")) return "vuelve a salir";
   });
 
+  // 26. Mi año: «Dónde más gastas» por comercio, y cada comercio lleva a sus movimientos de ese año
+  await caso("Mi año: el ranking por comercio lleva a los movimientos de ese comercio en el año", async () => {
+    if (!(await ir("#anual"))) return "no se abre Mi año";
+    const p = await hasta(() => porTexto(".fin-panel", "Dónde más gastas"));
+    if (!p) return "no está el panel «Dónde más gastas»";
+    const filas = todos(".fin-table tbody tr", p);
+    if (!filas.length || filas.length > 10) return `debería enseñar entre 1 y 10 comercios y enseña ${filas.length}`;
+    const imp = filas.map((tr) => parseFloat(plano(tr.children[1]).replace(/[^\d,]/g, "").replace(",", ".")));
+    if (imp.some((x, i) => i && x > imp[i - 1])) return "no van de mayor a menor: " + imp.join(", ");
+    if (todos("td", p).some((td) => /alquiler/i.test(plano(td)))) return "el alquiler es un fijo: no debería salir";
+    const a = filas[0].querySelector("td a");
+    if (!a) return "el comercio no se puede pulsar";
+    const nombre = plano(a).trim();
+    a.click();
+    if (!(await hasta(() => app().dataset.vista === "movimientos" && porTexto(".fb-seg.mini button.act", "Todo 2026")))) return "no abre la lista de todo 2026";
+    const inp = app().querySelector("input.fin-search");
+    if (!inp || inp.value !== nombre) return `el buscador debería llevar «${nombre}» y lleva «${inp && inp.value}»`;
+    const items = await hasta(() => todos(".fb-item").length && todos(".fb-item"));
+    if (!items) return "no sale ningún movimiento";
+    const otro = items.find((e) => !plano(e).toLowerCase().includes(nombre.toLowerCase()));
+    if (otro) return "sale un movimiento de otro comercio: " + plano(otro).slice(0, 80);
+  });
+
+  // 27. Proponer presupuestos: se marca lo que se quiere y solo eso se guarda
+  await caso("Categorías: «Proponer presupuestos» guarda solo los marcados", async () => {
+    if (!(await ir("#gestionar/categoria"))) return "no se abre Categorías";
+    const det = await hasta(() => porTexto("details.fin-more", "Proponer presupuestos"));
+    if (!det) return "no está «Proponer presupuestos según lo que gastas»";
+    det.open = true;
+    const cajas = await hasta(() => { const c = todos(".fb-propuestas input[type=checkbox]", det); return c.length && c; });
+    if (!cajas) return "no propone ninguna categoría";
+    const antes = new Map(regs("categoria").map((c) => [c.nombre, c.presupuesto]));
+    cajas.forEach((c, i) => { c.checked = i === 0; c.dispatchEvent(new Event("change", { bubbles: true })); });
+    const etiqueta = plano(cajas[0].parentElement);
+    const b = todos("button.fb-btn", det).find((x) => /^Poner/.test(plano(x)));
+    if (!b || b.disabled || plano(b) !== "Poner ese presupuesto") return "el botón no dice qué va a hacer: " + (b ? plano(b) : "no está");
+    if (!/Los marcados suman/.test(plano(det))) return "no dice cuánto suman los marcados";
+    b.click();
+    const cambiadas = () => regs("categoria").filter((c) => (c.presupuesto || 0) !== (antes.get(c.nombre) || 0));
+    if (!(await hasta(() => cambiadas().length === 1))) return `deberían cambiar 1 categoría y cambian ${cambiadas().length}`;
+    const c = cambiadas()[0];
+    if (!etiqueta.includes(c.nombre) || !etiqueta.includes(`${c.presupuesto.toLocaleString("es-ES")} €`) || c.presupuesto % 10) return `se ha guardado ${c.nombre}: ${c.presupuesto} y la propuesta decía «${etiqueta}»`;
+    const { id, ...datos } = c;
+    await FB.api("/api/guardar", { tipo: "categoria", id, datos: { ...datos, presupuesto: antes.get(c.nombre) || 0 } });  // dejarlo como estaba
+    await FB.recargar();
+  });
+
+  // 28. Rebalanceo: con un reparto objetivo del que te has alejado, el Inicio lo dice (y lleva a Inversión); sin objetivo, no
+  await caso("Inicio: avisa cuando tu inversión se aleja de tu reparto objetivo", async () => {
+    const aviso = () => todos(".fb-franja a").find((e) => plano(e).includes("se ha alejado de tu reparto ideal"));
+    if (!(await ir("#inicio"))) return "no se abre el Inicio";
+    if (aviso()) return "sin reparto objetivo no debería avisar";
+    const acts = regs("activo").filter((a) => a.estado !== "vendido").sort((a, b) => (b.valor || 0) - (a.valor || 0));
+    if (acts.length < 2) return "el ejemplo debería tener dos activos";
+    const r = await FB.api("/api/objetivos", { objetivos: { [acts[0].id]: 1, [acts[1].id]: 99 } });  // el que más vale, casi nada
+    if (!r.ok) return "no se guarda el reparto: " + r.mensaje;
+    await FB.recargar();
+    if (!(await ir("#inicio"))) return "no se vuelve a abrir el Inicio";
+    const a = await hasta(aviso);
+    if (!a) return "no avisa: " + plano(app().querySelector(".fb-franja") || app()).slice(0, 300);
+    if (a.getAttribute("href") !== "#inversion") return "el aviso no lleva a Inversión: " + a.getAttribute("href");
+    if (!plano(a).includes(acts[0].nombre) || !plano(a).includes(`mejor a ${acts[1].nombre}`)) return "no dice qué se ha pasado y a dónde aportar: " + plano(a);
+    await FB.api("/api/objetivos", { objetivos: {} });
+    await FB.recargar();
+  });
+
+  // 29. Importar en un paso: sin nada raro, la vista previa es una línea y un botón; al pulsarlo queda importado
+  await caso("Importar: sin dudas ni filas raras, se resume en una línea y se importa con un clic", async () => {
+    const csv = "Fecha;Concepto;Importe;Categoría\n02/09/2026;Librería de prueba;-8,40;Compras\n03/09/2026;Floristería de prueba;-15,00;Regalos\n";
+    const antes = regs("movimiento").length;
+    FB.soltados = [new File([csv], "prueba-limpia.csv", { type: "text/csv" })];
+    if (!(await ir("#importar"))) return "no se abre Importar";
+    const tarjeta = () => porTexto(".fb-card", "prueba-limpia.csv");
+    if (!(await hasta(tarjeta))) return "no sale el resultado de subir el archivo";
+    if (!tarjeta().classList.contains("fb-previa")) {
+      const boton = await hasta(() => tarjeta() && porTexto("button", "Importar", tarjeta()));
+      if (!boton) return "no pregunta la cuenta ni enseña la vista previa: " + plano(tarjeta()).slice(0, 200);
+      boton.click();
+    }
+    if (!(await hasta(() => tarjeta() && tarjeta().classList.contains("corta")))) return "sin nada raro, la vista previa debería salir resumida: " + plano(tarjeta() || app()).slice(0, 300);
+    const t = plano(tarjeta());
+    if (!t.includes("2 movimientos nuevos del 02/09/2026 al 03/09/2026") || !t.includes("salen 23,40 €")) return "el resumen no dice lo que se importa: " + t.slice(0, 300);
+    if (tarjeta().querySelector(".fin-tiles")) return "el detalle debería ir plegado";
+    const principales = todos("button.fb-btn:not(.sec)", tarjeta());
+    if (principales.length !== 1 || plano(principales[0]) !== "Importar") return "debería haber un solo botón «Importar»: " + principales.map(plano).join(" | ");
+    if (regs("movimiento").length !== antes) return "la vista previa ha guardado algo";
+    principales[0].click();
+    if (!(await hasta(() => regs("movimiento").length === antes + 2))) return `movimientos: ${antes} → ${regs("movimiento").length}`;
+    if (!(await hasta(() => !todos(".fb-previa").length && app().querySelector(".fb-card .fb-msg.ok")))) return "no dice que se ha importado: " + plano(app()).slice(0, 300);
+  });
+
+  // 30. Meta de ahorro: en Ajustes, la app calcula el límite que te la deja cumplir y lo usas con un botón
+  await caso("Ajustes: con una meta de ahorro propone el límite de gasto variable y se usa con un clic", async () => {
+    if (!(await ir("#ajustes"))) return "no se abre Ajustes";
+    const limiteAntes = Number(FB.DB.config.limite_variable) || 0;
+    const iA = app().querySelector('[data-fb="meta"]');
+    if (!iA) return "no está el campo «Quiero ahorrar al mes»";
+    iA.value = "300";
+    iA.dispatchEvent(new Event("change", { bubbles: true }));
+    if (!(await hasta(() => Number(FB.DB.config.meta_ahorro) === 300))) return "la meta no se guarda";
+    const frase = await hasta(() => todos(".fb-fila span").find((e) => /^Con tu meta, tu límite sería/.test(plano(e))));
+    if (!frase) return "no dice qué límite te deja la meta: " + plano(porTexto(".fin-panel", "Tu límite de gasto variable") || app()).slice(0, 300);
+    if (!plano(porTexto(".fin-panel", "Tu límite de gasto variable")).includes("− 300 € de tu meta =")) return "no enseña la cuenta que hace";
+    const propuesto = parseFloat(plano(frase).match(/sería ([\d.]+)/)[1].replace(/\./g, ""));
+    if (Number(FB.DB.config.limite_variable) !== limiteAntes) return "el límite no debería cambiar solo";
+    porTexto("button", "Usar", frase.parentElement).click();
+    if (!(await hasta(() => Number(FB.DB.config.limite_variable) === propuesto))) return `el límite no pasa a ${propuesto}: ${FB.DB.config.limite_variable}`;
+    await FB.api("/api/config", { meta_ahorro: 0, limite_variable: limiteAntes });  // dejarlo como estaba
+    await FB.recargar();
+  });
+
+  // 31. Movimientos: la categoría se cambia en la propia fila y, con las casillas, la de varios a la vez; las dos cosas se deshacen
+  await caso("Movimientos: cambiar la categoría en la fila y de varios a la vez, y deshacerlo", async () => {
+    if (!(await ir("#movimientos/lista"))) return "no se abre la lista de movimientos";
+    const idDe = (f) => Number(f.querySelector("a.fb-item").getAttribute("href").split("/").pop());
+    const mov = (id) => regs("movimiento").find((m) => m.id === id) || {};
+    const gastos = () => todos(".fb-mov").filter((f) => { const c = f.querySelector("input[type=checkbox]"); return c && !c.disabled && mov(idDe(f)).clase === "gasto"; });
+    if (!(await hasta(() => gastos().length >= 3))) return "la lista no trae tres gastos con su casilla y su categoría";
+    const sinNombre = todos(".fb-mov select, .fb-mov input").find((e) => !(e.getAttribute("aria-label") || "").trim());
+    if (sinNombre) return "hay un control de la fila sin nombre accesible";
+    // En la fila
+    const f0 = gastos()[0], id0 = idDe(f0), antes0 = mov(id0).categoria;
+    const s0 = f0.querySelector("select.fb-mov-cat");
+    const nueva = [...s0.options].map((o) => o.value).find((v) => v && v !== antes0);
+    escribir(s0, nueva);
+    if (!(await hasta(() => mov(id0).categoria === nueva))) return `la fila no cambia de categoría: ${antes0} → ${mov(id0).categoria}`;
+    let b = await hasta(() => porTexto("button", "Deshacer", document.getElementById("aviso")));
+    if (!b) return "el aviso no ofrece «Deshacer» tras cambiar la fila";
+    b.click();
+    if (!(await hasta(() => mov(id0).categoria === antes0))) return "«Deshacer» no devuelve la categoría de la fila";
+    // De varios a la vez
+    if (!(await hasta(() => gastos().length >= 3))) return "tras deshacer, la lista no vuelve";
+    const elegir = gastos().slice(0, 2), ids = elegir.map(idDe), antes = ids.map((i) => mov(i).categoria);
+    for (const f of elegir) f.querySelector("input[type=checkbox]").click();
+    const barra = await hasta(() => { const x = app().querySelector(".fb-bloque"); return x && x.style.display !== "none" && plano(x).includes("2 elegidos") && x; });
+    if (!barra) return "al marcar dos casillas no sale «2 elegidos»";
+    const sb = barra.querySelector("select");
+    const otra = [...sb.options].map((o) => o.value).find((v) => v && !antes.includes(v));
+    sb.value = otra;
+    porTexto("button", "Cambiar la categoría", barra).click();
+    if (!(await hasta(() => ids.every((i) => mov(i).categoria === otra)))) return `no pasan los dos a ${otra}: ${ids.map((i) => mov(i).categoria).join(", ")}`;
+    b = await hasta(() => porTexto("button", "Deshacer", document.getElementById("aviso")));
+    if (!b) return "el aviso no ofrece «Deshacer» tras cambiar varios";
+    b.click();
+    if (!(await hasta(() => ids.every((i, k) => mov(i).categoria === antes[k])))) return "«Deshacer» no devuelve las categorías de los dos";
+  });
+
   return casos;
 })();

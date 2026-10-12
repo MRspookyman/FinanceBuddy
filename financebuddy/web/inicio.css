@@ -116,6 +116,13 @@ a.fb-item:hover,.fb-item.click:hover{background:var(--surface-2);cursor:pointer}
 .fb-item .v small{display:block;font-size:.8em;font-weight:500;color:var(--ink-3)}
 .fb-item .v.pos{color:var(--fin-up)}
 .fb-item.prev{opacity:.62}
+/* Movimientos: casilla para elegir varios y la categoría en la propia fila */
+.fb-mov{display:flex;align-items:center;gap:10px;min-width:0}
+.fb-mov>.fb-item{flex:1;margin:0}
+.fb-mov>input[type=checkbox]{flex:none;width:18px;height:18px;margin:0;accent-color:var(--brand)}
+.fin .fb-mov>select.fb-mov-cat,.fb-mov>.hueco.cat{flex:none;width:180px;max-width:28%;height:34px;font-size:.86em}
+.fb-mov>.hueco{flex:none;width:18px}
+.fb-bloque{display:flex;flex-wrap:wrap;gap:12px;align-items:center;padding:10px 14px;margin-bottom:12px;border:1px solid var(--line);border-radius:10px;background:var(--surface-2)}
 .fb-av{display:grid;place-items:center;flex:none;width:38px;height:38px;border-radius:9px;font-size:18px;background:color-mix(in srgb,var(--cc,var(--brand)) 15%,var(--surface))}
 .fb-av.sm{width:32px;height:32px;border-radius:8px;font-size:15px}
 .fb-fecha{display:grid;place-items:center;flex:none;width:40px;height:42px;border-radius:8px;border:1px solid var(--line);line-height:1.05;text-align:center}

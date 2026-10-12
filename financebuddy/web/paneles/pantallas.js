@@ -21,5 +21,5 @@ if (input && input.exponer) {
     hitosPatrimonio, mesesHasta50, tamañoCompras, fifoVentas, cobros, usaMercado, generarResumen,
     repartirAvisos, ritmoObjetivo, siguienteFecha, cuantoFalta, totalesFijos, fijosSinCobrar, cuotaAhorro, rentaPorAño, csvRenta, recordatorios, hoy,
     gastoFijoSuelto, cierreVale, cierres, comisionesRecientes, cobrosRepetidos, faltaSegundaCopia, resumenAño, rentabilidadAño, patrimonioAño,
-    aportacionesSinLlegar, reglaDosMeses, primerosPasos, recurrentes };
+    aportacionesSinLlegar, reglaDosMeses, primerosPasos, recurrentes, porComercio, presupuestosSugeridos, avisoReparto, limitePorMeta, escenariosPrevision };
 }

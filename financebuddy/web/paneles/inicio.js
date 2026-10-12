@@ -188,8 +188,10 @@ function heroGasto(padre, S, M) {
     if (actual) barra(dia / dm, `día ${dia} de ${dm}`);
     h.createDiv({ cls: "s", text: estado() || "en gasto variable: comer fuera, compras, ocio…" });
     if (actual) {
-      const pills = h.createDiv({ cls: "pills" }), sug = limiteSugerido();
-      if (sug) { const b = pills.createEl("button", { cls: "pill fb-hero-link", text: `Usar ${eur(sug, 0)} al mes como límite (tu media)`, attr: { type: "button" } }); b.onclick = async () => { await FB.api("/api/config", { limite_variable: sug }); FB.aviso("Límite guardado ✓"); await FB.refrescar(); }; }
+      // Con una meta de ahorro (Ajustes), lo que se propone es el límite que la permite; si no, tu media
+      const pills = h.createDiv({ cls: "pills" }), meta = metaAhorro(), L = meta > 0 ? limitePorMeta(meta, datosMeta()) : null;
+      const porMeta = !!(L && L.ingresos > 0 && L.llega), sug = porMeta ? L.limite : limiteSugerido();
+      if (sug) { const b = pills.createEl("button", { cls: "pill fb-hero-link", text: `Usar ${eur(sug, 0)} al mes como límite (${porMeta ? `para ahorrar ${eur(meta, 0)}` : "tu media"})`, attr: { type: "button" } }); b.onclick = async () => { await FB.api("/api/config", { limite_variable: sug }); FB.aviso("Límite guardado ✓"); await FB.refrescar(); }; }
       enlace(pills, "Poner otro límite →", "#ajustes").className += " pill fb-hero-link";
     }
   } else if (actual) {
@@ -441,6 +443,46 @@ function tarjetaPrevision(p) {
   if (!hayIngresosFijos()) { n.appendText("Tus ingresos aún no están como fijos, así que aquí solo se ve lo que sale. "); enlace(n, "Detectar mis fijos →", "#fijos"); }
   else n.appendText(`Cuenta tus fijos, tus aportaciones y ${eur(F.varEst, 0)} al mes de gasto variable (${F.fuenteVar}${isFinite(F.varReal) && limiteVar > 0 && Math.abs(F.varReal - limiteVar) >= 1 ? `; tu límite es ${eur(limiteVar, 0)}` : ""}).`
     + (F.sueltoEst >= 1 ? ` Y ${eur(F.sueltoEst, 0)} al mes de otros gastos fijos que no tienes dados de alta (${F.nMesesSuelto > 1 ? `tu media de los últimos ${F.nMesesSuelto} meses` : "lo del mes pasado"}).` : ""));
+  tarjetaEscenarios(p);
+}
+// Prudente / normal / optimista (escenariosPrevision). Los porcentajes se cambian en un plegable y viven en FB.estado: no se guardan.
+function tarjetaEscenarios(p) {
+  const caja = p.createDiv({ cls: "fb-escenarios", attr: { role: "region", "aria-label": "Tres escenarios de la previsión" } });
+  const cuanto = (v, cero) => (v > 0 ? `un ${nf(v, 0, 0)} % más` : v < 0 ? `un ${nf(-v, 0, 0)} % menos` : cero);
+  const pintar = () => {
+    caja.empty();
+    const S = escenariosPrevision(FB.estado.escenarios || {});
+    caja.createDiv({ cls: "fin-note", text: "Para no fiarte de una sola cifra, la misma previsión con tres supuestos:" });
+    tabla(caja, [{ t: "Escenario" }, { t: "Supone que…" }, { t: `En ${mesLbl(S[1].final.key).toLowerCase()}`, num: true }, { t: "Lo más bajo", num: true }],
+      S.map((s) => conFila([s.nombre,
+        s.id === "normal" ? "todo sigue igual" : `gastas ${cuanto(s.gasto, "lo de siempre")} y te entra ${cuanto(s.ingresos, "lo previsto")}`,
+        eur(s.final.saldo, 0), `${eur(s.minimo.saldo, 0)} en ${mesCorto(s.minimo.key)}`], s.id === "normal" ? "fb-normal" : "")));
+    caja.createDiv({ cls: "fin-note", text: "«Gastas» es tu gasto variable y los gastos fijos que no tienes dados de alta. Tus fijos y tus aportaciones no cambian: ya sabes cuánto son."
+      + (hayIngresosFijos() ? "" : " Como tus ingresos aún no están como fijos, lo que te entra no cambia nada.") });
+  };
+  pintar();
+  plegable(p, "Cambiar los supuestos", (cuerpo) => {
+    cuerpo.createDiv({ cls: "fin-note", text: "Solo mientras miras: al cerrar la app vuelven a los de serie. Pon + para más y − para menos." });
+    const campos = [];
+    for (const [id, nombre] of [["prudente", "Prudente"], ["optimista", "Optimista"]]) for (const [k, t] of [["gasto", "lo que gastas"], ["ingresos", "lo que te entra"]]) {
+      const fila = cuerpo.createDiv({ cls: "fb-fila fb-aportar" });
+      const idInp = `fb-esc-${id}-${k}`;
+      fila.createEl("label", { text: `${nombre}: ${t}`, attr: { for: idInp } });
+      const inp = fila.createEl("input", { cls: "corto", attr: { id: idInp, type: "number", step: "1", min: "-90", max: "100", inputmode: "numeric" } });
+      fila.createSpan({ text: "%" });
+      inp.value = String(((FB.estado.escenarios || {})[id] || {})[k] ?? ESCENARIOS[id][k]);
+      inp.onchange = () => {
+        const v = Math.round(num(inp.value));
+        if (!isFinite(v) || v < -90 || v > 100) { FB.aviso("Pon un porcentaje entre −90 y 100", true); return; }
+        const E = FB.estado.escenarios = { ...(FB.estado.escenarios || {}) };
+        E[id] = { ...(E[id] || {}), [k]: v };
+        pintar();
+      };
+      campos.push([inp, id, k]);
+    }
+    const b = cuerpo.createEl("button", { cls: "fb-btn sec mini", text: "Volver a los de serie", attr: { type: "button" } });
+    b.onclick = () => { FB.estado.escenarios = null; for (const [inp, id, k] of campos) inp.value = String(ESCENARIOS[id][k]); pintar(); };
+  });
 }
 
 function tarjetaMeses(p) {
@@ -455,7 +497,7 @@ function tarjetaMeses(p) {
 
 // ───────────── movimientos ─────────────
 function vistaMovimientos() {
-  cabecera("Movimientos", true, "Todo lo que ha entrado y salido. Pulsa uno para cambiarlo.");
+  cabecera("Movimientos", true, "Todo lo que ha entrado y salido. Pulsa uno para cambiarlo; la categoría, en su propia fila.");
   const notaMov = root.createDiv({ cls: "fin-note" });
   enlace(notaMov, "+ Apuntar un gasto a mano", "#apuntar");
   notaMov.appendText(" · ");
@@ -492,6 +534,7 @@ function vistaMovimientos() {
   sOrd.onchange = () => { FB.estado.ordenMov = sOrd.value; FB.estado.pagMov = 0; pintar(); };
   const chips = root.createDiv({ cls: "fb-chips" });
   const total = root.createDiv({ cls: "fin-note" });
+  const bloque = root.createDiv({ cls: "fb-bloque", attr: { role: "region", "aria-label": "Cambiar la categoría de los elegidos" } });
   const lista = root.createDiv({ cls: "fin-panel" });
   const pie = root.createDiv({ cls: "fb-pagina" });
   const POR_PAGINA = porPagina();
@@ -507,6 +550,38 @@ function vistaMovimientos() {
   for (const r of registros("movimiento")) if (r.parte_de) entero.set(r.parte_de, (entero.get(r.parte_de) || 0) + num(r.importe));
   const devuelto = new Map();  // gasto → lo que te han devuelto de él (Bizums enlazados)
   for (const r of registros("movimiento")) if (r.reembolsa) devuelto.set(r.reembolsa, (devuelto.get(r.reembolsa) || 0) + num(r.importe));
+  // Cambiar la categoría sin abrir la ficha: en la fila (uno) o a los elegidos con las casillas (varios). Se puede deshacer.
+  const conCategoria = (m) => !m.pendiente && !m.auto && !m.previsto && m.p && m.p.id && ["gasto", "ingreso", "reembolso"].includes(m.clase);
+  const elegidos = new Set();
+  let paginaIds = [];
+  const cambiarCat = async (ids, cat, ctrl) => {
+    ctrl.disabled = true;
+    const r = await FB.api("/api/movimiento/categoria", { ids, categoria: cat });
+    if (!r.ok) { ctrl.disabled = false; FB.aviso(r.mensaje || "No se ha podido cambiar la categoría", true); pintar(); return; }
+    guardarEstado({ filtroCat, busqueda });  // que la lista siga con el mismo filtro y la misma búsqueda
+    await FB.refrescar();
+    FB.aviso(r.mensaje + " ✓", false, { texto: "Deshacer", fn: async () => { await FB.api("/api/deshacer", {}); guardarEstado({ filtroCat, busqueda }); await FB.refrescar(); } });
+  };
+  const pintarBloque = () => {
+    bloque.innerHTML = "";
+    const sel = todos.filter((m) => m.p && elegidos.has(m.p.id));
+    bloque.style.display = sel.length ? "" : "none";
+    if (!sel.length) return;
+    bloque.createEl("b", { text: `${sel.length} elegido${sel.length > 1 ? "s" : ""}` });
+    const grupos = new Set(sel.map((m) => (m.clase === "ingreso" ? "ingreso" : "gasto")));
+    if (grupos.size > 1) {
+      bloque.createSpan({ cls: "fin-note", text: "Has elegido gastos e ingresos, que no comparten categorías: deja solo unos u otros." });
+    } else {
+      const s = bloque.createEl("select", { attr: { "aria-label": "Nueva categoría para los elegidos" } });
+      const o0 = s.createEl("option", { text: "Pasarlos a…" }); o0.value = "";
+      for (const [v, t] of catSegunClase({ clase: [...grupos][0] })) { const o = s.createEl("option", { text: t }); o.value = String(v); }
+      const b = bloque.createEl("button", { cls: "fb-btn", text: "Cambiar la categoría", attr: { type: "button" } });
+      b.onclick = () => { if (!s.value) { FB.aviso("Elige a qué categoría pasarlos", true); s.focus(); return; } cambiarCat(sel.map((m) => m.p.id), s.value, b); };
+    }
+    const libres = paginaIds.filter((id) => !elegidos.has(id));
+    if (libres.length) accion(bloque, "Elegir todos los de esta página", () => { for (const id of libres) elegidos.add(id); pintar(); });
+    accion(bloque, "Quitar la selección", () => { elegidos.clear(); pintar(); });
+  };
   const pintar = () => {
     lista.innerHTML = ""; pie.innerHTML = ""; total.textContent = "";
     const q = norm(inp.value.trim());
@@ -514,7 +589,9 @@ function vistaMovimientos() {
     else if (!q && !FB.estado.hist) cargar(false);
     const f = todos.filter((m) => (!filtroCat || (m.clase === "transferencia" ? "Entre tus cuentas" : m.categoria) === filtroCat)
       && (!q || norm(`${m.concepto} ${m.categoria} ${m.cuenta} ${m.p.ext_texto || ""} ${m.p.nota || ""} ${nf(m.importe, 2, 2)}`).includes(q)));
-    if (!f.length) { vacio(lista, todos.length ? "Nada coincide" : "Sin movimientos este mes", todos.length ? "" : " Importa el extracto de tu banco o apunta uno a mano."); return; }
+    for (const id of [...elegidos]) if (!f.some((m) => m.p && m.p.id === id)) elegidos.delete(id);  // lo elegido que ya no está a la vista no se cambia
+    paginaIds = [];
+    if (!f.length) { pintarBloque(); vacio(lista, todos.length ? "Nada coincide" : "Sin movimientos este mes", todos.length ? "" : " Importa el extracto de tu banco o apunta uno a mano."); return; }
     const neto = sum(f.map((x) => (x.clase === "ingreso" || x.clase === "reembolso" ? x.importe : x.clase === "gasto" ? -x.importe : 0)));
     total.textContent = `${f.length} movimiento${f.length > 1 ? "s" : ""}${q && !FB.estado.hist ? " en todo el historial" : FB.estado.hist === "año" ? ` en ${año}` : ""} · ${eurS(neto, 0)} en total (sin contar traspasos)`;
     const porImporte = FB.estado.ordenMov === "importe";  // de mayor a menor, sin agrupar por días: la fecha va en cada fila
@@ -535,13 +612,32 @@ function vistaMovimientos() {
       const entra = m.clase === "ingreso" || m.clase === "reembolso";
       const signo = m.clase === "transferencia" ? (m.origen ? "+" : "−") : entra ? "+" : "−";
       const sub = m.clase === "transferencia" ? `Entre tus cuentas ${m.destino ? "→ " + m.destino : m.origen ? "← " + m.origen : ""}` : `${m.categoria}${m.clase === "reembolso" ? " · te lo devolvieron" : ""}${devuelto.has(m.p.id) ? ` · te devolvieron ${eur(devuelto.get(m.p.id))}` : ""}`;
-      item(cont, {
+      const fila = {
         av: { cat: m.clase === "transferencia" ? null : m.categoria, clase: m.clase }, t: m.concepto,
         s: `${porImporte ? fechaCorta(k) + " · " : ""}${sub}${cuentas().length > 1 ? " · " + m.cuenta : ""}${m.auto ? " · previsto" : ""}${m.pendiente ? " · sin revisar" : ""}${m.p && m.p.sugerido ? " · categoría por confirmar" : ""}${m.p && m.p.parte_de ? ` · parte de ${eur(entero.get(m.p.parte_de) || m.importe)}` : ""}${m.p && m.p.nota ? ` · «${m.p.nota}»` : ""}`,
         v: signo + eur(m.importe), pos: entra, prev: m.auto || m.previsto,
         ruta: m.pendiente ? "#revisar" : m.auto ? (m.p.id ? `#editar/recurrente/${m.p.id}` : null) : `#editar/movimiento/${m.p.id}`,
-      });
+      };
+      const w = cont.createDiv({ cls: "fb-mov" });
+      if (!conCategoria(m)) {  // traspasos, previstos y dudas: sin casilla ni categoría, con su hueco para que los importes cuadren
+        w.createSpan({ cls: "hueco", attr: { "aria-hidden": "true" } }); item(w, fila); w.createSpan({ cls: "hueco cat", attr: { "aria-hidden": "true" } });
+        continue;
+      }
+      // La categoría se cambia en la propia fila; la casilla, para cambiar varios a la vez (las partes de un dividido, no)
+      const marca = w.createEl("input", { attr: { type: "checkbox", "aria-label": `Elegir «${m.concepto}» para cambiar varios a la vez` } });
+      if (m.p.parte_de) { marca.disabled = true; marca.title = "Es una parte de un movimiento dividido: su categoría se cambia una a una, en su fila"; }
+      else paginaIds.push(m.p.id);
+      marca.checked = elegidos.has(m.p.id);
+      marca.onchange = () => { if (marca.checked) elegidos.add(m.p.id); else elegidos.delete(m.p.id); pintarBloque(); };
+      item(w, fila);
+      const sel = w.createEl("select", { cls: "fb-mov-cat", attr: { "aria-label": `Categoría de «${m.concepto}»` } });
+      const opc = catSegunClase({ clase: m.clase === "ingreso" ? "ingreso" : "gasto", categoria: m.categoria });
+      if (!opc.some(([v]) => v === m.categoria)) { const o = sel.createEl("option", { text: m.categoria || "Sin categoría" }); o.value = String(m.categoria || ""); }
+      for (const [v, t] of opc) { const o = sel.createEl("option", { text: t }); o.value = String(v); }
+      sel.value = String(m.categoria || "");
+      sel.onchange = () => cambiarCat([m.p.id], sel.value, sel);
     }
+    pintarBloque();
     if (paginas > 1) {  // paginación: la lista larga se corta en páginas de 40
       const ir = (n) => { FB.estado.pagMov = n; pintar(); window.scrollTo(0, 0); };
       const a = pie.createEl("button", { cls: "fb-btn sec", text: "← Anterior" }); a.disabled = pag === 0; a.onclick = () => ir(pag - 1);

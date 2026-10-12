@@ -9,7 +9,7 @@ function vistaGestionar() {
   const inp = barra.createEl("input", { cls: "fin-search", attr: { type: "search", placeholder: "Buscar…" } });
   if (!["cierre"].includes(tipo)) enlace(barra, `+ Nuevo`, `#editar/${tipo}/nuevo`).className = "fb-btn";
   if (tipo === "recurrente") enlace(barra, "Detectar en mis movimientos", "#fijos").className = "fb-btn sec";
-  if (tipo === "categoria") panelOrdenarCategorias(root);
+  if (tipo === "categoria") { panelPresupuestosSugeridos(root); panelOrdenarCategorias(root); }
   if (tipo === "recurrente") {  // lo que suman tus fijos: al mes y al año
     const T = totalesFijos(DB.registros.recurrente || [], hoy.toISODate()), cada = (t) => (t.noMensual ? "al mes de media" : "al mes");
     const partes = [T.gasto.n ? `Gastos fijos: ${eur(T.gasto.mes, 0)} ${cada(T.gasto)} · ${eur(T.gasto.año, 0)} al año` : "", T.ingreso.n ? `Ingresos fijos: ${eur(T.ingreso.mes, 0)} ${cada(T.ingreso)}` : "",
@@ -44,6 +44,49 @@ function vistaGestionar() {
   };
   inp.oninput = () => { FB.estado["pag_gestionar_" + tipo] = 0; pintar(); };
   pintar();
+}
+// Proponer presupuestos (Ajustes → Categorías): la media de lo que gastas en cada categoría variable, redondeada. No se guarda
+// nada solo: el usuario marca las que quiere y pulsa «Poner los marcados» (con /api/guardar, una categoría cada vez).
+// Las que ya tienen presupuesto salen sin marcar, para no cambiarlo sin querer.
+function panelPresupuestosSugeridos(padre) {
+  const refs = mesesReferencia(hoyKey);
+  const S = presupuestosSugeridos(categorias().filter((c) => c.grupo !== "ingreso"), refs.map(gastoPorCategoria));
+  if (!S.length) return;
+  plegable(padre, "Proponer presupuestos según lo que gastas", (b) => {
+    b.createDiv({ cls: "fin-note", text: `Lo que gastas de media en cada categoría variable (${refs.map(mesCorto).join(", ").toLowerCase()}), redondeado a 10 €. Marca las que quieras y pulsa el botón: no se guarda nada hasta entonces.` });
+    const lista = b.createDiv({ cls: "fb-propuestas" }), marcas = [];
+    for (const x of S) {
+      const l = lista.createEl("label", { cls: "fb-fila" });
+      const c = l.createEl("input", { attr: { type: "checkbox" } }); c.checked = !(x.actual > 0);
+      l.appendText(` ${catIcono(x.nombre)} ${x.nombre}: ${eur(x.propuesta, 0)} al mes`);
+      l.createSpan({ cls: "fin-note", text: ` · media ${eur(x.media, 0)}${x.actual > 0 ? ` · ahora tiene ${eur(x.actual, 0)}` : ""}` });
+      marcas.push({ x, c });
+    }
+    const suma = b.createDiv({ cls: "fin-note", attr: { "aria-live": "polite" } });
+    const bA = b.createEl("button", { cls: "fb-btn", attr: { type: "button" } });
+    const repasar = () => {
+      const m = marcas.filter((k) => k.c.checked), t = sum(m.map((k) => k.x.propuesta));
+      suma.textContent = m.length ? `Los marcados suman ${eur(t, 0)} al mes${limiteVar > 0 ? `; tu límite de gasto variable es ${eur(limiteVar, 0)}${t > limiteVar ? ": suman más que tu límite" : ""}` : ""}.` : "No hay ninguno marcado.";
+      bA.textContent = m.length ? `Poner ${m.length === 1 ? "ese presupuesto" : `esos ${m.length} presupuestos`}` : "Poner los marcados";
+      bA.disabled = !m.length;
+    };
+    for (const k of marcas) k.c.onchange = repasar;
+    repasar();
+    bA.onclick = async () => {
+      bA.disabled = true;
+      let n = 0;
+      for (const { x } of marcas.filter((k) => k.c.checked)) {
+        const reg = (DB.registros.categoria || []).find((r) => r.nombre === x.nombre);
+        if (!reg) continue;
+        const { id, file, ...datos } = reg;
+        const r = await FB.api("/api/guardar", { tipo: "categoria", id, datos: { ...datos, presupuesto: x.propuesta } });
+        if (!r.ok) { FB.aviso(r.mensaje || `No se ha podido guardar ${x.nombre}`, true); break; }
+        n++;
+      }
+      if (n) FB.aviso(`Presupuesto puesto a ${n} categoría${n === 1 ? "" : "s"} ✓`);
+      await FB.refrescar();
+    };
+  }, { extra: `${S.filter((x) => !(x.actual > 0)).length} sin presupuesto` });
 }
 // Fusionar u ocultar categorías (Ajustes → Categorías). Todo con vista previa y «Deshacer» (el servidor guarda una foto antes).
 function panelOrdenarCategorias(padre) {

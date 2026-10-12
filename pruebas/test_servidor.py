@@ -103,6 +103,45 @@ class TestFlujo(unittest.TestCase):
         self.app.manejar("/api/config", {"mantener": True, "acento": "azul"})
         self.assertIs(self.app.deshacer, foto)
 
+    def test_cambiar_la_categoria_desde_la_lista_uno_y_en_bloque(self):
+        self.api("/api/bienvenida", {"cuentas": [{"nombre": "Nómina", "tipo": "corriente", "saldo": 1000}]})
+        nuevo = lambda c, cat, clase="gasto", **x: self.api("/api/guardar", {"tipo": "movimiento", "datos": {"fecha": "2026-09-10", "concepto": c, "importe": 20,
+                                                                                                            "clase": clase, "categoria": cat, "cuenta": "Nómina", **x}})["id"]
+        a, b = nuevo("Tienda A", "Otros", sugerido=True), nuevo("Tienda B", "Otros")
+        ing = nuevo("Cobro", "Otros ingresos", "ingreso")
+        div = nuevo("Compra grande", "Otros", importe=50)
+        partes = self.api("/api/movimiento/dividir", {"id": div, "partes": [{"importe": 30, "categoria": "Hogar"}, {"importe": 20, "categoria": "Ocio"}]})
+        self.assertTrue(partes["ok"], partes)
+        p1, p2 = sorted(m["id"] for m in self.app.alm.todos("movimiento") if m.get("parte_de"))
+        cat = lambda i: self.app.alm.obtener("movimiento", i)["categoria"]
+        # Una fila: cambia la categoría, la confirma (el historial aprende de ella) y se puede deshacer
+        self.assertTrue(self.app.alm.obtener("movimiento", a).get("sugerido"))
+        r = self.api("/api/movimiento/categoria", {"ids": [a], "categoria": "Ocio"})
+        self.assertEqual(r["mensaje"], "Ahora es Ocio")
+        self.assertEqual(cat(a), "Ocio"); self.assertFalse(self.app.alm.obtener("movimiento", a).get("sugerido"))
+        self.assertTrue(self.app.datos()["info"]["deshacer"])
+        self.assertTrue(self.api("/api/deshacer")["ok"])
+        self.assertEqual(cat(a), "Otros")
+        # Una parte de un dividido, sola en su fila, sí cambia de categoría (como desde su ficha)
+        self.api("/api/movimiento/categoria", {"ids": [p1], "categoria": "Compras"})
+        self.assertEqual(cat(p1), "Compras")
+        # En bloque: las partes y lo que es de otro tipo se quedan igual, y lo dice
+        r = self.api("/api/movimiento/categoria", {"ids": [a, b, p2, ing], "categoria": "Hogar"})
+        self.assertEqual((cat(a), cat(b), cat(p2), cat(ing)), ("Hogar", "Hogar", "Ocio", "Otros ingresos"))
+        self.assertIn("2 movimientos", r["mensaje"]); self.assertIn("1 parte de un movimiento dividido", r["mensaje"]); self.assertIn("1 que no es un gasto", r["mensaje"])
+        self.assertTrue(self.api("/api/deshacer")["ok"])
+        self.assertEqual((cat(a), cat(b), cat(p1)), ("Otros", "Otros", "Compras"))  # deshace solo lo último
+        # Lo que no vale no toca nada (ni la foto de deshacer)
+        for d in ({"ids": [a], "categoria": "No existe"}, {"ids": [], "categoria": "Hogar"}, {"ids": [a], "categoria": "Otros ingresos"},
+                  {"ids": [p1, p2], "categoria": "Hogar"}):
+            with self.assertRaises(ValueError, msg=d): self.api("/api/movimiento/categoria", d)
+        self.assertEqual((cat(a), cat(p1), cat(p2)), ("Otros", "Compras", "Ocio"))
+        # Otra escritura después anula el «Deshacer», como todas
+        self.api("/api/movimiento/categoria", {"ids": [a, b], "categoria": "Viajes"})
+        self.api("/api/guardar", {"tipo": "cuenta", "datos": {"nombre": "Otra", "tipo": "corriente"}})
+        self.assertFalse(self.api("/api/deshacer")["ok"])
+        self.assertNotIn("/api/movimiento/categoria", servidor.NO_ANULAN_DESHACER)
+
     def test_saldo_banco_no_cierra_el_mes_ni_toca_los_valores(self):
         self.api("/api/bienvenida", {"cuentas": [{"nombre": "Nómina", "tipo": "corriente", "saldo": 1000}]})
         self.app.alm.guardar("activo", {"nombre": "Fondo", "clase": "fondo", "valor": 500, "fecha_valor": "2026-08-31"})
@@ -246,6 +285,13 @@ class TestFlujo(unittest.TestCase):
         for dado, esperado in ((25, 25), (5, 10), (500, 200), ("abc", 40)):
             self.api("/api/config", {"por_pagina": dado})
             self.assertEqual(self.app.datos()["config"]["por_pagina"], esperado)
+
+    def test_meta_de_ahorro_es_un_numero_no_negativo_y_no_toca_el_limite(self):
+        self.api("/api/config", {"limite_variable": 600})
+        for dado, esperado in ((400, 400), ("250,5", 250.5), (-50, 0), ("", 0)):
+            self.api("/api/config", {"meta_ahorro": dado})
+            self.assertEqual(self.app.datos()["config"]["meta_ahorro"], esperado, dado)
+        self.assertEqual(self.app.datos()["config"]["limite_variable"], 600)  # la meta solo propone: el límite lo cambia el usuario
 
     def test_quitar_a_mano_el_gasto_de_un_bizum_no_se_vuelve_a_enlazar(self):
         from financebuddy import bizums
