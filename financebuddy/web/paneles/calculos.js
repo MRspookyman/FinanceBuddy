@@ -90,6 +90,9 @@ function posicion(a) {
   return r;
 }
 const vendidoDelTodo = (a) => posicion(a).vendido;
+// Vendido del todo después de anotar su valor: ese valor ya no cuenta (era de cuando lo tenías, y ya nadie lo vuelve a pedir).
+// Si lo anotaste después de la última operación, manda lo anotado. Sin fecha no se sabe si es de después: tampoco cuenta.
+const valorCaducado = (a, P) => P.vendido && (!a.fechaValor || P.ops.some((x) => x.fecha > a.fechaValor.endOf("day")));
 // Lo que vale hoy y de dónde sale: «mercado» (participaciones × el precio de internet, si lo activaste y es más nuevo que lo
 // anotado), «anotado» (Actualizar valores), «precio» (participaciones × precio de la última operación: estimado), «metido»
 // (sin datos: lo aportado) o «vendido» (0).
@@ -98,13 +101,9 @@ const vendidoDelTodo = (a) => posicion(a).vendido;
 const usaMercado = (P, M, a) => !!(M && P.conPart && P.part > 0 && !P.vendido
   && (!a.conValor || !a.fechaValor || M.fecha > a.fechaValor || hoy.diff(M.fecha, "days").days <= 7));
 function valorInfo(a) {
-  const M = precioMercado(a);
-  if (M) {
-    const P = posicion(a);
-    if (usaMercado(P, M, a)) return { valor: P.part * M.precio, fuente: "mercado", precio: M };
-  }
-  if (a.conValor) return { valor: a.valor + aportTrasValor(a), fuente: "anotado" };
-  const P = posicion(a);
+  const M = precioMercado(a), P = posicion(a);
+  if (usaMercado(P, M, a)) return { valor: P.part * M.precio, fuente: "mercado", precio: M };
+  if (a.conValor && !valorCaducado(a, P)) return { valor: a.valor + aportTrasValor(a), fuente: "anotado" };
   if (P.vendido) return { valor: 0, fuente: "vendido" };
   if (P.conPart && P.part > 0 && P.ultimoPrecio) return { valor: P.part * P.ultimoPrecio.precio, fuente: "precio", precio: P.ultimoPrecio };
   return { valor: Math.max(0, aportadoActivo(a)), fuente: "metido" };  // nunca negativo (p. ej. un traspaso tomado por venta)
@@ -154,8 +153,8 @@ function resumenInversion(soloLargo = false) {
       participaciones: P.part, compradas: P.compradas, precioMedio: P.precioMedio, ultimoPrecio: P.ultimoPrecio, operaciones: mias.filter((x) => !x.p.ajuste).length, vendido: P.vendido };
   });
   // Vendido del todo (0 participaciones): no es cartera; su resultado es lo que sacaste − lo que metiste.
-  const cerradas = todas.filter((f) => f.vendido && !f.conValor).map((f) => ({ nombre: f.nombre, resultado: -f.aportado, p: f.p }));
-  const filas = todas.filter((f) => !(f.vendido && !f.conValor));
+  const cerradas = todas.filter((f) => f.fuente === "vendido").map((f) => ({ nombre: f.nombre, resultado: -f.aportado, p: f.p }));
+  const filas = todas.filter((f) => f.fuente !== "vendido");
   const total = sum(filas.map((f) => f.valor));
   const con = filas.filter((f) => f.conValorReal && f.conocido && f.aportado > 0);
   const aportado = sum(con.map((f) => f.aportado)), gan = sum(con.map((f) => f.gan));
@@ -229,7 +228,7 @@ function saludInversion(soloDe) {
 
 // Evolución mes a mes: lo aportado acumulado (al final de cada mes) y lo que valía (registros de saldos + hoy).
 function evolucionInversion(soloLargo = false) {
-  const A = activos().filter((a) => (a.conValor || !vendidoDelTodo(a)) && (!soloLargo || a.largo));
+  const A = activos().filter((a) => valorInfo(a).fuente !== "vendido" && (!soloLargo || a.largo));
   if (!A.length) return null;
   const nombres = new Set(A.map((a) => a.nombre));
   const APr = aportacionesReales().filter((x) => nombres.has(x.activo));

@@ -17,6 +17,55 @@ for (let i = 1; i < P.length; i++) {
   caso(`Registro ${P[i].fecha.toISODate()} = anterior + movimientos`, Math.max(...dif) <= 0.01, dif);
 }
 
+// El cuadre solo cuenta movimientos de verdad: un fijo previsto que el banco aún no trajo no puede explicar (ni crear) una diferencia.
+{
+  const u = P[P.length - 1], h = u.fecha.plus({ months: 2 }).endOf("day");
+  const autos = F.movimientos().filter((m) => m.auto && m.fecha > u.fecha.endOf("day") && m.fecha <= h);
+  const finHoy = F.DateTime.fromISO("2026-09-30").endOf("day");
+  const [a, b, c] = [F.proyectar(u, h), F.proyectar(u, h, true), F.proyectar(u, finHoy, true)].map((x) => x.cuentas.saldos);
+  const dif = (x, y) => Object.keys(x).filter((n) => Math.abs(x[n] - y[n]) > 0.005);
+  // Después de hoy no hay nada de verdad: con `exacto`, dos meses más allá sale lo mismo que hoy en todas las cuentas.
+  caso("El cuadre no cuenta los fijos previstos (solo movimientos de verdad)", autos.length > 0 && dif(a, b).length > 0 && dif(b, c).length === 0, [autos.length, dif(a, b), dif(b, c)]);
+}
+// Las aportaciones automáticas tampoco: las dos del 10/08 (150 + 50 €) no llegaron y en el Bróker hay de verdad 600 € el 31/08
+// (400 + 200 del traspaso). Antes salía «No cuadra: Bróker +200 €».
+{
+  const u = P[P.length - 1], antes = u.cuentas.saldos["Bróker"];
+  const apos = F.aportaciones().filter((x) => x.fecha.toISODate() === "2026-08-10");
+  apos.forEach((x) => (x.auto = true)); u.cuentas.saldos["Bróker"] = 600;
+  const fila = F.conciliacion().filas.find((f) => f.nombre === "Bróker");
+  const sinExacto = F.proyectar(P[P.length - 2], u.fecha.endOf("day")).cuentas.saldos["Bróker"];
+  apos.forEach((x) => (x.auto = false)); u.cuentas.saldos["Bróker"] = antes;
+  caso("El cuadre no cuenta las aportaciones automáticas: el Bróker con 600 € cuadra", u.fecha.toISODate() === "2026-08-31" && apos.length === 2 && cerca(fila.esperado, 600) && cerca(fila.dif, 0) && cerca(sinExacto, 400), [apos.length, fila, sinExacto]);
+}
+// Cada movimiento cuenta desde el día en que el banco lo apuntó: un gasto de 100 € con valor 30/08 y operación 02/09 no estaba
+// en el saldo anotado el 31/08, así que se resta después. Igual en la estimación de hoy que en el cuadre.
+{
+  const u = P[P.length - 1], ms = F.movimientos(), cta = "Cuenta nómina";
+  const hasta = F.DateTime.fromISO("2026-09-30").endOf("day");
+  const saldo = (exacto) => F.proyectar(u, hasta, exacto).cuentas.saldos[cta];
+  const sin = saldo(false);
+  ms.push({ p: { ext_fecha: "2026-09-02" }, fecha: F.DateTime.fromISO("2026-08-30"), importe: 100, clase: "gasto", categoria: "Otros", concepto: "Prueba", recurrente: "", destino: "", origen: "", cuenta: cta, auto: false, previsto: false, gasto: 100 });
+  const [est, exa] = [saldo(false), saldo(true)];
+  ms[ms.length - 1].p.ext_fecha = "2026-08-30";
+  const yaEstaba = saldo(false);
+  ms.pop();
+  caso("El saldo estimado fecha por el día del banco: valor 30/08 y operación 02/09 → 1.597,06 €", cerca(sin, 1697.06) && cerca(est, 1597.06) && cerca(exa, 1597.06) && cerca(yaEstaba, sin), [sin, est, exa, yaEstaba]);
+}
+// Pero si has movido la fecha a mano más allá del día del banco (importado el 20/09, lo pasas al 05/10), manda tu fecha: es un
+// previsto de octubre y la previsión ya lo resta allí. Restarlo también hoy sería contarlo dos veces.
+{
+  const u = P[P.length - 1], ms = F.movimientos(), cta = "Cuenta nómina";
+  const hasta = F.DateTime.fromISO("2026-09-30").endOf("day");
+  const saldo = (exacto) => F.proyectar(u, hasta, exacto).cuentas.saldos[cta];
+  const fijos = () => suma(F.prevision().filas.map((f) => f.fijos)), fin = () => F.prevision().filas[11].saldo;
+  const [sin, fijosSin, finSin] = [saldo(false), fijos(), fin()];
+  ms.push({ p: { ext_fecha: "2026-09-20" }, fecha: F.DateTime.fromISO("2026-10-05"), importe: 100, clase: "gasto", categoria: "Otros", concepto: "Prueba", recurrente: "", destino: "", origen: "", cuenta: cta, auto: false, previsto: true, gasto: 100 });
+  const [est, exa, fijosCon, finCon] = [saldo(false), saldo(true), fijos(), fin()];
+  ms.pop();
+  caso("Un movimiento importado al que le pones una fecha futura se resta una sola vez (en su mes, no hoy)", cerca(est, sin) && cerca(exa, sin) && cerca(fijosCon, fijosSin + 100) && cerca(finCon, finSin - 100), [sin, est, exa, fijosCon - fijosSin, finCon - finSin]);
+}
+
 // 2. Recurrentes sin duplicar: en septiembre cada uno aparece una vez y es el real (no el automático).
 const S = F.finMes("2026-09");
 for (const n of ["Nómina", "Alquiler", "Internet y móvil", "Luz", "Gimnasio"]) {
@@ -24,6 +73,48 @@ for (const n of ["Nómina", "Alquiler", "Internet y móvil", "Luz", "Gimnasio"])
   caso(`«${n}» una sola vez en septiembre`, ms.length === 1 && !ms[0].auto, ms.length);
 }
 caso("El seguro anual (marzo) no aparece en septiembre", !S.ms.some((m) => m.recurrente === "Seguro del coche"));
+// Un fijo pagado con fecha valor del mes anterior no se cuenta dos veces: el pago real sigue en su fecha, pero paga el mes en que
+// el banco lo apuntó, así que ese mes ya no lleva el automático.
+{
+  const d = (s) => F.DateTime.fromISO(s), finHoy = d("2026-09-30").endOf("day");
+  const reales = F.movimientos().filter((m) => !m.auto);
+  const mover = (nombre, mesKey, fecha, ext) => reales.map((m) => (m.recurrente === nombre && m.fecha.toFormat("yyyy-MM") === mesKey ? { ...m, fecha: d(fecha), p: { ...m.p, ext_fecha: ext } } : m));
+  const autosDe = (ms, nombre) => F.fijosAutomaticos(ms).filter((m) => m.recurrente === nombre).map((m) => m.fecha.toFormat("yyyy-MM"));
+  const año = (ms) => F.resumenAño(2026, [...ms, ...F.fijosAutomaticos(ms).map((m) => ({ ...m, previsto: m.fecha > finHoy, gasto: m.clase === "gasto" ? m.importe : 0 }))]);
+  // Alquiler de septiembre: operación 01/09, fecha valor 31/08 (así lo guarda la importación).
+  const A = mover("Alquiler", "2026-09", "2026-08-31", "2026-09-01"), autosA = autosDe(A, "Alquiler"), RA = año(A);
+  caso("Alquiler con valor 31/08 y operación 01/09: septiembre no lleva Alquiler automático y el año sigue en 7.252,94 €",
+    !autosA.includes("2026-09") && !autosA.includes("2026-08") && autosA[0] === "2026-10" && cerca(RA.gastos, 7252.94) && cerca(año(reales).gastos, 7252.94)
+    && cerca(RA.filas.find((f) => f.key === "2026-08").gastos - año(reales).filas.find((f) => f.key === "2026-08").gastos, 700), [autosA.slice(0, 3), RA.gastos]);
+  // Apuntado a mano el 31/08 (sin extracto): agosto tiene dos y septiembre ninguno → el del 31/08 paga septiembre.
+  const B = mover("Alquiler", "2026-09", "2026-08-31", ""), autosB = autosDe(B, "Alquiler");
+  caso("Dos alquileres en agosto (01/08 y 31/08) y ninguno en septiembre: el segundo paga septiembre", !autosB.includes("2026-09") && autosB[0] === "2026-10" && cerca(año(B).gastos, 7252.94), autosB.slice(0, 3));
+  // Una nómina del día 1 cobrada el último día del mes anterior.
+  const nomina = F.recurrentes().find((r) => r.nombre === "Nómina"), dia = nomina.dia;
+  nomina.dia = 1;
+  const N = mover("Nómina", "2026-09", "2026-08-31", "2026-08-31"), autosN = autosDe(N, "Nómina"), RN = año(N);
+  nomina.dia = dia;
+  caso("Nómina de septiembre cobrada el 31/08: septiembre no lleva nómina automática y en el año entra lo mismo", !autosN.includes("2026-09") && autosN[0] === "2026-10" && cerca(RN.ingresos, año(reales).ingresos), [autosN.slice(0, 3), RN.ingresos]);
+  // Un cobro repetido (dos cargos de la luz con dos días de diferencia) no paga el mes siguiente: octubre sigue previsto.
+  const luz = reales.find((m) => m.recurrente === "Luz" && m.fecha.toFormat("yyyy-MM") === "2026-09");
+  const autosL = autosDe([...reales, { ...luz, fecha: luz.fecha.plus({ days: 2 }) }], "Luz");
+  caso("Dos cargos seguidos de la luz en septiembre no quitan el previsto de octubre", !!luz && autosL[0] === "2026-10", autosL.slice(0, 3));
+  // Al revés: un fijo de fin de mes que el banco apunta el día 1 del mes siguiente paga el mes de su fecha, que es el que le toca.
+  const gim = F.recurrentes().find((r) => r.nombre === "Gimnasio"), diaG = gim.dia;
+  const finDeMes = (ms, dia, ext) => ms.map((m) => (m.recurrente === "Gimnasio" ? { ...m, fecha: m.fecha.set({ day: Math.min(dia, m.fecha.daysInMonth) }), p: { ...m.p, ext_fecha: m.fecha.startOf("month").plus({ months: 1, days: ext - 1 }).toISODate() } } : m));
+  const sinSeptiembre = reales.filter((m) => !(m.recurrente === "Gimnasio" && m.fecha.toFormat("yyyy-MM") === "2026-09"));
+  gim.dia = 31;
+  const G = finDeMes(reales, 31, 1), autosG = autosDe(G, "Gimnasio"), RG = año(G);
+  const autosH = autosDe(finDeMes(sinSeptiembre, 31, 1), "Gimnasio");
+  gim.dia = 28;
+  const autosI = autosDe(finDeMes(sinSeptiembre, 31, 2), "Gimnasio");
+  gim.dia = diaG;
+  caso("Gimnasio de fin de mes apuntado el día 1 del mes siguiente: ningún automático pasado, octubre sigue previsto y el año sigue en 7.252,94 €",
+    G.filter((m) => m.recurrente === "Gimnasio").length === 5 && autosG[0] === "2026-10" && cerca(RG.gastos, 7252.94), [autosG.slice(0, 3), RG.gastos]);
+  caso("Gimnasio de agosto con fecha 31/08 apuntado el 01/09 y el de septiembre sin llegar: agosto no lleva automático y septiembre sí",
+    autosH[0] === "2026-09" && autosH[1] === "2026-10", autosH.slice(0, 3));
+  caso("Lo mismo con el día 28 y apuntado el 02/09", autosI[0] === "2026-09" && autosI[1] === "2026-10", autosI.slice(0, 3));
+}
 
 // 3. «Te lo devolvieron» resta del gasto: cena de 84 € − 42 € de la parte del amigo = 42 € netos.
 const cena = suma(S.real.filter((m) => /El Puerto|Parte de Marta/.test(m.concepto)).map((m) => m.gasto));
@@ -350,5 +441,55 @@ caso("Rebalanceo: el ejemplo no tiene reparto objetivo, así que no hay aviso", 
 const LM = F.limitePorMeta(400, { ingresos: 1850, fijos: 812.9, suelto: 50, aportaciones: 200 }), LM2 = F.limitePorMeta(900, { ingresos: 1850, fijos: 812.9, suelto: 50, aportaciones: 200 });
 caso("Meta de ahorro: 1.850 − 812,90 − 50 − 200 − 400 = 387,10 € → límite de 380 €", LM.llega && cerca(LM.sobra, 387.1) && LM.limite === 380, JSON.stringify(LM));
 caso("Meta de ahorro: si no llega (faltan 112,90 €), no propone límite", !LM2.llega && LM2.limite === 0 && cerca(LM2.sobra, -112.9), JSON.stringify(LM2));
+
+// Un activo vendido del todo después de anotar su valor vale 0 €: antes seguía valiendo «anotado + operaciones posteriores»
+// (1.000 − 1.200 = −200 €) para siempre, porque a un vendido ya nadie le pide el valor. Anotado después de la venta, manda lo anotado.
+{
+  const A = F.activos(), AP = F.aportaciones(), n0 = F.estimacion().neto, R0 = F.resumenInversion(), ev0 = F.evolucionInversion();
+  const a = { p: { id: -72 }, nombre: "ETF Prueba", clase: "etf", cuenta: "", valor: 1000, conValor: true, ter: null, fechaValor: d("2026-08-31"), aportadoIni: null, fechaIni: null, largo: true };
+  const ope = (f, importe, part) => ({ p: { participaciones: part }, fecha: d(f), activo: "ETF Prueba", importe, recurrente: "", cuenta: "", auto: false, previsto: false });
+  A.push(a); AP.push(ope("2026-08-10", 1000, 10), ope("2026-09-20", -1200, -10));
+  const V = F.valorInfo(a), R = F.resumenInversion(), n1 = F.estimacion().neto, ev = F.evolucionInversion();
+  a.fechaValor = d("2026-09-25"); a.valor = 30;
+  const Vd = F.valorInfo(a);
+  a.fechaValor = null; a.valor = 1000;
+  const Vs = F.valorInfo(a), Rs = F.resumenInversion(), ns = F.estimacion().neto;
+  A.pop(); AP.splice(-2);
+  caso("Vendido del todo tras anotar su valor: vale 0 € (no −200 €) y el patrimonio sube los 1.200 € de la venta",
+    F.posicion(a).vendido && V.valor === 0 && V.fuente === "vendido" && cerca(n1, n0 + 1200) && cerca(R.total, R0.total) && cerca(R.aportadoTodo, R0.aportadoTodo)
+    && !R.filas.some((f) => f.nombre === "ETF Prueba") && R.cerradas.length === 1 && cerca(R.cerradas[0].resultado, 200) && cerca(ev.valor[ev.valor.length - 1], ev0.valor[ev0.valor.length - 1]),
+    [V, n1 - n0, R.total - R0.total, R.aportadoTodo - R0.aportadoTodo, R.cerradas]);
+  caso("Vendido del todo con el valor anotado después de la venta: manda lo anotado (30 €)", Vd.fuente === "anotado" && cerca(Vd.valor, 30), Vd);
+  caso("Vendido del todo con el valor anotado sin fecha: vale 0 € (no 1.000 €) y va a «Ya vendido», porque sin fecha no se sabe si es de después de la venta",
+    Vs.valor === 0 && Vs.fuente === "vendido" && cerca(Rs.total, R0.total) && cerca(ns, n0 + 1200) && !Rs.filas.some((f) => f.nombre === "ETF Prueba") && Rs.cerradas.length === 1,
+    [Vs, Rs.total - R0.total, ns - n0, Rs.cerradas]);
+}
+
+// «¿Me puedo permitir un gasto?»: el importe como se escribe en España y las tres cifras con el gasto restado.
+caso("Importe escrito: «300», «300,50», «1.200», «1.200,50 €» y «300.50» se leen bien; «abc», «1.2.3», «-5» y vacío, no",
+  F.leerImporte("300") === 300 && F.leerImporte("300,50") === 300.5 && F.leerImporte("1.200") === 1200 && F.leerImporte(" 1.200,50 € ") === 1200.5 && F.leerImporte("300.50") === 300.5
+  && ["abc", "1.2.3", "-5", "", "12,3,4"].every((t) => isNaN(F.leerImporte(t))), ["300", "300,50", "1.200", "1.200,50 €", "300.50", "abc", "1.2.3"].map(F.leerImporte));
+{
+  const D = { limite: 600, disponible: 500, finMes: 3000, minimo: { key: "2027-01", saldo: 2500 }, colchon: { sobra: 800 } };
+  const pp = (imp, d) => { const r = F.puedoPermitirme(imp, d); return { ...r, texto: r.texto.replace(/ /g, " ") }; };  // el espacio duro de «300 €»
+  const P = pp(300, D), P2 = pp(650, D), P3 = pp(900, D), P4 = pp(2600, D);
+  caso("Permitir: 300 € con 500 € de límite libre → te quedan 200 €, fin de mes 2.700 € y el mes más bajo 2.200 € en enero; cabe",
+    P.nivel === "bien" && cerca(P.limite, 200) && cerca(P.finMes, 2700) && cerca(P.minimo.saldo, 2200) && P.minimo.key === "2027-01" && P.bajoColchon === null && /^Sí, te cabe: te quedarían 200 €/.test(P.texto), JSON.stringify(P));
+  caso("Permitir: 650 € se pasa 150 € del límite pero las cuentas lo aguantan", P2.nivel === "ojo" && cerca(P2.limite, -150) && /^Tus cuentas lo aguantan, pero te pasarías 150 € del límite de este mes\.$/.test(P2.texto), JSON.stringify(P2));
+  caso("Permitir: 900 € se pasa 400 € del límite y deja la cuenta del día a día 100 € bajo el colchón",
+    P3.nivel === "ojo" && cerca(P3.bajoColchon, 100) && P3.texto === "Te pasarías 400 € del límite de este mes y dejaría tu cuenta del día a día 100 € por debajo de tu colchón.", JSON.stringify(P3));
+  caso("Permitir: 2.600 € dejaría las cuentas en −100 € en enero de 2027: no llega", P4.nivel === "mal" && cerca(P4.minimo.saldo, -100) && P4.texto === "No te llega: tus cuentas se quedarían en −100 € en enero 2027.", JSON.stringify(P4));
+  const S = pp(300, { ...D, limite: 0, disponible: 0 }), N = pp(300, { limite: 0, disponible: 0, finMes: null, minimo: null, colchon: null }),
+    L = pp(300, { limite: 600, disponible: 500, finMes: null, minimo: null, colchon: null });
+  caso("Permitir: sin límite puesto no da cifra de límite (ni «te pasas»), y sin límite ni saldos dice lo que falta",
+    S.limite === null && S.nivel === "bien" && /^Tus cuentas lo aguantan: acabarías el mes con 2\.700 €/.test(S.texto) && N.nivel === "falta" && N.limite === null && N.finMes === null && N.minimo === null
+    && L.nivel === "bien" && L.finMes === null && /^Te cabe en tu límite de este mes: te quedarían 200 €/.test(L.texto), JSON.stringify([S, N, L]));
+  // Con el ejemplo: lo mismo que ya dicen la portada y «Tus próximos meses», con 300 € menos.
+  const DE = F.datosPermitir(), PE = pp(300, DE), FE = F.prevision();
+  caso("Permitir (ejemplo): 300 € → el límite, el fin de mes y el mes más bajo de prevision(), cada uno con 300 € menos",
+    cerca(PE.limite, F.presupuestoSemana().disponible - 300) && cerca(PE.finMes, FE.filas[0].saldo - 300) && cerca(PE.minimo.saldo, FE.minimo.saldo - 300) && PE.minimo.key === FE.minimo.key,
+    JSON.stringify([PE, FE.filas[0].saldo, FE.minimo]));
+  caso("Permitir (ejemplo): con 72 € ya pasados del límite, 300 € más son 372 € de más", cerca(PE.limite, -372, 0.5) && PE.texto.startsWith("Te pasarías 372 € del límite de este mes"), JSON.stringify(PE));
+}
 
 return casos;

@@ -5,14 +5,19 @@
 //   (si lo importas, el traspaso ya viene en su propio extracto);
 // · las compras de activos se pagan con el efectivo del bróker; si no llega, sale de la cuenta principal (`deBanco`).
 // Los activos valen su valor actual (+ aportaciones posteriores a su fecha de valor).
-function proyectar(u, hasta) {
+// Cada movimiento cuenta desde el día en que el banco lo apuntó (`ext_fecha`), no desde su fecha valor, que puede ser anterior:
+// el saldo que anotaste solo lleva lo que el banco ya había apuntado ese día. Si le has puesto a mano una fecha posterior a la del
+// banco, manda la tuya: con fecha futura es un previsto, y `prevision()` ya lo cuenta en su mes.
+// `exacto` (lo usa el cuadre de saldos): solo lo que ha pasado de verdad, sin los fijos ni las aportaciones que la app da por
+// hechos y que el banco o el bróker aún no han traído.
+function proyectar(u, hasta, exacto = false) {
   const tras = (f) => f > u.fecha.endOf("day") && f <= hasta;
   const S = { ...u.cuentas.saldos };
   for (const c of cuentas()) if (S[c.nombre] == null) S[c.nombre] = 0;
   const mover = (c, v) => { c = c || principal(); S[c] = (S[c] || 0) + v; };
   // El bróker nunca trae sus traspasos (al importar se descartan: ya están en el banco), aunque importes su extracto.
   const conExtracto = (c) => !!(cuentaPor(c) || {}).extracto && tipoCuenta(c) !== "broker";
-  const ms = movimientos().filter((m) => tras(m.fecha));
+  const ms = movimientos().filter((m) => !(exacto && m.auto) && tras(diaBanco(m)));
   for (const m of ms) {
     if (m.clase === "ingreso" || m.clase === "reembolso") mover(m.cuenta, m.importe);
     else if (m.clase === "gasto") mover(m.cuenta, -m.importe);
@@ -22,7 +27,7 @@ function proyectar(u, hasta) {
     }
   }
   let apo = 0, deBanco = 0;
-  for (const a of aportaciones().filter((a) => tras(a.fecha))) {
+  for (const a of aportaciones().filter((a) => !(exacto && a.auto) && tras(a.fecha))) {
     apo += a.importe;
     const cb = cuentaAportacion(a);
     if (!cb) { mover(principal(), -a.importe); deBanco += a.importe; continue; }
@@ -60,7 +65,7 @@ function conciliacion() {
   const P = patrimonio();
   if (P.length < 2) return null;
   const a = P[P.length - 2], b = P[P.length - 1];
-  const pr = proyectar(a, b.fecha.endOf("day"));
+  const pr = proyectar(a, b.fecha.endOf("day"), true);
   const nombres = [...new Set([...Object.keys(b.cuentas.saldos)])].filter((n) => cuentaPor(n));
   return {
     desde: a.fecha, hasta: b.fecha,
@@ -342,3 +347,48 @@ function escenariosPrevision(aj = {}, n = 12) {
   return [uno("prudente", "Prudente", sup("prudente")), uno("normal", "Normal", null), uno("optimista", "Optimista", sup("optimista"))];
 }
 
+
+// ───────────── ¿me puedo permitir un gasto? ─────────────
+// Un importe como lo escribe un español: «300», «300,50», «1.200», «1.200,50 €». Con coma, los puntos son de millares; sin ella,
+// un punto seguido de tres cifras también («1.200» son mil doscientos) y cualquier otro es el decimal («300.50»). Si no es un importe, NaN.
+function leerImporte(t) {
+  const s = String(t ?? "").replace(/[\s€]/g, "");
+  const m = /^(\d+|\d{1,3}(?:\.\d{3})+)(?:,(\d*))?$/.exec(s);
+  if (m) return Number(m[1].replace(/\./g, "") + "." + (m[2] || "0"));
+  return /^\d+\.\d+$/.test(s) ? Number(s) : NaN;
+}
+// Qué pasaría con un gasto de `importe` que no tenías previsto: se lo resta a cifras que ya existen, no calcula otra previsión.
+// d: { limite (0 = sin límite), disponible (lo que queda del límite este mes), finMes (lo que tendrás al acabar este mes) | null,
+//      minimo: { key, saldo } | null (el mes más bajo de prevision()), colchon: { sobra } | null (corriente − colchón, de planReparto()) }
+// → { importe, limite, finMes, minimo: { key, saldo }, bajoColchon (cuánto faltaría), nivel: "bien" | "ojo" | "mal" | "falta", texto };
+//   lo que no se puede saber va a null. «mal» = tus cuentas bajarían de cero; «ojo» = te pasas del límite o tocas el colchón.
+function puedoPermitirme(importe, d) {
+  const limite = d.limite > 0 ? d.disponible - importe : null;
+  const finMes = d.finMes == null ? null : d.finMes - importe;
+  const minimo = d.minimo ? { key: d.minimo.key, saldo: d.minimo.saldo - importe } : null;
+  const bajoColchon = d.colchon && d.colchon.sobra - importe <= -0.5 ? importe - d.colchon.sobra : null;
+  const out = { importe, limite, finMes, minimo, bajoColchon };
+  if (limite == null && finMes == null) return { ...out, nivel: "falta", texto: "Para contestarte hace falta tu límite de gasto o tus saldos." };
+  // El peor momento: este mes o el más bajo de los que vienen.
+  const peor = minimo && (finMes == null || minimo.saldo < finMes) ? { ...minimo, antes: d.minimo.saldo } : finMes != null ? { key: hoyKey, saldo: finMes, antes: d.finMes } : null;
+  if (peor && peor.saldo <= -0.5) {
+    const cuando = peor.key === hoyKey ? "al acabar este mes" : `en ${mesLbl(peor.key).toLowerCase()}`;
+    return { ...out, nivel: "mal", texto: peor.antes <= -0.5 ? `Ni sin este gasto: tus cuentas ya bajarían de cero ${cuando}; con él se quedarían en ${eur(peor.saldo, 0)}.`
+      : `No te llega: tus cuentas se quedarían en ${eur(peor.saldo, 0)} ${cuando}.` };
+  }
+  const pasado = limite != null && limite <= -0.5;
+  const tPasa = `te pasarías ${eur(-limite, 0)} del límite de este mes`, tColchon = `dejaría tu cuenta del día a día ${eur(bajoColchon, 0)} por debajo de tu colchón`;
+  const frase = (s) => s[0].toUpperCase() + s.slice(1) + ".";
+  if (pasado && bajoColchon) return { ...out, nivel: "ojo", texto: frase(`${tPasa} y ${tColchon}`) };
+  if (pasado) return { ...out, nivel: "ojo", texto: finMes == null ? frase(tPasa) : `Tus cuentas lo aguantan, pero ${tPasa}.` };
+  if (bajoColchon) return { ...out, nivel: "ojo", texto: limite == null ? frase(tColchon) : `Te cabe en tu límite, pero ${tColchon}.` };
+  if (limite == null) return { ...out, nivel: "bien", texto: `Tus cuentas lo aguantan: acabarías el mes con ${eur(finMes, 0)}.` };
+  return { ...out, nivel: "bien", texto: finMes == null ? `Te cabe en tu límite de este mes: te quedarían ${eur(limite, 0)}.` : `Sí, te cabe: te quedarían ${eur(limite, 0)} de tu límite este mes.` };
+}
+// Las cifras de hoy para puedoPermitirme(). Sin saldos anotados no hay previsión; sin ingresos fijos, la previsión solo ve lo que
+// sale y su mes más bajo no dice nada (`sinIngresos`).
+function datosPermitir() {
+  const F = estimacion() ? prevision() : null, R = planReparto(), conIng = hayIngresosFijos();
+  return { limite: limiteVar, disponible: presupuestoSemana().disponible, finMes: F ? F.filas[0].saldo : null,
+    minimo: F && conIng ? { key: F.minimo.key, saldo: F.minimo.saldo } : null, colchon: R ? { sobra: R.sobra, importe: R.colchon } : null, sinIngresos: !!F && !conIng };
+}

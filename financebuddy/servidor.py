@@ -611,6 +611,7 @@ class Manejador(http.server.BaseHTTPRequestHandler):
                 return self._enviar(200, leer(p), tipo)
             if u.path in ("/pruebas.js", "/flujos.js") and app.pruebas:  # solo con --pruebas: cálculos y flujos con clics
                 p = os.path.join(os.path.dirname(rutas.PAQUETE), "pruebas", "pruebas_calculos.js" if u.path == "/pruebas.js" else "pruebas_flujos.js")
+                if u.path == "/flujos.js" and os.environ.get("FB_GUION"): p = os.environ["FB_GUION"]  # run.py --guion: unos clics sueltos en vez de los flujos
                 return self._enviar(200, leer(p), "text/javascript; charset=utf-8")
             if not self._autorizado(): return self._json({"error": "no autorizado"}, 403)
             with app.lock:

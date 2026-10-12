@@ -180,7 +180,7 @@ frente a tu media de los meses anteriores, y en el Inicio, el ritmo de gasto del
 
 **Lo que viene** (*Inicio*): «Tus próximos meses» enseña cuánto tendrás en tus cuentas al acabar cada uno de los próximos doce
 meses: cuenta tus fijos, tus aportaciones, lo que sueles gastar de verdad (tu media, no tu límite) y también los gastos fijos
-que no tienes dados de alta (un seguro, un recibo que no llega cada mes), y te dice cuánto es cada cosa; los avisos se quitan con su **×** (vuelven a salir cuando cambia lo que los provoca: otro mes, otra subida); cada objetivo con fecha dice cuánto apartar al mes; los recordatorios pueden **repetirse** (cada año, cada 3 meses o cada
+que no tienes dados de alta (un seguro, un recibo que no llega cada mes), y te dice cuánto es cada cosa. Bajo la barra de la portada, **¿Me puedo permitir un gasto?** (plegado): escribes un importe y te dice cuánto te quedaría de tu límite del mes (o por cuánto te pasarías), cuánto tendrías al acabar el mes y cuál sería el saldo más bajo de los próximos meses; es solo una cuenta, no apunta nada. Los avisos se quitan con su **×** (vuelven a salir cuando cambia lo que los provoca: otro mes, otra subida); cada objetivo con fecha dice cuánto apartar al mes; los recordatorios pueden **repetirse** (cada año, cada 3 meses o cada
 mes) y con «Hecho» pasan solos a su siguiente fecha. En *Fijos* ves lo que suman al mes y al año.
 
 **Avisos** (*Inicio*): además de lo de siempre, la app te dice si **te han cobrado una comisión**, si un **cobro parece repetido**

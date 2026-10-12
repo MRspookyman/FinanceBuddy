@@ -361,7 +361,7 @@ function vistaActivo() {
     { l: "Precio medio", v: P.precioMedio != null ? eur(P.precioMedio) : "—", s: P.precioMedio != null ? "de tus compras" : "necesita las participaciones" },
     { l: "Has metido", v: eur(aportado, 0), s: `${normales.length} operaci${normales.length === 1 ? "ón" : "ones"}` },
     { l: "Vale hoy", v: (V.fuente === "anotado" || V.fuente === "mercado" ? "" : "≈ ") + eur(V.valor, 0),
-      s: V.fuente === "mercado" ? `precio de mercado del ${V.precio.fecha.toFormat("dd/MM/yy")}: ${eur(V.precio.precio, 4)} · ${FUENTES_PRECIO[V.precio.fuente] || V.precio.fuente}` : V.fuente === "anotado" ? `anotado el ${a.fechaValor.toFormat("dd/MM/yy")}` : V.fuente === "precio" ? `precio del ${V.precio.fecha.toFormat("dd/MM/yy")}: ${eur(V.precio.precio, 4)}` : V.fuente === "vendido" ? "vendido del todo" : "sin valor: lo metido" },
+      s: V.fuente === "mercado" ? `precio de mercado del ${V.precio.fecha.toFormat("dd/MM/yy")}: ${eur(V.precio.precio, 4)} · ${FUENTES_PRECIO[V.precio.fuente] || V.precio.fuente}` : V.fuente === "anotado" ? (a.fechaValor ? `anotado el ${a.fechaValor.toFormat("dd/MM/yy")}` : "anotado, sin fecha") : V.fuente === "precio" ? `precio del ${V.precio.fecha.toFormat("dd/MM/yy")}: ${eur(V.precio.precio, 4)}` : V.fuente === "vendido" ? "vendido del todo" : "sin valor: lo metido" },
     isFinite(gan) ? { l: "Ganancia", v: eurS(gan, 0), t: tone(gan), s: `${pct(gan / aportado, true)} sobre lo metido` } : null,
   ]);
   panelSalud(root, saludInversion(a.nombre), { titulo: "Revisa este activo", max: 10 });

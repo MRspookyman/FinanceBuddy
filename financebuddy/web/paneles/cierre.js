@@ -29,7 +29,7 @@ function vistaCerrar() {
     form.innerHTML = "";
     refs.s = {}; refs.v = {};
     const u = [...P].reverse().find((x) => x.fecha < fecha.startOf("day")) || P[P.length - 1];
-    const pr = u ? proyectar(u, fecha.endOf("day")) : null;
+    const pr = u ? proyectar(u, fecha.endOf("day"), true) : null;  // como el aviso «No cuadra»: solo lo que el banco ya ha apuntado
     form.createDiv({ cls: "et", text: "Fecha" });
     const iF = form.createEl("input", { attr: { type: "date" } }); iF.value = fecha.toISODate();
     iF.onchange = () => { const d = DateTime.fromISO(iF.value); if (d.isValid) { fecha = d; pintar(); } };
@@ -49,7 +49,7 @@ function vistaCerrar() {
         const dif = ext.saldo - est;
         const n = form.createDiv({ cls: "s aviso-saldo" });
         n.appendText(`El banco dice ${eur(ext.saldo)}: ${eurS(dif, 2)} respecto a la cuenta de la app. `);
-        n.appendText("Falta algún movimiento (o sobra uno apuntado a mano o previsto) entre el último registro y hoy. Si tu banco dice " + eur(ext.saldo) + ", anota ese saldo.");
+        n.appendText("Falta algún movimiento (o sobra uno apuntado a mano) entre el último registro y hoy. Si tu banco dice " + eur(ext.saldo) + ", anota ese saldo.");
       }
     }
     const A = activos().filter((a) => !vendidoDelTodo(a));

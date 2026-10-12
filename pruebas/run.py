@@ -4,6 +4,9 @@
 # Uso: python pruebas/run.py [pantalla1,pantalla2] [--tests] [--flujos] [--shot] [--tema=oscuro] [--ancho=N] [--alto=N] [--datos=CARPETA]
 #   --flujos: en vez de recorrer pantallas, hace los flujos con clics de pruebas_flujos.js (apuntar, resolver dudas, borrar…)
 #   --capturas: captura cada pantalla en claro y en oscuro (para repasar de un vistazo que ninguna se ha roto)
+#   --guion=ARCHIVO.js: unos clics sueltos con las mismas ayudas que los flujos (ir, hasta, campo, escribir, porTexto, caso…); con
+#            --shot captura después la pantalla indicada. Para mirar cómo queda algo sin tocar pruebas_flujos.js
+#   --puerto=N: otro puerto (8799 si no se dice) y su propia carpeta de datos y capturas (%TEMP%\fb-pruebas\N), para pasar varias a la vez
 #   --datos: usa esa carpeta de datos en lugar de crear una de ejemplo (p. ej. para ver tus datos reales)
 #   FB_NAVEGADOR: ruta de otro Chrome/Chromium (p. ej. fuera de Windows)
 # Códigos de salida: 0 bien · 1 algo falla · 3 no hay navegador con el que probar (build.bat lo avisa y sigue).
@@ -21,7 +24,16 @@ HOY = "2026-09-30"
 def main():
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     flags = dict(a[2:].split("=", 1) if "=" in a else (a[2:], "1") for a in sys.argv[1:] if a.startswith("--"))
-    pantallas = ["inicio"] if "flujos" in flags else (args[0] if args else PANTALLAS).split(",")
+    global SALIDA
+    if "puerto" in flags: SALIDA = os.path.join(SALIDA, flags["puerto"])  # otro puerto, otra carpeta: así se pueden pasar varias a la vez
+    entorno = dict(os.environ)
+    if "guion" in flags:  # las ayudas de pruebas_flujos.js + los casos del guion
+        base = open(os.path.join(RAIZ, "pruebas", "pruebas_flujos.js"), encoding="utf-8").read().split("  // ── casos ──")[0]
+        os.makedirs(SALIDA, exist_ok=True)
+        entorno["FB_GUION"] = os.path.join(SALIDA, "guion.js")
+        with open(entorno["FB_GUION"], "w", encoding="utf-8") as fh: fh.write(base + open(flags["guion"], encoding="utf-8").read() + "\n  return casos;\n})();\n")
+        flags["flujos"] = "1"
+    pantallas = ["inicio"] if "flujos" in flags and "guion" not in flags else (args[0] if args else "inicio" if "guion" in flags else PANTALLAS).split(",")
     edge = next((e for e in [os.environ.get("FB_NAVEGADOR", "")] + EDGES if e and os.path.exists(e)), None)
     if not edge:
         print("No encuentro Chrome ni Edge (o indica otro con la variable FB_NAVEGADOR): me salto las pruebas de pantalla.")
@@ -31,7 +43,7 @@ def main():
     cmd = [sys.executable, "-m", "financebuddy", "--sin-navegador", "--puerto", str(puerto), "--hoy", flags.get("hoy", HOY), "--pruebas"]
     if "datos" in flags: cmd += ["--datos", flags["datos"]]
     else: cmd += ["--ejemplo", "--datos", os.path.join(SALIDA, "datos")]
-    srv = subprocess.Popen(cmd, cwd=RAIZ, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+    srv = subprocess.Popen(cmd, cwd=RAIZ, env=entorno, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
     try:
         for _ in range(100):
             try: urllib.request.urlopen(f"http://127.0.0.1:{puerto}/", timeout=1); break

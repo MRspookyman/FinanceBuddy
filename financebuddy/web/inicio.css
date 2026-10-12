@@ -47,6 +47,23 @@ a.fb-hero-link{color:var(--brand)}
 .fb-hero.pasado .fb-progreso .rel{background:var(--coral)}
 .fb-progreso .dia{position:absolute;top:0;bottom:0;width:2px;background:var(--ink);opacity:.8}
 .fb-hero .pie{margin-top:10px;font-size:.84em;font-weight:650;color:var(--ink);font-variant-numeric:tabular-nums}
+/* «¿Me puedo permitir un gasto?»: cerrado es una línea discreta bajo la barra; el coral es pasarse del límite y el rosa, quedarse sin dinero */
+.fb-permitir{--rose:#FF7A6B;width:100%;max-width:560px;margin-top:14px}
+.fin .fb-permitir>summary{display:inline-block;margin:0;list-style:none;font-size:.84em;font-weight:600;color:var(--ink-2);border-radius:4px}
+.fb-permitir>summary::-webkit-details-marker{display:none}
+.fb-permitir>summary::before{content:"›";display:inline-block;width:12px;font-weight:800;color:var(--ink-3);transition:transform 200ms var(--ease-out)}
+.fb-permitir[open]>summary::before{transform:rotate(90deg)}
+.fin .fb-permitir>summary:hover,.fin .fb-permitir[open]>summary{color:var(--ink)}
+.fb-permitir .campo{display:flex;align-items:center;gap:8px;margin-top:10px}
+.fb-permitir label{font-size:.9em;font-weight:600;color:var(--ink)}
+.fb-permitir .veredicto{margin:12px 0 6px;font-size:1.02em;font-weight:650;color:var(--ink)}
+.fb-permitir .veredicto.ojo{color:var(--coral-t)} .fb-permitir .veredicto.mal{color:var(--rose)}
+.fb-permitir .r{display:flex;justify-content:space-between;align-items:baseline;gap:14px;padding:6px 0;border-top:1px solid var(--line);font-size:.9em}
+.fb-permitir .k{color:var(--ink-2)}
+.fb-permitir .n{font-weight:650;text-align:right;font-variant-numeric:tabular-nums}
+.fb-permitir .n.pasa{color:var(--coral-t)} .fb-permitir .n.mal{color:var(--rose)}
+.fb-permitir .n a{color:var(--brand)}
+.fb-permitir .nota{margin-top:8px;font-size:.82em;color:var(--ink-2)}
 /* resumen del mes: columna a la derecha de la portada */
 .fb-resumen{grid-column:3;align-self:stretch;display:flex;flex-direction:column;justify-content:center;min-width:190px;padding-left:30px;border-left:1px solid var(--line)}
 .fb-resumen .d{display:flex;flex-direction:column;gap:2px;min-width:0;padding:10px 0}
@@ -131,6 +148,18 @@ a.fb-item:hover,.fb-item.click:hover{background:var(--surface-2);cursor:pointer}
 .fb-total .v{font-size:2.4em;font-weight:650;line-height:1.05;white-space:nowrap}
 .fb-total .s{font-size:.84em;color:var(--ink-2)}
 .fb-total .s.pos{color:var(--fin-up);font-weight:650} .fb-total .s.neg{color:var(--fin-down);font-weight:650}
+/* «Tus próximos meses»: tres escenarios en una tarjeta de un tercio, sin desplazamiento horizontal */
+.fin table.fb-esc-tabla{margin:6px 0}
+.fin table.fb-esc-tabla th,.fin table.fb-esc-tabla td{white-space:normal;vertical-align:top;padding-left:0;padding-right:0}
+.fin table.fb-esc-tabla .num{padding-left:12px;white-space:nowrap}
+.fin table.fb-esc-tabla thead th{vertical-align:bottom}
+.fin table.fb-esc-tabla tbody th{padding:10px 0;font-size:1em;font-weight:400;color:var(--ink);text-transform:none;letter-spacing:0;border-bottom:1px solid var(--line)}
+.fin table.fb-esc-tabla tbody tr:last-child th{border-bottom:none}
+.fin table.fb-esc-tabla tbody th .t{font-weight:650}
+.fin table.fb-esc-tabla tbody th .s{font-size:.94em;color:var(--ink-2)}
+.fin table.fb-esc-tabla tbody tr:hover td{background:none}
+.fin table.fb-esc-tabla td.num{font-weight:650}
+.fin table.fb-esc-tabla td small{display:block;font-size:.94em;font-weight:400;color:var(--ink-2)}
 .fb-spark{margin:6px 0 4px}
 .fb-spark svg{display:block;width:100%;height:48px}
 /* plan */

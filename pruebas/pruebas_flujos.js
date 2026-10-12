@@ -34,6 +34,7 @@ return (async () => {
     catch (e) { casos.push({ nombre, ok: false, detalle: String((e && e.stack) || e) }); }
   };
 
+  // ── casos ── (hasta aquí, lo que comparte un guion suelto: run.py --guion)
   // 1. Apuntar un gasto a mano: rellenar el formulario y guardarlo
   await caso("Apuntar a mano guarda el movimiento", async () => {
     if (!(await ir("#apuntar"))) return "no se abre la pantalla Apuntar";
@@ -682,6 +683,128 @@ return (async () => {
     if (!b) return "el aviso no ofrece «Deshacer» tras cambiar varios";
     b.click();
     if (!(await hasta(() => ids.every((i, k) => mov(i).categoria === antes[k])))) return "«Deshacer» no devuelve las categorías de los dos";
+  });
+
+  // 32. Actualizar saldos propone lo mismo que luego comprueba el aviso «No cuadra»: lo que el banco ha apuntado de verdad. Con un
+  // fijo y una aportación fija de septiembre que no han llegado, aceptar la propuesta tal cual no puede dejar el aviso en el Inicio.
+  await caso("Actualizar saldos: aceptar lo que propone no deja «No cuadra» aunque haya fijos sin llegar", async () => {
+    const alta = async (datos) => { const r = await FB.api("/api/guardar", { tipo: "recurrente", datos }); return r.ok ? "" : r.mensaje || "error"; };
+    const e = await alta({ nombre: "Fijo que no llega", clase: "gasto", categoria: "Otros", importe: 40, dia: 20, desde: "2026-09-01", cuenta: "Cuenta nómina" })
+      || await alta({ nombre: "Aportación que no llega", clase: "aportacion", importe: 50, dia: 25, desde: "2026-09-01", activo_inversion: "Bitcoin", cuenta: "Bróker" });
+    if (e) return "no se dan de alta los fijos de prueba: " + e;
+    await FB.recargar();
+    if (!(await ir("#cerrar"))) return "no se abre Actualizar saldos";
+    const boton = () => todos("button.fb-btn").find((b) => /^(Cerrar |Guardar los saldos)/.test(plano(b)));
+    if (!(await hasta(boton))) return "no está el botón de guardar";
+    escribir(campo("Fecha"), "2026-09-30");  // los saldos de hoy, pida el mes que pida (otro flujo ha borrado los cierres)
+    const pie =(n) => plano(campo(n).nextElementSibling);
+    for (const n of ["Cuenta nómina", "Bróker"]) if (!pie(n).startsWith("según los movimientos: ")) return `${n} no trae su propuesta: ${pie(n)}`;
+    const propuesta = ["Cuenta nómina", "Bróker"].map((n) => `${n} ${campo(n).value}`).join(", ");
+    boton().click();
+    if (!(await hasta(() => app().dataset.vista === "inicio" && app().querySelector(".fin-page > *")))) return "tras guardar no vuelve al Inicio";
+    const aviso = /No cuadra[^·]*/.exec(plano(app()));
+    if (aviso) return `aceptando la propuesta (${propuesta}) el Inicio dice: ${aviso[0]}`;
+    for (const n of ["Fijo que no llega", "Aportación que no llega"]) await FB.api("/api/borrar", { tipo: "recurrente", id: regs("recurrente").find((r) => r.nombre === n).id });  // dejarlo como estaba
+    await FB.recargar();
+  });
+
+  // 33. El valor de un activo se puede anotar sin fecha: su ficha se abre igual y lo dice. Y si luego se vende del todo, ese valor
+  // ya no cuenta (sin fecha no se sabe si es de después de la venta): vale 0 € y pasa a «Ya vendido».
+  await caso("Inversión: un valor anotado sin fecha no rompe la ficha, y vendido del todo deja de contar", async () => {
+    const nombre = "Fondo sin fecha";
+    const r = await FB.api("/api/guardar", { tipo: "activo", datos: { nombre, clase: "fondo", cuenta: "Bróker", valor: 1000 } });
+    if (!r.ok) return "no se da de alta el activo de prueba: " + r.mensaje;
+    const ope = (fecha, importe, participaciones) => FB.api("/api/guardar", { tipo: "aportacion", datos: { fecha, activo: nombre, importe, participaciones, cuenta: "Bróker" } });
+    const c = await ope("2026-08-10", 1000, 10);
+    if (!c.ok) return "no se guarda la compra: " + c.mensaje;
+    await FB.recargar();
+    if (!(await ir(`#activo/${r.id}`))) return "no se abre la ficha";
+    if (!(await hasta(() => plano(app()).includes("anotado, sin fecha")))) return "la ficha no se dibuja o no dice que el valor no tiene fecha: " + plano(app()).slice(0, 200);
+    const v = await ope("2026-09-20", -1200, -10);
+    if (!v.ok) return "no se guarda la venta: " + v.mensaje;
+    await FB.recargar();
+    if (!(await ir(`#activo/${r.id}`))) return "no se vuelve a abrir la ficha";
+    if (!(await hasta(() => plano(app()).includes("vendido del todo")))) return "vendido del todo, la ficha sigue dando el valor anotado: " + plano(app()).slice(0, 200);
+    if (!(await ir("#inversion"))) return "no se abre Inversión";
+    const panelActivos = await hasta(() => porTexto(".fin-panel", "Tus activos"));
+    if (!panelActivos) return "no está el panel «Tus activos»";
+    if (porTexto("td", nombre, panelActivos)) return "sigue en la tabla de «Tus activos»";
+    if (!/Ya vendido: [^·]*Fondo sin fecha \(\+200,00 €\)/.test(plano(panelActivos))) return "no sale en «Ya vendido» con sus +200 €: " + plano(panelActivos).slice(-220);
+    const b = await FB.api("/api/activo/borrar", { id: r.id });  // dejarlo como estaba
+    if (!b.ok) return "no se borra el activo de prueba: " + b.mensaje;
+    await FB.recargar();
+  });
+
+  // 34. Los tres escenarios de «Tus próximos meses» caben en la tarjeta: cada uno con sus dos cifras a la vista, sin tener que
+  // desplazar hacia un lado para llegar a ellas.
+  await caso("Previsión: los tres escenarios enseñan sus dos cifras sin desplazamiento horizontal", async () => {
+    if (!(await ir("#inicio"))) return "no se abre el Inicio";
+    const caja = await hasta(() => app().querySelector('[role="region"][aria-label="Tres escenarios de la previsión"]'));
+    if (!caja) return "no está la región «Tres escenarios de la previsión»";
+    const cab = todos("thead th", caja).map(plano);
+    if (cab.length !== 3 || !/^En \S+ \d{4}$/.test(cab[1]) || cab[2] !== "Lo más bajo") return "las cifras no llevan su cabecera: " + cab.join(" | ");
+    const filas = todos("tbody tr", caja);
+    if (filas.map((f) => plano(f.querySelector("th .t"))).join() !== "Prudente,Normal,Optimista") return "no son Prudente, Normal y Optimista: " + filas.map(plano).join(" | ");
+    if (!plano(filas[0]).includes("gastas un 15 % más, te entra un 10 % menos")) return "el prudente no dice lo que supone: " + plano(filas[0]);
+    const dentro = caja.getBoundingClientRect();
+    for (const f of filas) {
+      const cifras = todos("td.num", f);
+      if (cifras.length !== 2 || !cifras.every((c) => /\d €/.test(plano(c)))) return "faltan las dos cifras en: " + plano(f);
+      for (const c of cifras) { const r = c.getBoundingClientRect(); if (r.width < 1 || r.right > dentro.right + 1) return `una cifra se sale de la tarjeta en: ${plano(f)}`; }
+    }
+    for (let e = caja.querySelector("table"); e && e !== caja.parentElement; e = e.parentElement) if (e.scrollWidth > e.clientWidth + 1) return "la tabla no cabe: hay que desplazarla hacia un lado";
+  });
+
+  // 35. «¿Me puedo permitir un gasto?»: plegado bajo la barra de la portada; escribes 300 y contesta con el veredicto y tres cifras.
+  // Es solo una cuenta: no llama al servidor, los datos quedan igual y lo último que se podía deshacer se sigue pudiendo.
+  await caso("Inicio: «¿Me puedo permitir un gasto?» contesta con 300 € y no guarda nada", async () => {
+    const m = regs("movimiento").find((x) => x.clase === "gasto" && !x.parte_de && x.categoria), otra = m.categoria === "Ocio" ? "Otros" : "Ocio";
+    const c = await FB.api("/api/movimiento/categoria", { ids: [m.id], categoria: otra });  // algo que se pueda deshacer
+    if (!c.ok) return "no se puede preparar un cambio que deshacer: " + c.mensaje;
+    await FB.recargar();
+    if (!FB.DB.info.deshacer) return "tras cambiar una categoría no hay nada que deshacer";
+    if (!(await ir("#inicio"))) return "no se abre el Inicio";
+    const caja = () => app().querySelector(".fb-hero details.fb-permitir");
+    if (!(await hasta(caja))) return "no está el plegable en la portada";
+    if (caja().open) return "debería salir plegado";
+    const antes = JSON.stringify(FB.DB), api = FB.api;
+    const llamadas = [];
+    FB.api = (ruta, ...r) => { llamadas.push(ruta); return api(ruta, ...r); };
+    try {
+      caja().querySelector("summary").click();
+      const inp = await hasta(() => caja().open && caja().querySelector("input"));
+      if (!inp) return "al pulsarlo no se abre el campo";
+      const et = caja().querySelector(`label[for="${inp.id}"]`);
+      if (!inp.id || !et || !plano(et).trim()) return "el campo del importe no tiene su nombre";
+      escribir(inp, "300");
+      const v = await hasta(() => caja().querySelector(".veredicto"));
+      if (!v) return "al escribir 300 no sale el veredicto";
+      // Las mismas cifras que ya enseña el Inicio (la portada y la fila «Normal» de los escenarios), con 300 € menos; ±1 € por el redondeo
+      const euros = (t) => { const x = /(−?)([\d.]+) €/.exec(t); return x ? (x[1] ? -1 : 1) * Number(x[2].replace(/\./g, "")) : NaN; };
+      const hero = app().querySelector(".fb-hero"), pasado = hero.classList.contains("pasado"), libre = (pasado ? -1 : 1) * euros(plano(hero.querySelector(".iz > .v")));
+      const normal = todos("tbody tr", app().querySelector('[role="region"][aria-label="Tres escenarios de la previsión"]')).find((f) => plano(f).startsWith("Normal"));
+      const bajo = euros(plano(todos("td.num", normal)[1])), mesBajo = plano(todos("td.num", normal)[1].querySelector("small")).trim();
+      const filas = todos(".r", caja()).map(plano), casi = (a, b) => Math.abs(a - b) <= 1;
+      if (libre - 300 >= 0) return `el ejemplo ya no se pasa del límite (quedarían ${libre - 300}): revisa este flujo`;
+      if (!/te pasarías [\d.]+ € del límite de este mes/i.test(plano(v)) || !casi(euros(plano(v)), 300 - libre)) return `el veredicto debería decir que te pasas ${300 - libre} €: ${plano(v)}`;
+      if (filas.length !== 3 || !filas[0].includes("te pasarías") || !casi(euros(filas[0]), 300 - libre)) return `la línea del límite debería dar ${300 - libre} €: ${filas.join(" | ")}`;
+      if (!/tendrías −?[\d.]+ € en tus cuentas/.test(filas[1])) return "falta lo que tendrías al acabar el mes: " + filas[1];
+      if (!casi(euros(filas[2]), bajo - 300) || !filas[2].endsWith(mesBajo)) return `el mes más justo debería ser ${bajo - 300} € ${mesBajo}: ${filas[2]}`;
+      if (!/movimientos hasta el \d+ de septiembre/.test(plano(caja()))) return "no dice hasta qué día hay movimientos";
+      escribir(inp, "1.200,50");
+      if (!(await hasta(() => casi(euros(plano(todos(".r", caja())[0])), 1200.5 - libre)))) return "«1.200,50» no se lee como mil doscientos con cincuenta: " + plano(caja());
+      escribir(inp, "300");
+      if (llamadas.length) return "ha llamado al servidor: " + llamadas.join(", ");
+    } finally { FB.api = api; }
+    await FB.refrescar();
+    const inp2 = await hasta(() => caja() && caja().open && caja().querySelector("input"));
+    if (!inp2 || inp2.value !== "300" || !caja().querySelector(".veredicto")) return "al refrescar se pierde lo escrito";
+    if (JSON.stringify(FB.DB) !== antes) return "los datos han cambiado tras usarlo";
+    if (!FB.DB.info.deshacer) return "tras usarlo ya no se puede deshacer lo anterior";
+    const des = await FB.api("/api/deshacer", {});  // dejarlo como estaba
+    if (!des.ok) return "«Deshacer» ya no funciona: " + des.mensaje;
+    await FB.recargar();
+    if ((regs("movimiento").find((x) => x.id === m.id) || {}).categoria !== m.categoria) return "deshacer no devuelve la categoría";
   });
 
   return casos;

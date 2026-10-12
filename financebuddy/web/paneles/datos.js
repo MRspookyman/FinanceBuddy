@@ -138,7 +138,53 @@ function ocurrencias(r) {
   }
   return out;
 }
-// Los recurrentes generan un movimiento automático cada mes salvo que exista uno real con `recurrente: <nombre>` ese mes.
+// Día en que el banco apuntó un movimiento (`ext_fecha`). Su fecha puede ser anterior (al importar se guarda la fecha valor si
+// es antes). Si le has puesto a mano una fecha posterior a la del banco, manda la tuya.
+const diaBanco = (m) => { const b = m.p && m.p.ext_fecha && toDate(m.p.ext_fecha); return b && b >= m.fecha ? b : m.fecha; };
+// Qué meses tiene ya su pago real cada fijo → función (fijo, fecha en que toca) que dice si ese mes está pagado.
+// Un pago real paga el mes natural de su fecha. Si el banco lo apuntó en otro mes (fecha valor 31/08, apuntado el 01/09), paga, de
+// los dos, el mes en que el fijo tocaba más cerca: un alquiler del día 1 paga septiembre aunque en tus gastos siga saliendo el
+// 31/08; un gimnasio del día 31 paga agosto. Y con la misma cuenta, si un mes tiene dos pagos del mismo fijo y el de al lado
+// ninguno, el que cae más cerca del día en que tocaba en el mes de al lado paga ese (la nómina de septiembre cobrada el 31/08; el
+// recibo de septiembre cargado el 01/10). Dos cargos seguidos el mismo mes (un cobro repetido) no pagan el mes siguiente.
+function pagosDeFijos(reales) {
+  const dias = new Map(recurrentes().map((r) => [r.nombre, r.dia]));
+  const lejos = (a, b) => Math.abs(a.startOf("day").diff(b.startOf("day"), "days").days);
+  // A cuántos días le queda a un pago hecho el día `d` el cargo del fijo en el mes de `en`.
+  const aCuanto = (nombre, d, en) => lejos(d, en.set({ day: Math.min(dias.get(nombre), en.daysInMonth) }));
+  const por = new Map();
+  for (const m of reales) {
+    if (!dias.has(m.recurrente)) continue;
+    const b = diaBanco(m), n = m.recurrente;
+    const d = keyCal(b) !== keyCal(m.fecha) && aCuanto(n, m.fecha, m.fecha) < aCuanto(n, b, b) ? m.fecha : b, k = `${n}|${keyCal(d)}`;
+    if (!por.has(k)) por.set(k, []);
+    por.get(k).push(d);
+  }
+  return (r, fecha) => {
+    if (por.has(`${r.nombre}|${keyCal(fecha)}`)) return true;
+    for (const paso of [-1, 1]) {
+      const mesLado = fecha.startOf("month").plus({ months: paso });
+      const ds = por.get(`${r.nombre}|${keyCal(mesLado)}`);
+      const i = ds && ds.length > 1 ? ds.findIndex((d) => lejos(d, fecha) < aCuanto(r.nombre, d, mesLado)) : -1;
+      if (i < 0) continue;
+      ds.splice(i, 1);  // ese pago ya no puede pagar también el mes del otro lado
+      return true;
+    }
+    return false;
+  };
+}
+// Los movimientos automáticos de los fijos: uno cada mes que toca, salvo que ese mes tenga ya su pago real (`pagosDeFijos`).
+function fijosAutomaticos(reales) {
+  const virtuales = [], pagado = pagosDeFijos(reales);
+  for (const r of recurrentes().filter((r) => r.clase !== "aportacion")) {
+    for (const fecha of ocurrencias(r)) {
+      if (pagado(r, fecha)) continue;
+      virtuales.push({ p: r.p, fecha, importe: r.importe, clase: r.clase, categoria: r.categoria, concepto: r.nombre, recurrente: r.nombre, cuenta: r.cuenta || principal(), auto: true });
+    }
+  }
+  return virtuales;
+}
+// Los recurrentes generan un movimiento automático cada mes salvo que exista uno real con `recurrente: <nombre>` para ese mes.
 // `previsto`: fecha posterior a hoy → no cuenta como cobrado/pagado, solo como pendiente.
 // `gasto`: lo que suma al gasto de su categoría. `reembolso` (p. ej. un Bizum de un amigo por su parte de una cena) resta.
 const movimientos = () => {
@@ -157,15 +203,7 @@ const movimientos = () => {
     reales.push({ p: q, fecha: toDate(f.op), importe: Math.abs(Number(f.importe)), clase: Number(f.importe) < 0 ? "gasto" : "ingreso", categoria: "Sin clasificar",
       concepto: txt(f.concepto) || txt(f.texto) || "Sin clasificar", recurrente: "", destino: "", origen: "", cuenta: txt(q.cuenta) || principal(), auto: false, pendiente: true });
   }
-  const virtuales = [];
-  const vinculados = new Set(reales.filter((m) => m.recurrente).map((m) => `${m.recurrente}|${keyCal(m.fecha)}`));
-  for (const r of recurrentes().filter((r) => r.clase !== "aportacion")) {
-    for (const fecha of ocurrencias(r)) {
-      if (vinculados.has(`${r.nombre}|${keyCal(fecha)}`)) continue;
-      virtuales.push({ p: r.p, fecha, importe: r.importe, clase: r.clase, categoria: r.categoria, concepto: r.nombre, recurrente: r.nombre, cuenta: r.cuenta || principal(), auto: true });
-    }
-  }
-  return (_movs = [...reales, ...virtuales].map((m) => ({
+  return (_movs = [...reales, ...fijosAutomaticos(reales)].map((m) => ({
     ...m, previsto: m.fecha > finHoy, gasto: m.clase === "gasto" ? m.importe : m.clase === "reembolso" ? -m.importe : 0,
   })));
 };

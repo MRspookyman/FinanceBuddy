@@ -181,7 +181,7 @@ function cuadreExtracto(card, r) {
   if (!ext) return;
   const f = DateTime.fromISO(ext.fecha), P = patrimonio();
   const u = [...P].reverse().find((x) => x.fecha < f.startOf("day")) || P[0];
-  const est = u ? proyectar(u, f.endOf("day")).cuentas.saldos[r.cuenta] : null;
+  const est = u ? proyectar(u, f.endOf("day"), true).cuentas.saldos[r.cuenta] : null;
   if (est != null && Math.abs(ext.saldo - est) < 0.01) card.createDiv({ cls: "fin-note", text: `✓ El saldo de ${r.cuenta} (${eur(ext.saldo)}) es el que dice tu banco.` });
 }
 // El saldo de cada cuenta con extracto es el que dice el banco: si la app calcula otro, se anota el del banco (un registro de saldos de ese día;
@@ -195,7 +195,7 @@ async function autoCuadre() {
     const ext = cfg[`saldo_extracto:${c.nombre}`], f = ext && DateTime.fromISO(ext.fecha);
     if (!f || !f.isValid || f > hoy.endOf("day") || ultima > f.endOf("day")) continue;  // sin extracto, futuro, o ya anotaste saldos después
     const u = [...P].reverse().find((x) => x.fecha < f.startOf("day")) || P[0];
-    const est = proyectar(u, f.endOf("day")).cuentas.saldos[c.nombre];
+    const est = proyectar(u, f.endOf("day"), true).cuentas.saldos[c.nombre];
     if (est == null) continue;
     // El saldo que ya hubiera anotado de ESE MISMO día: el banco va publicando durante el día, así que un extracto bajado
     // por la mañana deja un saldo que el de la tarde desmiente. Los movimientos sí cuadran (el nuevo extracto los trae), y
@@ -213,7 +213,7 @@ async function autoCuadre() {
   // Se parte de lo que ya hubiera anotado ese día (para no tocar lo que pusieras a mano en otras cuentas) y, si no hay, de
   // los saldos que salen de los movimientos; encima van los que dice el banco.
   const u0 = delDia[0].u, base = delDia.map((x) => x.mismoDia).find(Boolean);
-  const saldos = { ...(base ? base.cuentas.saldos : proyectar(u0, F.endOf("day")).cuentas.saldos) };
+  const saldos = { ...(base ? base.cuentas.saldos : proyectar(u0, F.endOf("day"), true).cuentas.saldos) };
   for (const x of delDia) saldos[x.c.nombre] = x.ext.saldo;
   const r = await FB.api("/api/saldo_banco", { fecha: F.toISODate(), saldos });
   if (!r.ok) return false;

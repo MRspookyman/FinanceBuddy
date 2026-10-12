@@ -31,9 +31,10 @@ Python (biblioteca estándar + `openpyxl`/`xlrd`/`pystray`) · SQLite · interfa
 ```bat
 python -m financebuddy --ejemplo --sin-navegador --puerto 8830 --hoy 2026-09-30   :: app con datos inventados
 python -m unittest discover -s pruebas -p "test_*.py" -t .     :: 230 pruebas de Python
-python pruebas\run.py --tests                                  :: 21 pantallas sin errores + 133 pruebas de cálculos
-python pruebas\run.py --flujos                                 :: 31 flujos con clics de verdad
+python pruebas\run.py --tests                                  :: 21 pantallas sin errores + 155 pruebas de cálculos
+python pruebas\run.py --flujos                                 :: 35 flujos con clics de verdad
 python pruebas\run.py --capturas                               :: capturas en claro y oscuro (%TEMP%\fb-pruebas)
+python pruebas\run.py anual --guion=clics.js --shot             :: unos clics sueltos y la captura de después (skill fb-probar)
 python pruebas\evaluar_jev.py / evaluar_precios.py             :: contra los servicios reales (lo ejecuta el usuario)
 build.bat                                                      :: pasa TODO lo anterior y genera dist\FinanceBuddy\
 ```
@@ -102,6 +103,12 @@ Para añadir algo: `modelo.CAMPOS` **y** `FORMS` (`web/paneles/formularios.js`) 
 - En el Inicio van a la vista dos avisos `warn`; el resto y los `info`, plegados en «y N avisos más» (`repartirAvisos`).
   Cada aviso lleva una `clave` con el mes o el dato que lo provoca: la × la guarda en `config.avisos_descartados` y no vuelve a salir
   hasta que eso cambia. Un aviso nuevo sin clave no se puede quitar.
+- Qué automático quita el pago real de un fijo lo decide `pagosDeFijos` (`datos.js`), no el mes de su fecha sin más. Si el banco lo
+  apuntó en otro mes (`ext_fecha`, `diaBanco`: fecha valor 31/08, apuntado el 01/09), paga de los dos el mes en que el fijo tocaba
+  **más cerca** (con día 1, septiembre; con día 31, agosto; en empate, el del banco). Y si un mes tiene dos pagos y el de al lado
+  ninguno, el que cae más cerca del cargo del mes de al lado paga ese. Un pago solo, con fecha y banco en el mismo mes, paga siempre
+  ese mes, por lejos que caiga del `dia` del fijo. El pago sigue contando en el mes de su fecha: solo cambia qué automático desaparece.
+  Las aportaciones fijas siguen enlazándose por su fecha (`aportacionesSinLlegar` mira lo mismo).
 - «Deshacer» repone la foto **entera** de antes, así que cualquier otra escritura la anula (`App.manejar`). Una ruta nueva
   que solo consulte va en `servidor.NO_ANULAN_DESHACER`; si no, el «Deshacer» desaparece al llamarla.
 - Si cambia el formato de los datos (también un campo nuevo: una app anterior lo borraría al editar), **sube `almacen.VERSION_ESQUEMA`**:

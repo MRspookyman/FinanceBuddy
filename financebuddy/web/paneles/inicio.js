@@ -219,6 +219,7 @@ function heroGasto(padre, S, M) {
     // «de este mes»: la insignia del menú cuenta todo lo que hay por revisar y aquí solo lo del mes que se ve
     enlace(h.createDiv({ cls: "pie" }), `Incluye ${[g ? `${eur(g, 0)} de gasto` : "", e ? `${eur(e, 0)} de entradas` : ""].filter(Boolean).join(" y ")} sin revisar (${sinRev.length} movimiento${sinRev.length > 1 ? "s" : ""} de ${actual ? "este" : "ese"} mes) →`, "#revisar");
   }
+  if (actual && fechaDatos()) permitirGasto(h);
   if (fechaDatos()) {  // el ritmo del mes, dentro de la portada: cómo vas frente a tu media y tu límite
     const g = h0.createDiv({ cls: "graf" });
     ayuda(g.createDiv({ cls: "l", text: "Ritmo del mes" }), "Tu gasto variable acumulado día a día, comparado con lo que sueles llevar a estas alturas del mes.");
@@ -229,6 +230,43 @@ function heroGasto(padre, S, M) {
   dato(actual ? "Ha entrado" : "Entró", eur(M.ingresos, 0), "entra");
   dato(actual ? "Ha salido" : "Salió", eur(M.gastos, 0), "sale");
   dato("Ahorro del mes", eurS(M.ahorro, 0), M.ahorro < 0 ? "neg" : "", M.ahorro > 0 && isFinite(M.tasa) ? `${pct(M.tasa)} de lo que ${actual ? "ha entrado" : "entró"}` : "");
+}
+
+// «¿Me puedo permitir un gasto?»: plegado bajo la barra de la portada. Escribes un importe y contesta con un veredicto y tres
+// cifras (puedoPermitirme). No guarda nada: el importe y si está abierto viven en FB.estado, para sobrevivir a FB.refrescar().
+function permitirGasto(padre) {
+  const E = FB.estado.permitir = FB.estado.permitir || { abierto: false, texto: "" };
+  const d = padre.createEl("details", { cls: "fb-permitir" });
+  d.open = E.abierto;
+  d.addEventListener("toggle", () => { E.abierto = d.open; });
+  d.createEl("summary", { text: "¿Me puedo permitir un gasto?" });
+  const fila = d.createDiv({ cls: "campo" });
+  fila.createEl("label", { text: "Importe del gasto", attr: { for: "fb-permitir-importe" } });
+  const inp = fila.createEl("input", { cls: "corto", attr: { id: "fb-permitir-importe", type: "text", inputmode: "decimal", autocomplete: "off", placeholder: "300" } });
+  fila.createSpan({ text: "€" });
+  inp.value = E.texto;
+  const res = d.createDiv({ cls: "res", attr: { "aria-live": "polite" } });
+  const pintar = () => {
+    res.empty();
+    const imp = leerImporte(E.texto);
+    if (!E.texto.trim()) return;
+    if (!(imp > 0)) { res.createDiv({ cls: "nota", text: "Escribe solo el importe, por ejemplo 300 o 1.200,50." }); return; }
+    const D = datosPermitir(), P = puedoPermitirme(imp, D);
+    res.createDiv({ cls: "veredicto " + P.nivel, text: P.texto });
+    const linea = (k, v, cls) => { const r = res.createDiv({ cls: "r" }); r.createSpan({ cls: "k", text: k }); return r.createSpan({ cls: "n " + (cls || ""), text: v || "" }); };
+    if (P.limite == null) enlace(linea("Tu límite del mes", "no tienes límite de gasto puesto · "), "Ponlo en Ajustes →", "#ajustes");
+    else linea("Tu límite del mes", P.limite <= -0.5 ? `te pasarías ${eur(-P.limite, 0)}` : `te quedarían ${eur(P.limite, 0)}`, P.limite <= -0.5 ? "pasa" : "");
+    const finDe = `Al acabar ${mesLbl(hoyKey).toLowerCase().split(" ")[0]}`;
+    if (P.finMes == null) enlace(linea(finDe, "faltan tus saldos · "), "Anótalos →", "#cerrar");
+    else linea(finDe, `tendrías ${eur(P.finMes, 0)} en tus cuentas`, P.finMes <= -0.5 ? "mal" : "");
+    if (P.minimo) linea("Lo más bajo de los próximos meses", `${eur(P.minimo.saldo, 0)} en ${mesLbl(P.minimo.key).toLowerCase()}`, P.minimo.saldo <= -0.5 ? "mal" : "");
+    else if (D.sinIngresos) enlace(linea("Lo más bajo de los próximos meses", "faltan tus ingresos fijos · "), "Detectar mis fijos →", "#fijos");
+    else if (P.finMes == null) linea("Lo más bajo de los próximos meses", "faltan tus saldos");
+    if (P.nivel === "ojo" && P.bajoColchon) res.createDiv({ cls: "nota", text: `Tu colchón es de ${eur(D.colchon.importe, 0)} en la cuenta del día a día; hoy te sobran ${eur(D.colchon.sobra, 0)}.` });
+    res.createDiv({ cls: "nota", text: `Con tus movimientos hasta el ${fechaDatos().setLocale("es").toFormat("d 'de' LLLL")}: lo que hayas gastado después no está contado. Es solo una cuenta: no se apunta nada.` });
+  };
+  inp.oninput = () => { E.texto = inp.value; pintar(); };
+  pintar();
 }
 
 // Media de gasto variable de los últimos meses completos con movimientos, redondeada a 50 €
@@ -453,10 +491,21 @@ function tarjetaEscenarios(p) {
     caja.empty();
     const S = escenariosPrevision(FB.estado.escenarios || {});
     caja.createDiv({ cls: "fin-note", text: "Para no fiarte de una sola cifra, la misma previsión con tres supuestos:" });
-    tabla(caja, [{ t: "Escenario" }, { t: "Supone que…" }, { t: `En ${mesLbl(S[1].final.key).toLowerCase()}`, num: true }, { t: "Lo más bajo", num: true }],
-      S.map((s) => conFila([s.nombre,
-        s.id === "normal" ? "todo sigue igual" : `gastas ${cuanto(s.gasto, "lo de siempre")} y te entra ${cuanto(s.ingresos, "lo previsto")}`,
-        eur(s.final.saldo, 0), `${eur(s.minimo.saldo, 0)} en ${mesCorto(s.minimo.key)}`], s.id === "normal" ? "fb-normal" : "")));
+    // Una fila por escenario: el supuesto va debajo del nombre para que las dos cifras quepan en una tarjeta de un tercio.
+    const t = caja.createEl("table", { cls: "fin-table fb-esc-tabla" });
+    const hr = t.createEl("thead").createEl("tr");
+    hr.createEl("th", { text: "Escenario", attr: { scope: "col" } });
+    for (const c of [`En ${mesLbl(S[1].final.key).toLowerCase()}`, "Lo más bajo"]) hr.createEl("th", { text: c, cls: "num", attr: { scope: "col" } });
+    const tb = t.createEl("tbody");
+    for (const s of S) {
+      const tr = tb.createEl("tr", { cls: s.id === "normal" ? "fb-normal" : "" });
+      const n = tr.createEl("th", { attr: { scope: "row" } });
+      n.createDiv({ cls: "t", text: s.nombre });
+      n.createDiv({ cls: "s", text: s.id === "normal" ? "todo sigue igual" : `gastas ${cuanto(s.gasto, "lo de siempre")}, te entra ${cuanto(s.ingresos, "lo previsto")}` });
+      tr.createEl("td", { cls: "num", text: eur(s.final.saldo, 0) });
+      const m = tr.createEl("td", { cls: "num", text: eur(s.minimo.saldo, 0) });
+      m.createEl("small", { text: ` en ${mesLbl(s.minimo.key).toLowerCase()}` });
+    }
     caja.createDiv({ cls: "fin-note", text: "«Gastas» es tu gasto variable y los gastos fijos que no tienes dados de alta. Tus fijos y tus aportaciones no cambian: ya sabes cuánto son."
       + (hayIngresosFijos() ? "" : " Como tus ingresos aún no están como fijos, lo que te entra no cambia nada.") });
   };
