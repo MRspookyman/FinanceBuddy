@@ -50,7 +50,19 @@ No estimes un contraste a ojo: mídelo.
 
 ## Las tres tandas (lo que tiene que quedar en verde)
 ```
-python -m unittest discover -s pruebas -p "test_*.py" -t .
-python pruebas\run.py --tests
-python pruebas\run.py --flujos
+python .claude\herramientas\tandas.py              :: las tres a la vez (puertos 8797 y 8798), salida de 4 líneas
+python .claude\herramientas\tandas.py --actualizar :: y, si todo pasa, pone al día los recuentos de CLAUDE.md
+python .claude\herramientas\tandas.py --solo=py    :: solo una: py, pantallas o flujos
 ```
+Por separado, si hace falta ver la salida entera: `python -m unittest discover -s pruebas -p "test_*.py" -t .`,
+`python pruebas\run.py --tests` y `python pruebas\run.py --flujos`.
+
+## Repasar un cambio sin pensar
+```
+python .claude\herramientas\chequeo_diff.py --archivos=a.js,b.py
+```
+Las trampas de `CLAUDE.md` que se ven en el diff (⛔ casi seguro un fallo, ⚠ mirar) y qué modelo merece el revisor.
+
+## Ahorrar
+Una captura es lo más caro que puedes leer. Si lo que quieres saber es un texto o un número, sácalo con un guion de clics que lo
+devuelva (`return "dato: " + valor`) en vez de capturar la pantalla. En oscuro, solo si miras colores.

@@ -4,7 +4,7 @@
       {
         "matcher": "Bash|PowerShell",
         "hooks": [
-          { "type": "command", "command": "python .claude/hooks/puerto_real.py", "timeout": 10 }
+          { "type": "command", "command": "python \"$CLAUDE_PROJECT_DIR/.claude/hooks/puerto_real.py\"", "timeout": 10 }
         ]
       }
     ]

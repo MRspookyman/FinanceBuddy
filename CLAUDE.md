@@ -30,14 +30,21 @@ Python (biblioteca estándar + `openpyxl`/`xlrd`/`pystray`) · SQLite · interfa
 
 ```bat
 python -m financebuddy --ejemplo --sin-navegador --puerto 8830 --hoy 2026-09-30   :: app con datos inventados
-python -m unittest discover -s pruebas -p "test_*.py" -t .     :: 230 pruebas de Python
+python -m unittest discover -s pruebas -p "test_*.py" -t .     :: 237 pruebas de Python
 python pruebas\run.py --tests                                  :: 21 pantallas sin errores + 155 pruebas de cálculos
 python pruebas\run.py --flujos                                 :: 35 flujos con clics de verdad
 python pruebas\run.py --capturas                               :: capturas en claro y oscuro (%TEMP%\fb-pruebas)
 python pruebas\run.py anual --guion=clics.js --shot             :: unos clics sueltos y la captura de después (skill fb-probar)
 python pruebas\evaluar_jev.py / evaluar_precios.py             :: contra los servicios reales (lo ejecuta el usuario)
 build.bat                                                      :: pasa TODO lo anterior y genera dist\FinanceBuddy\
+python .claude\herramientas\tandas.py --actualizar             :: las tres tandas a la vez, resumidas; pone al día estos recuentos
+python .claude\herramientas\chequeo_diff.py                    :: las trampas de abajo que se ven en el diff (⛔ / ⚠)
+python .claude\herramientas\backlog.py resumen                 :: el backlog de los agentes (skills revision y fb-tarea)
 ```
+
+`pruebas/test_arquitectura.py` vigila lo que se rompe sin que falle nada más: `import`/`export` o nombres de nivel superior
+repetidos entre paneles (comparten ámbito), SQL que escribe fuera de `almacen.py`, dependencias nuevas, módulos nuevos que
+salen a internet y recursos cargados de fuera.
 
 Las tres tandas de pruebas tienen que quedar en verde antes de cerrar una tarea. `build.bat` las ejecuta todas; si no hay
 navegador instalado, `run.py` devuelve 3 y el build avisa y sigue.
