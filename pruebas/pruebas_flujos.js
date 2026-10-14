@@ -94,20 +94,22 @@ return (async () => {
     const cuenta = regs("cuenta").find((c) => regs("movimiento").some((m) => m.cuenta === c.nombre));
     if (!cuenta) return "no hay ninguna cuenta con movimientos";
     if (!(await ir(`#editar/cuenta/${cuenta.id}`))) return "no se abre la ficha de la cuenta";
-    const dichos = [];
-    const original = window.confirm;
-    window.confirm = (t) => { dichos.push(String(t)); return dichos.length === 1; };  // «sí» al primero (borrar), «no» al aviso
-    try {
-      const b = porTexto("button", "Borrar");
-      if (!b) return "no hay botón «Borrar»";
-      b.click();
-      const aviso = await hasta(() => dichos.find((t) => /se está usando/i.test(t)));
-      if (!aviso) return "no avisa de que la cuenta se está usando: " + JSON.stringify(dichos);
-      if (!/movimientos/i.test(aviso)) return "el aviso no dice cuántos movimientos la usan: " + aviso;
-      await dormir(300);
-      await FB.recargar();
-      if (!regs("cuenta").some((c) => c.id === cuenta.id)) return "¡la cuenta se ha borrado aunque he dicho que no!";
-    } finally { window.confirm = original; }
+    const dlg = () => document.querySelector("dialog.fb-dialogo[open]");
+    const b = porTexto("button", "Borrar");
+    if (!b) return "no hay botón «Borrar»";
+    b.click();
+    const primero = await hasta(dlg);
+    if (!primero) return "no sale el diálogo de confirmar el borrado";
+    if (document.activeElement.textContent !== "Cancelar") return "el foco no empieza en «Cancelar»: " + document.activeElement.textContent;
+    porTexto("button", "Borrar", primero).click();  // «sí» al primero (borrar), «no» al aviso
+    const aviso = await hasta(() => dlg() && /se está usando/i.test(dlg().textContent) && dlg().textContent);
+    if (!aviso) return "no avisa de que la cuenta se está usando";
+    if (!/movimientos/i.test(aviso)) return "el aviso no dice cuántos movimientos la usan: " + aviso;
+    porTexto("button", "Cancelar", dlg()).click();
+    await dormir(300);
+    await FB.recargar();
+    if (dlg()) return "el diálogo no se cierra";
+    if (!regs("cuenta").some((c) => c.id === cuenta.id)) return "¡la cuenta se ha borrado aunque he dicho que no!";
   });
 
   // 6. Ajustes: guardar una segunda carpeta para las copias de seguridad
@@ -688,24 +690,30 @@ return (async () => {
   // 32. Actualizar saldos propone lo mismo que luego comprueba el aviso «No cuadra»: lo que el banco ha apuntado de verdad. Con un
   // fijo y una aportación fija de septiembre que no han llegado, aceptar la propuesta tal cual no puede dejar el aviso en el Inicio.
   await caso("Actualizar saldos: aceptar lo que propone no deja «No cuadra» aunque haya fijos sin llegar", async () => {
-    const alta = async (datos) => { const r = await FB.api("/api/guardar", { tipo: "recurrente", datos }); return r.ok ? "" : r.mensaje || "error"; };
-    const e = await alta({ nombre: "Fijo que no llega", clase: "gasto", categoria: "Otros", importe: 40, dia: 20, desde: "2026-09-01", cuenta: "Cuenta nómina" })
-      || await alta({ nombre: "Aportación que no llega", clase: "aportacion", importe: 50, dia: 25, desde: "2026-09-01", activo_inversion: "Bitcoin", cuenta: "Bróker" });
-    if (e) return "no se dan de alta los fijos de prueba: " + e;
-    await FB.recargar();
-    if (!(await ir("#cerrar"))) return "no se abre Actualizar saldos";
-    const boton = () => todos("button.fb-btn").find((b) => /^(Cerrar |Guardar los saldos)/.test(plano(b)));
-    if (!(await hasta(boton))) return "no está el botón de guardar";
-    escribir(campo("Fecha"), "2026-09-30");  // los saldos de hoy, pida el mes que pida (otro flujo ha borrado los cierres)
-    const pie =(n) => plano(campo(n).nextElementSibling);
-    for (const n of ["Cuenta nómina", "Bróker"]) if (!pie(n).startsWith("según los movimientos: ")) return `${n} no trae su propuesta: ${pie(n)}`;
-    const propuesta = ["Cuenta nómina", "Bróker"].map((n) => `${n} ${campo(n).value}`).join(", ");
-    boton().click();
-    if (!(await hasta(() => app().dataset.vista === "inicio" && app().querySelector(".fin-page > *")))) return "tras guardar no vuelve al Inicio";
-    const aviso = /No cuadra[^·]*/.exec(plano(app()));
-    if (aviso) return `aceptando la propuesta (${propuesta}) el Inicio dice: ${aviso[0]}`;
-    for (const n of ["Fijo que no llega", "Aportación que no llega"]) await FB.api("/api/borrar", { tipo: "recurrente", id: regs("recurrente").find((r) => r.nombre === n).id });  // dejarlo como estaba
-    await FB.recargar();
+    const cierresAntes = new Set(regs("cierre").map((c) => c.id));
+    try {
+      const alta = async (datos) => { const r = await FB.api("/api/guardar", { tipo: "recurrente", datos }); return r.ok ? "" : r.mensaje || "error"; };
+      const e = await alta({ nombre: "Fijo que no llega", clase: "gasto", categoria: "Otros", importe: 40, dia: 20, desde: "2026-09-01", cuenta: "Cuenta nómina" })
+        || await alta({ nombre: "Aportación que no llega", clase: "aportacion", importe: 50, dia: 25, desde: "2026-09-01", activo_inversion: "Bitcoin", cuenta: "Bróker" });
+      if (e) return "no se dan de alta los fijos de prueba: " + e;
+      await FB.recargar();
+      if (!(await ir("#cerrar"))) return "no se abre Actualizar saldos";
+      const boton = () => todos("button.fb-btn").find((b) => /^(Cerrar |Guardar los saldos)/.test(plano(b)));
+      if (!(await hasta(boton))) return "no está el botón de guardar";
+      escribir(campo("Fecha"), "2026-09-30");  // los saldos de hoy, pida el mes que pida (otro flujo ha borrado los cierres)
+      const pie =(n) => plano(campo(n).nextElementSibling);
+      for (const n of ["Cuenta nómina", "Bróker"]) if (!pie(n).startsWith("según los movimientos: ")) return `${n} no trae su propuesta: ${pie(n)}`;
+      const propuesta = ["Cuenta nómina", "Bróker"].map((n) => `${n} ${campo(n).value}`).join(", ");
+      boton().click();
+      if (!(await hasta(() => app().dataset.vista === "inicio" && app().querySelector(".fin-page > *")))) return "tras guardar no vuelve al Inicio";
+      const aviso = /No cuadra[^·]*/.exec(plano(app()));
+      if (aviso) return `aceptando la propuesta (${propuesta}) el Inicio dice: ${aviso[0]}`;
+    } finally {  // dejarlo como estaba, pase lo que pase: los dos fijos y el cierre que guarda el flujo
+      await FB.recargar();
+      for (const n of ["Fijo que no llega", "Aportación que no llega"]) for (const r of regs("recurrente").filter((x) => x.nombre === n)) await FB.api("/api/borrar", { tipo: "recurrente", id: r.id });
+      for (const c of regs("cierre").filter((x) => !cierresAntes.has(x.id))) await FB.api("/api/borrar", { tipo: "cierre", id: c.id });
+      await FB.recargar();
+    }
   });
 
   // 33. El valor de un activo se puede anotar sin fecha: su ficha se abre igual y lo dice. Y si luego se vende del todo, ese valor

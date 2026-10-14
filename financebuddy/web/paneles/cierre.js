@@ -15,8 +15,9 @@ function vistaCerrar() {
   let fecha = pendienteAnt ? mesDT(ant).endOf("month") : hoy;
   const resumen = resumenMes(ant);
   if (resumen.length) { const pr = panel(root, `Así fue ${mesLbl(ant).toLowerCase()}`); for (const t of resumen) pr.createDiv({ cls: "fin-note fb-frase", text: t }); }
-  const p = panel(root, pendienteAnt ? `Cierre de ${mesLbl(ant).toLowerCase()}` : "Registro de saldos de hoy");
-  if (!pendienteAnt && cierres().some((c) => c.mes === ant)) p.createDiv({ cls: "fin-note", text: `${mesLbl(ant)} ya está cerrado. Puedes anotar los saldos de hoy si quieres (por ejemplo, para comprobar que todo cuadra).` });
+  const p = panel(root, "Saldos");
+  const tit = p.querySelector("h3 span");
+  const nota = p.createDiv({ cls: "fin-note" });
   const form = p.createDiv({ cls: "fb-form" });
   const campos = {}, refs = { s: {}, v: {} };
   // Qué mes cierran estos saldos, si cierran alguno: tienen que ser de su último día o de después (el servidor aplica lo mismo).
@@ -28,8 +29,12 @@ function vistaCerrar() {
   const pintar = () => {
     form.innerHTML = "";
     refs.s = {}; refs.v = {};
+    tit.textContent = cierra() ? `Cierre de ${mesLbl(mesDe()).toLowerCase()}` : `Saldos del ${fecha.toFormat("dd/MM")}`;
+    nota.textContent = !cierra() && cierres().some((c) => c.mes === ant) ? `${mesLbl(ant)} ya está cerrado: esto es solo un registro más, por ejemplo para comprobar que todo cuadra.` : "";
+    nota.hidden = !nota.textContent;
     const u = [...P].reverse().find((x) => x.fecha < fecha.startOf("day")) || P[P.length - 1];
     const pr = u ? proyectar(u, fecha.endOf("day"), true) : null;  // como el aviso «No cuadra»: solo lo que el banco ya ha apuntado
+    const pInicio = u ? proyectar(u, fecha.endOf("day")) : null;  // lo que cuenta el Inicio: con los fijos y aportaciones que aún no han llegado
     form.createDiv({ cls: "et", text: "Fecha" });
     const iF = form.createEl("input", { attr: { type: "date" } }); iF.value = fecha.toISODate();
     iF.onchange = () => { const d = DateTime.fromISO(iF.value); if (d.isValid) { fecha = d; pintar(); } };
@@ -44,7 +49,25 @@ function vistaCerrar() {
       i.value = campos["s:" + c.nombre] ?? prefill;
       i.oninput = () => (campos["s:" + c.nombre] = i.value);
       refs.s[c.nombre] = i;
-      form.createDiv({ cls: "s", text: est != null ? `según los movimientos: ${eur(est)}${ext ? ` · último extracto: ${eur(ext.saldo)} el ${fmtISO(ext.fecha)}` : ""}` : "saldo de ese día" });
+      const sinLlegar = est != null && pInicio ? Math.abs(pInicio.cuentas.saldos[c.nombre] - est) : 0;
+      form.createDiv({ cls: "s", text: est != null ? `según los movimientos: ${eur(est)}${sinLlegar >= 0.01 ? ` (sin contar ${eur(sinLlegar)} de fijos o aportaciones que aún no han llegado)` : ""}${ext ? ` · último extracto: ${eur(ext.saldo)} el ${fmtISO(ext.fecha)}` : ""}` : "saldo de ese día" });
+      if (est != null) {  // mientras escribes: si cuadra con los movimientos o cuánto falta, y dónde buscar esa diferencia
+        const cu = form.createDiv({ cls: "s cuadre", attr: { "aria-live": "polite" } });
+        const cuadre = () => {
+          cu.innerHTML = "";
+          const v = parseFloat(i.value);
+          if (campos["s:" + c.nombre] == null) { cu.hidden = true; return; }
+          cu.hidden = false;
+          if (!isFinite(v)) { cu.hidden = true; return; }
+          const d = Math.round((v - est) * 100) / 100;
+          if (d === 0) { cu.appendText("Cuadra con tus movimientos ✓"); return; }
+          cu.appendText(`${d > 0 ? "Tienes" : "Te faltan"} ${eur(Math.abs(d))} ${d > 0 ? "más de lo que suman" : "respecto a lo que suman"} tus movimientos: ${d > 0 ? "falta un ingreso o sobra un gasto" : "falta un gasto o sobra un ingreso"}. `);
+          accion(cu, `Buscar ${eur(Math.abs(d))}`, () => { FB.estado.masFiltros = null; guardarEstado({ mes: keyDe(fecha), busqueda: nf(Math.abs(d), 2, 2), hist: true }); FB.ir("#movimientos/lista"); }, "Abre tus movimientos buscando ese importe");
+        };
+        const antes = i.oninput;
+        i.oninput = () => { antes(); cuadre(); };
+        cuadre();
+      }
       if (est != null && ext && ext.fecha <= fecha.toISODate() && Math.abs(ext.saldo - est) >= 0.01) {  // el banco dice otra cosa: por qué puede ser
         const dif = ext.saldo - est;
         const n = form.createDiv({ cls: "s aviso-saldo" });

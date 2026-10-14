@@ -147,32 +147,57 @@ const diaBanco = (m) => { const b = m.p && m.p.ext_fecha && toDate(m.p.ext_fecha
 // 31/08; un gimnasio del día 31 paga agosto. Y con la misma cuenta, si un mes tiene dos pagos del mismo fijo y el de al lado
 // ninguno, el que cae más cerca del día en que tocaba en el mes de al lado paga ese (la nómina de septiembre cobrada el 31/08; el
 // recibo de septiembre cargado el 01/10). Dos cargos seguidos el mismo mes (un cobro repetido) no pagan el mes siguiente.
+// Además, en los repartos por mes (`mesDe`) un gasto de fijo cuenta en el mes que paga, no en el de su fecha: si no, agosto enseñaría
+// dos alquileres y septiembre ninguno. Solo dentro del mismo año (el total del año no cambia) y sin tocar el movimiento ni su fecha.
+// Mes en que cuenta un gasto de fijo cuyo pago paga el mes de `d` (null si cuenta donde su fecha). Solo si `d` y su fecha caen en
+// meses naturales distintos y del mismo año: con «tu mes» a partir del 25, fecha 24/05 y banco 25/05 no se mueven.
+const mesPagoDe = (m, d, D = diaInicio) => {
+  if (m.clase !== "gasto" || m.auto || keyCal(d) === keyCal(m.fecha)) return undefined;
+  const k = periodoKey(d, D), f = periodoKey(m.fecha, D);
+  return k !== f && k.slice(0, 4) === f.slice(0, 4) ? k : undefined;
+};
 function pagosDeFijos(reales) {
   const dias = new Map(recurrentes().map((r) => [r.nombre, r.dia]));
   const lejos = (a, b) => Math.abs(a.startOf("day").diff(b.startOf("day"), "days").days);
   // A cuántos días le queda a un pago hecho el día `d` el cargo del fijo en el mes de `en`.
   const aCuanto = (nombre, d, en) => lejos(d, en.set({ day: Math.min(dias.get(nombre), en.daysInMonth) }));
+  const cuentaEn = (m, d) => { m.mesPago = mesPagoDe(m, d); };
   const por = new Map();
   for (const m of reales) {
+    m.mesPago = undefined;
     if (!dias.has(m.recurrente)) continue;
     const b = diaBanco(m), n = m.recurrente;
     const d = keyCal(b) !== keyCal(m.fecha) && aCuanto(n, m.fecha, m.fecha) < aCuanto(n, b, b) ? m.fecha : b, k = `${n}|${keyCal(d)}`;
     if (!por.has(k)) por.set(k, []);
-    por.get(k).push(d);
+    por.get(k).push({ d, m });
+    cuentaEn(m, d);
   }
   return (r, fecha) => {
     if (por.has(`${r.nombre}|${keyCal(fecha)}`)) return true;
     for (const paso of [-1, 1]) {
       const mesLado = fecha.startOf("month").plus({ months: paso });
       const ds = por.get(`${r.nombre}|${keyCal(mesLado)}`);
-      const i = ds && ds.length > 1 ? ds.findIndex((d) => lejos(d, fecha) < aCuanto(r.nombre, d, mesLado)) : -1;
+      const i = ds && ds.length > 1 ? ds.findIndex(({ d }) => lejos(d, fecha) < aCuanto(r.nombre, d, mesLado)) : -1;
       if (i < 0) continue;
+      cuentaEn(ds[i].m, fecha);
       ds.splice(i, 1);  // ese pago ya no puede pagar también el mes del otro lado
+      return true;
+    }
+    // Un fijo de solo algunos meses (el seguro de marzo) pagado de más cerca de su fecha en un mes en que no toca (28/02, sin extracto
+    // que diga otra cosa): ese único pago, a menos de 20 días de cuando tocaba (a 20 justos no), paga el mes que toca.
+    if (r.meses) for (const paso of [-1, 1]) {
+      const mesLado = fecha.startOf("month").plus({ months: paso });
+      const ds = r.meses.includes(mesLado.month) ? null : por.get(`${r.nombre}|${keyCal(mesLado)}`);
+      if (!ds || ds.length !== 1 || lejos(ds[0].d, fecha) >= 20) continue;
+      cuentaEn(ds[0].m, fecha);
+      ds.splice(0, 1);
       return true;
     }
     return false;
   };
 }
+// Mes (AAAA-MM de «tu mes») en que un movimiento cuenta en los repartos por mes.
+const mesDe = (m) => m.mesPago || keyDe(m.fecha);
 // Los movimientos automáticos de los fijos: uno cada mes que toca, salvo que ese mes tenga ya su pago real (`pagosDeFijos`).
 function fijosAutomaticos(reales) {
   const virtuales = [], pagado = pagosDeFijos(reales);
@@ -207,12 +232,17 @@ const movimientos = () => {
     ...m, previsto: m.fecha > finHoy, gasto: m.clase === "gasto" ? m.importe : m.clase === "reembolso" ? -m.importe : 0,
   })));
 };
+// Los traspasos «por revisar» del banco no son gasto ni ingreso, pero el dinero ya ha salido (o entrado) de su cuenta: solo
+// cuentan en el saldo de esa cuenta (`proyectar`), con su signo. La otra cuenta aún no se sabe: se mueve al clasificarlo.
+const traspasosPorRevisar = () => ((typeof DB !== "undefined" && DB.pendientes) || []).filter((q) => q.tipo_import !== "inversion"
+  && (q.fila || {}).clase === "transferencia" && toDate(q.fila.op) && isFinite(Number(q.fila.importe)))
+  .map((q) => ({ p: q, fecha: toDate(q.fila.op), importe: Number(q.fila.importe), cuenta: txt(q.cuenta) || principal() }));
 // Movimientos agrupados por mes (AAAA-MM), calculado una vez por render: los paneles piden muchos meses.
 let _movsMes;
 const movsDelMes = (key) => {
   if (!_movsMes) {
     const todos = movimientos(), mapa = new Map();
-    for (const m of todos) { const k = keyDe(m.fecha); if (!mapa.has(k)) mapa.set(k, []); mapa.get(k).push(m); }
+    for (const m of todos) { const k = mesDe(m); if (!mapa.has(k)) mapa.set(k, []); mapa.get(k).push(m); }
     _movsMes = mapa;
   }
   return _movsMes.get(key) || [];

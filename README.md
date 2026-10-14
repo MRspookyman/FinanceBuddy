@@ -38,18 +38,23 @@ Solo para **Windows**. Todo en español y en euros.
    - Si una categoría está mal, pulsa el movimiento y elige otra: puedes cambiar a la vez todos los del mismo comercio.
    - O sin salir de *Movimientos → Lista*: cada fila lleva su categoría en un desplegable, y con las casillas eliges varios
      y los pasas a otra de golpe (las partes de un movimiento dividido se cambian una a una). Se puede deshacer.
+     En *Movimientos → Lista*, **Más filtros** (plegado) acota por cuenta, por importe (desde/hasta, sin contar el signo) o solo lo sin revisar.
 5. Una vez al mes, *Ajustes → Actualizar saldos*: anotas lo que tienes en cada cuenta y el valor de tu inversión.
    - Así la app comprueba que no falta ningún movimiento.
    - Un mes queda cerrado con los saldos de su último día (o de después). Si los anotas a mitad de mes se guardan igual, pero
      ese mes se te volverá a pedir cuando acabe.
-6. Con dos o más meses importados, *Ajustes → Detectar fijos*: la app encuentra tus nóminas, alquiler y recibos (lo que se repite cada mes) y te los propone; también te enseña **de dónde viene tu dinero**.
+6. Con dos o más meses importados, *Ajustes → Detectar fijos*: la app encuentra tus nóminas, alquiler y recibos (lo que se repite cada mes) y te los propone; también te enseña **de dónde viene tu dinero** y, si tienes fijos que no son mensuales (un seguro anual, el IBI…), **cuánto apartar al mes** para ellos.
 
 Mientras empiezas, el Inicio enseña **Primeros pasos**: estos pasos en una lista que se tacha sola según los vas haciendo. Con «Ocultar» no vuelve a salir.
+
+Cuando vuelves y hay movimientos o avisos nuevos desde la última vez, el Inicio pone bajo los avisos una línea plegada: «Desde la última vez: 12 movimientos nuevos (del 04/09 al 29/09)». Al desplegarla ves cuánto ha cambiado tu dinero total y qué avisos son nuevos; con «Entendido» desaparece hasta el siguiente cambio. La primera vez no sale.
 
 **Inversión**: lo que vale y lo que has metido en cada activo, ganancia y rentabilidad anual, evolución, cuánto
 aportas cada mes (y cuántos meses seguidos), reparto por tipo (fondos, ETF, cripto, materias primas), participaciones y
 precio medio (si el extracto del bróker las trae, como MyInvestor: «… @ 2»), gastos corrientes, intereses del dinero
-sin invertir y posiciones ya vendidas con su resultado.
+sin invertir y posiciones ya vendidas con su resultado. Plegados bajo la tabla: lo que pagas al año en comisiones
+(valor de cada fondo × su TER; solo los que tienen TER) y los dividendos e intereses cobrados por año, con el
+rendimiento de cada activo (dividendos de los últimos 12 meses ÷ lo que vale hoy).
 **Órdenes y operaciones**: el CSV de **órdenes de fondos** de MyInvestor (*Fondos → Órdenes*: ISIN, importe,
 participaciones) añade las participaciones de cada compra y los **traspasos entre fondos** (vender uno para comprar otro:
 no cuentan como dinero nuevo), que no salen en la cuenta de efectivo. Un Excel de **operaciones con títulos** (Fecha,
@@ -72,11 +77,15 @@ preparar la declaración, no asesoramiento fiscal. En cada dividendo puedes anot
 bruto, lo ya retenido y **lo que te saldría a pagar** (tramos del ahorro, restando las pérdidas de los cuatro años anteriores), y
 «Descargar el año (CSV)» lo saca a Excel. Una venta con pérdidas en la que compraste lo mismo en los dos meses de antes o de
 después (un año en fondos de inversión) se marca como «podría no contar»: Hacienda no deja restar esa pérdida hasta que vendas lo
-que compraste. Se sigue restando, pero la pantalla te dice cuánto saldría si no contara. Tipos de activo: fondo, ETF, acción, cripto, materias primas, plan de pensiones,
+que compraste. Se sigue restando, pero la pantalla te dice cuánto saldría si no contara. En la ficha de cada activo, «¿Qué pasa si
+vendo hoy?» calcula (sin guardar nada) la ganancia o pérdida de vender cierto número de participaciones, o todas, por FIFO y con lo
+que vale hoy, y avisa si cae en esa regla. Tipos de activo: fondo, ETF, acción, cripto, materias primas, plan de pensiones,
 bono e inmueble.
 
 **Mi año** (*Inicio → Mi año*, *Movimientos → Mi año* o la tecla **G**): lo que entró, salió y ahorraste en el año, mes a mes y por categoría, comparado con el
-año anterior (en el año en curso, con los mismos meses del anterior); tu mejor y tu peor mes, tu patrimonio de enero a diciembre
+año anterior (en el año en curso, con los mismos meses del anterior), con un gráfico de rosco de tus cinco categorías de más
+gasto y el resto juntas; la media al mes (solo meses ya acabados), lo que más subió y lo que más bajó, el ritmo del año (plegado, con 3 meses o más)
+y **Imprimir / guardar como PDF** (sin menús ni botones, en blanco y negro; con el modo discreto activo, los importes salen tapados); tu mejor y tu peor mes, tu patrimonio de enero a diciembre
 y lo que metiste y ganó tu inversión. Ingresos y gastos van por *tu mes* (el día en que empieza, en *Ajustes*); patrimonio e
 inversión, por mes natural. Solo cuentan los meses con movimientos importados o apuntados. Pulsa un mes o una categoría para ver
 sus movimientos. **Dónde más gastas**: los diez comercios en los que más gasto variable dejaste ese año, con cuántas compras y
@@ -184,8 +193,8 @@ que no tienes dados de alta (un seguro, un recibo que no llega cada mes), y te d
 mes) y con «Hecho» pasan solos a su siguiente fecha. En *Fijos* ves lo que suman al mes y al año.
 
 **Avisos** (*Inicio*): además de lo de siempre, la app te dice si **te han cobrado una comisión**, si un **cobro parece repetido**
-(mismo comercio e importe en dos días), si una **aportación fija no ha llegado** a tu bróker (la orden se paró o falló el cargo) y si
-tus **copias de seguridad están solo en el mismo disco** que tus datos. Cada uno se quita con su × y no vuelve.
+(mismo comercio e importe en dos días), si una **aportación fija no ha llegado** a tu bróker (la orden se paró o falló el cargo), si el **día de un fijo no casa con cuándo se paga** de verdad (el alquiler que
+tienes en el 20 y se cobra el 3) y si tus **copias de seguridad están solo en el mismo disco** que tus datos. Cada uno se quita con su × y no vuelve.
 
 **Avisos de Windows** (*Ajustes*, apagados de serie y sin internet): con la app en marcha, Windows te avisa de los recordatorios
 (una vez al día) y de cuándo toca importar (una vez a la semana). Para que lleguen sin tener que abrirla, activa también *Abrir

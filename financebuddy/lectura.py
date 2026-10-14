@@ -93,6 +93,10 @@ def con_cifras(v):
     en blanco, un rótulo o un total sin fecha, no."""
     return v is not None and not isinstance(v, bool) and bool(re.search(r"\d", str(v)))
 
+def _miles_bien(s, sep):
+    """¿«1.234.567» está agrupado de tres en tres (el primer grupo, de 1 a 3 cifras)?"""
+    return re.fullmatch(r"[1-9]?\d{1,2}(?:" + re.escape(sep) + r"\d{3})+", s) is not None
+
 def numero(v, miles=True):
     """1.234,56 · -12,30 · 1,234.56 · 1234.5 · «12,30 €» → float. None si no es un número.
     «1.234» (un solo punto, sin coma y tres cifras detrás) es 1234, con el punto de miles español; con miles=False (columnas
@@ -105,11 +109,21 @@ def numero(v, miles=True):
     s = s.strip("()")
     if not s or not re.fullmatch(r"[+-]?[\d.,]+-?", s): return None
     if s.endswith("-"): s = "-" + s[:-1]
+    signo, s = (s[0], s[1:]) if s[:1] in "+-" else ("", s)
     if "," in s and "." in s:
-        s = s.replace(".", "").replace(",", ".") if s.rfind(",") > s.rfind(".") else s.replace(",", "")
-    elif "," in s: s = s.replace(",", ".") if s.count(",") == 1 else s.replace(",", "")
-    elif s.count(".") > 1: s = s.replace(".", "")  # 1.234.567
-    elif miles and re.fullmatch(r"[+-]?[1-9]\d{0,2}\.\d{3}", s): s = s.replace(".", "")  # 1.234 (otro punto solo, decimal: 12.5)
+        dec, mil = (",", ".") if s.rfind(",") > s.rfind(".") else (".", ",")
+        entero, _, decimales = s.rpartition(dec)
+        if mil not in entero or dec in entero or not _miles_bien(entero, mil): return None  # «1.23,45», «1,5.23»: no se adivina
+        s = entero.replace(mil, "") + "." + decimales
+    elif "," in s:
+        if s.count(",") == 1: s = s.replace(",", ".")
+        elif _miles_bien(s, ","): s = s.replace(",", "")  # 1,234,567
+        else: return None
+    elif s.count(".") > 1:
+        if not _miles_bien(s, "."): return None  # 1.234.567 sí; «12.345.6» no
+        s = s.replace(".", "")
+    elif miles and re.fullmatch(r"[1-9]\d{0,2}\.\d{3}", s): s = s.replace(".", "")  # 1.234 (otro punto solo, decimal: 12.5)
+    s = signo + s
     try: n = float(s)
     except ValueError: return None
     return -n if neg else n

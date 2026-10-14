@@ -29,15 +29,15 @@ const CAT_ICONO = { "Sin clasificar": "❔", Vivienda: "🏠", Suministros: "�
   Transporte: "🚌", Coche: "🚗", Salud: "💊", Compras: "🛍️", Hogar: "🛋️", Viajes: "✈️", "Formación": "📚", Regalos: "🎁", "Cuidado personal": "💇",
   Mascotas: "🐾", Efectivo: "💶", Comisiones: "🏦", Otros: "📦", "Nómina": "💼", "Otros ingresos": "💰", Apuestas: "🎲", Videojuegos: "🎮", Deporte: "🏀" };
 // Tonos medios y vivos (verde, ámbar, teja, violeta, azul, magenta, oliva, turquesa, naranja, gris): legibles en claro y oscuro.
-const PALETA = ["#2F9E7A", "#E0A526", "#DD5F36", "#7558DD", "#2B82C6", "#CE457C", "#8A9A2E", "#1FA3A3", "#F08A3C", "#7B8794"];
+const PALETA = ["#2F9E7A", "#A27E00", "#DD5F36", "#7558DD", "#2B82C6", "#CE457C", "#8A9A2E", "#1FA3A3", "#CC6C10", "#7B8794"];
 const hashTxt = (s) => [...String(s)].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7);
 // El icono y el color se pueden elegir en cada categoría (Ajustes → Categorías); si no, los de serie.
 const catReg = (n) => categorias().find((c) => c.nombre === n);
 // Colores de serie de las categorías de la plantilla (como en el diseño); las nuevas, uno estable de la paleta.
-const CAT_COLOR = { Vivienda: "#2F9E7A", Supermercado: "#E0A526", "Comer fuera": "#DD5F36", Coche: "#7558DD", Suministros: "#2B82C6",
-  Suscripciones: "#CE457C", Seguros: "#5C7FA8", Ocio: "#F08A3C", Transporte: "#1FA3A3", Salud: "#E0559A", Compras: "#8A9A2E", Hogar: "#B5854A",
+const CAT_COLOR = { Vivienda: "#2F9E7A", Supermercado: "#A27E00", "Comer fuera": "#DD5F36", Coche: "#7558DD", Suministros: "#2B82C6",
+  Suscripciones: "#CE457C", Seguros: "#5C7FA8", Ocio: "#CC6C10", Transporte: "#1FA3A3", Salud: "#E0559A", Compras: "#8A9A2E", Hogar: "#B5854A",
   Viajes: "#3D9BE0", "Formación": "#6C6FD9", Regalos: "#E0486A", "Cuidado personal": "#C45BB8", Mascotas: "#A8743C", Efectivo: "#5FA343",
-  Comisiones: "#7B8794", Apuestas: "#C24A4A", Otros: "#8C95A1", "Nómina": "#1F8F5F", Intereses: "#46A86B", "Otros ingresos": "#6DB04A" };
+  Comisiones: "#7B8794", Apuestas: "#C24A4A", Otros: "#8C95A1", "Nómina": "#1F8F5F", Intereses: "#3E9850", "Otros ingresos": "#5A962E" };
 const catColor = (n) => ((catReg(n) || {}).p || {}).color || CAT_COLOR[n] || PALETA[hashTxt(n) % (PALETA.length - 1)];
 const catIcono = (n) => ((catReg(n) || {}).p || {}).icono || CAT_ICONO[n] || "🏷️";
 const ICONO_CLASE = { transferencia: "🔁", ingreso: "💰", reembolso: "↩️" };
@@ -98,11 +98,49 @@ const panel = (padre, titulo, extra, h_ayuda) => {
   return p;
 };
 const rejilla = (padre = root) => padre.createDiv({ cls: "fin-grid" });
-function vacio(padre, titulo, pista) {
+function vacio(padre, titulo, pista, accion) {  // accion: { texto, ruta } = un único botón hacia lo que toca hacer
   const e = padre.createDiv({ cls: "fin-empty" });
   e.createEl("b", { text: titulo });
   if (pista) e.appendText(pista);
+  if (accion) {
+    const f = e.createDiv({ cls: "fb-fila" });
+    f.style.justifyContent = "center";
+    enlace(f, accion.texto, accion.ruta).className = "fb-btn";
+  }
 }
+// Diálogo propio en vez de confirm()/prompt() del navegador: <dialog> modal (foco atrapado, Esc cierra), con nombre y descripción,
+// el foco empieza en el botón seguro si la acción es destructiva y vuelve al elemento que lo abrió. Devuelve una promesa.
+function dialogoFB(mensaje, { titulo = "¿Seguro?", si = "Aceptar", no = "Cancelar", peligro = false, campo = null } = {}) {
+  return new Promise((resolver) => {
+    const antes = document.activeElement;
+    const d = document.body.appendChild(document.createElement("dialog"));
+    d.className = "fb-dialogo";
+    d.setAttribute("aria-labelledby", "fb-dlg-t"); d.setAttribute("aria-describedby", "fb-dlg-m");  // uno a la vez: es modal
+    const h = d.appendChild(document.createElement("h3")); h.id = "fb-dlg-t"; h.textContent = titulo;
+    const m = d.appendChild(document.createElement("div")); m.id = "fb-dlg-m";
+    for (const t of String(mensaje).split(/\n\n+/)) m.appendChild(document.createElement("p")).textContent = t;
+    let inp = null;
+    if (campo) {
+      inp = d.appendChild(document.createElement("input")); inp.type = "text"; inp.setAttribute("aria-label", campo);
+      inp.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); d.close("si"); } };
+    }
+    const fila = d.appendChild(document.createElement("div")); fila.className = "fb-dialogo-b";
+    const bNo = fila.appendChild(document.createElement("button")); bNo.type = "button"; bNo.className = "fb-btn sec"; bNo.textContent = no;
+    const bSi = fila.appendChild(document.createElement("button")); bSi.type = "button"; bSi.className = "fb-btn" + (peligro ? " sec peligro" : ""); bSi.textContent = si;
+    bNo.onclick = () => d.close("no"); bSi.onclick = () => d.close("si");
+    d.addEventListener("click", (e) => { if (e.target === d) d.close("no"); });
+    d.addEventListener("close", () => {
+      const ok = d.returnValue === "si", v = inp ? inp.value : "";
+      d.remove();
+      if (antes && antes.isConnected && antes.focus) antes.focus();
+      resolver(campo ? (ok ? v : null) : ok);
+    });
+    d.showModal();
+    (inp || (peligro ? bNo : bSi)).focus();
+  });
+}
+const confirmar = (mensaje, opciones) => dialogoFB(mensaje, opciones);
+const pedirTexto = (mensaje, campo, opciones) => dialogoFB(mensaje, { titulo: "Escribe un nombre", si: "Crear", ...opciones, campo });
 function delta(padre, { v, txt: t, bueno }) {
   const g = !v || !bueno ? "" : (v > 0) === (bueno > 0) ? "good" : "bad";
   padre.createSpan({ cls: "fin-delta " + g, text: `${v > 0 ? "▲" : v < 0 ? "▼" : "●"} ${t}` });

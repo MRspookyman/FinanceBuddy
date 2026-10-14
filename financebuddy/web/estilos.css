@@ -10,7 +10,7 @@ body{margin:0;font-family:"Segoe UI Variable Text","Segoe UI",system-ui,-apple-s
  --bg:#F2F4F7;--surface:#FFFFFF;--surface-2:#F0F2F5;--line:#DDE2E8;--ink:#10151C;--ink-2:#525D6B;--ink-3:#616C7A;
  --tinta:#10151C;--on-brand:#fff;
  --brand:#1B7558;--brand-hi:#62D3A6;--brand-soft:color-mix(in srgb,var(--brand) 11%,var(--surface));
- --coral:#DD5F36;--mint:#16804F;--rose:#CF362B;--amber:#B87A00;
+ --coral:#DD5F36;--mint:#137A4A;--rose:#CA3329;--amber:#B87A00;
  /* coral y ámbar para TEXTO: los de arriba no llegan a 4,5:1 sobre blanco (rellenos y bordes siguen con los de arriba) */
  --coral-t:#B4461F;--amber-t:#8F5E00;
  --aurora:var(--brand);
@@ -55,12 +55,12 @@ button{font:inherit}
 #menu a.act{color:var(--ink)}
 #menu::after{content:"";position:absolute;left:0;bottom:0;width:var(--ind-w,0px);height:2px;border-radius:2px 2px 0 0;background:var(--brand);opacity:var(--ind-o,0);transform:translateX(var(--ind-x,0px));transition:transform 220ms var(--ease-out),width 220ms var(--ease-out),opacity 140ms;pointer-events:none}
 #menu a.act svg{color:var(--brand)}
-#menu .num{min-width:20px;padding:1px 6px;border-radius:999px;font-size:.8em;font-weight:700;text-align:center;color:var(--on-brand);background:var(--rose)}
+#menu .num{min-width:20px;padding:1px 6px;border-radius:999px;font-size:.87em;font-weight:700;text-align:center;color:var(--on-brand);background:var(--rose)}
 #cabecera .pie{margin-left:auto;display:flex;align-items:center;gap:6px;flex:none}
 #cabecera .apuntar{display:inline-flex;align-items:center;gap:7px;padding:7px 14px;margin-right:6px;font-size:.88em}
 #cabecera .apuntar svg{width:15px;height:15px}
 #cabecera .apuntar.act{box-shadow:0 0 0 2px var(--surface),0 0 0 4px var(--brand)}
-#datos{font-size:.8em;color:var(--ink-3);margin-right:10px;white-space:nowrap}
+#datos{font-size:.87em;color:var(--ink-3);margin-right:10px;white-space:nowrap}
 #ayuda,#tema,#discreto{all:unset;box-sizing:border-box;cursor:pointer;display:grid;place-items:center;width:34px;height:34px;border-radius:8px;color:var(--ink-2)}
 #ayuda svg,#tema svg,#discreto svg{width:18px;height:18px}
 #tema span,#discreto span{display:none}
@@ -77,7 +77,7 @@ body.discreto input[type=number]{filter:blur(6px)} body.discreto input[type=numb
 #ejemplo{max-width:1320px;margin:0 auto 18px;padding:8px 14px;border-radius:8px;font-size:.87em;border-left:3px solid var(--amber);background:color-mix(in srgb,var(--amber) 12%,var(--surface))}
 #ejemplo[hidden]{display:none}
 .cargando{color:var(--ink-3);padding:60px 0;text-align:center}
-#log{white-space:pre-wrap;color:#c33;font:12px monospace;position:fixed;left:12px;bottom:0;max-width:60vw}
+#log{white-space:pre-wrap;color:#c33;font:13px monospace;position:fixed;left:12px;bottom:0;max-width:60vw}
 #aviso{position:fixed;left:50%;bottom:28px;transform:translate(-50%,20px);opacity:0;pointer-events:none;transition:transform 200ms var(--ease-out),opacity 200ms var(--ease-out);z-index:50;
  padding:11px 18px;border-radius:10px;font-size:.9em;font-weight:600;color:#fff;background:#10151C;box-shadow:var(--shadow-s);max-width:90vw}
 #aviso.on{opacity:1;transform:translate(-50%,0);pointer-events:auto} #aviso.err{background:#B3261E} #aviso .fin-link{color:#fff;text-decoration:underline;margin-left:12px;cursor:pointer}
@@ -91,7 +91,7 @@ body.discreto input[type=number]{filter:blur(6px)} body.discreto input[type=numb
 #atajos dl div{display:flex;align-items:center;gap:14px;padding:7px 0;border-bottom:1px solid var(--line)}
 #atajos dt{flex:none;width:64px} #atajos dd{margin:0;font-size:.92em}
 #atajos kbd{display:inline-block;min-width:26px;padding:2px 7px;border-radius:6px;border:1px solid var(--line);border-bottom-width:2px;background:var(--surface-2);font:600 .85em/1.4 inherit;font-family:inherit;text-align:center;white-space:nowrap}
-#atajos p{margin:0 0 16px;font-size:.86em;color:var(--ink-2)}
+#atajos p{margin:0 0 16px;font-size:.87em;color:var(--ink-2)}
 
 /* ── base de las pantallas ── */
 .fin{--r:12px;--g:14px}
@@ -112,9 +112,9 @@ body.discreto input[type=number]{filter:blur(6px)} body.discreto input[type=numb
 .fin-panel{min-width:0;padding:20px 22px;margin-bottom:var(--g);border-radius:var(--r);background:var(--surface);border:1px solid var(--line)}
 .fin-grid>.fin-panel{margin-bottom:0}
 /* título de tarjeta: etiqueta pequeña en versalitas (lo grande es la cifra, no el rótulo) */
-.fin .fin-panel>h3{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin:0 0 16px;font-size:.8em;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-2)}
+.fin .fin-panel>h3{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin:0 0 16px;font-size:.87em;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-2)}
 .fin .fin-panel>h3 .x{font-size:1.1em;font-weight:600;letter-spacing:0;text-transform:none;color:var(--ink-2)}
-.fin-note{font-size:.86em;color:var(--ink-2);margin-top:10px}
+.fin-note{font-size:.87em;color:var(--ink-2);margin-top:10px}
 .fin-empty{padding:26px 18px;text-align:center;border-radius:var(--r-s);border:1px dashed color-mix(in srgb,var(--ink-3) 45%,var(--line));color:var(--ink-2);font-size:.9em;margin-bottom:var(--g)}
 .fin-panel .fin-empty{margin:0;padding:18px}
 .fin-empty b{display:block;margin-bottom:4px;color:var(--ink);font-size:1.05em}

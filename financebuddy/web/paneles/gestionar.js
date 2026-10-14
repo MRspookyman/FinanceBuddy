@@ -123,7 +123,7 @@ function panelOrdenarCategorias(padre) {
       ul.createEl("li", { text: `«${sO.value}» se borra` });
       const bF = res.createEl("button", { cls: "fb-btn", text: `Fusionar «${sO.value}» en «${sD.value}»`, attr: { type: "button" } });
       bF.onclick = async () => {
-        if (!confirm(`¿Fusionar «${sO.value}» en «${sD.value}»? Podrás deshacerlo justo después.`)) return;
+        if (!(await confirmar(`«${sO.value}» se borra y todo lo suyo pasa a «${sD.value}». Podrás deshacerlo justo después.`, { titulo: "¿Fusionar categorías?", si: "Fusionar" }))) return;
         bF.disabled = true; await hecho(await FB.api("/api/categoria/fusionar", { origen: sO.value, destino: sD.value }));
       };
     };
@@ -138,7 +138,7 @@ function panelOrdenarCategorias(padre) {
       for (const c of sinUso) { const x = chips.createEl("span", { cls: "fb-chip", text: `${catIcono(c.nombre)} ${c.nombre}` }); x.title = nota(c); }
       const bO = b.createEl("button", { cls: "fb-btn sec", text: `Ocultar estas ${sinUso.length}`, attr: { type: "button" } });
       bO.onclick = async () => {
-        if (!confirm(`¿Ocultar ${sinUso.length} categorías sin usar? No se borra nada y podrás deshacerlo.`)) return;
+        if (!(await confirmar(`Se ocultarán ${sinUso.length} categorías sin usar. No se borra nada y podrás deshacerlo.`, { titulo: "¿Ocultar categorías?", si: "Ocultarlas" }))) return;
         bO.disabled = true; await hecho(await FB.api("/api/categoria/ocultar", { nombres: sinUso.map((c) => c.nombre) }));
       };
     }

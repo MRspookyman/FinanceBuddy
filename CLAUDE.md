@@ -30,8 +30,8 @@ Python (biblioteca estándar + `openpyxl`/`xlrd`/`pystray`) · SQLite · interfa
 
 ```bat
 python -m financebuddy --ejemplo --sin-navegador --puerto 8830 --hoy 2026-09-30   :: app con datos inventados
-python -m unittest discover -s pruebas -p "test_*.py" -t .     :: 237 pruebas de Python
-python pruebas\run.py --tests                                  :: 21 pantallas sin errores + 155 pruebas de cálculos
+python -m unittest discover -s pruebas -p "test_*.py" -t .     :: 247 pruebas de Python
+python pruebas\run.py --tests                                  :: 21 pantallas sin errores + 225 pruebas de cálculos
 python pruebas\run.py --flujos                                 :: 35 flujos con clics de verdad
 python pruebas\run.py --capturas                               :: capturas en claro y oscuro (%TEMP%\fb-pruebas)
 python pruebas\run.py anual --guion=clics.js --shot             :: unos clics sueltos y la captura de después (skill fb-probar)
@@ -114,7 +114,7 @@ Para añadir algo: `modelo.CAMPOS` **y** `FORMS` (`web/paneles/formularios.js`) 
   apuntó en otro mes (`ext_fecha`, `diaBanco`: fecha valor 31/08, apuntado el 01/09), paga de los dos el mes en que el fijo tocaba
   **más cerca** (con día 1, septiembre; con día 31, agosto; en empate, el del banco). Y si un mes tiene dos pagos y el de al lado
   ninguno, el que cae más cerca del cargo del mes de al lado paga ese. Un pago solo, con fecha y banco en el mismo mes, paga siempre
-  ese mes, por lejos que caiga del `dia` del fijo. El pago sigue contando en el mes de su fecha: solo cambia qué automático desaparece.
+  ese mes, por lejos que caiga del `dia` del fijo. El movimiento conserva su fecha, pero en los repartos por mes (`movsDelMes`, `resumenAño`: `mesDe`) un gasto de fijo cuenta en el mes que paga (`mesPago`, solo dentro del mismo año: el total anual no cambia).
   Las aportaciones fijas siguen enlazándose por su fecha (`aportacionesSinLlegar` mira lo mismo).
 - «Deshacer» repone la foto **entera** de antes, así que cualquier otra escritura la anula (`App.manejar`). Una ruta nueva
   que solo consulte va en `servidor.NO_ANULAN_DESHACER`; si no, el «Deshacer» desaparece al llamarla.

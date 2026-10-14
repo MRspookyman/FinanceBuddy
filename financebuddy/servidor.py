@@ -36,7 +36,7 @@ CONSECUENCIA = {
 # Cualquier otra escritura lo anula: «Deshacer» repone la foto ENTERA de antes y se llevaría por delante lo hecho después.
 NO_ANULAN_DESHACER = {"/api/parecidos", "/api/detectar", "/api/jev/enviado", "/api/jev/probar", "/api/jev/categoria", "/api/categoria/uso",
                       "/api/plantilla", "/api/exportar_datos", "/api/regla/probar", "/api/abrir_carpeta", "/api/copia", "/api/arranque",
-                      "/api/actualizaciones/comprobar", "/api/precios/actualizar", "/api/precios/estado", "/api/precios/buscar", "/api/precios/comparar"}
+                      "/api/actualizaciones/comprobar", "/api/precios/actualizar", "/api/precios/estado", "/api/precios/buscar", "/api/precios/comparar", "/api/config/visto"}
 
 def _aviso_borrar(tipo, reg, usos):
     lista = " y ".join(", ".join(f"{n} {PLURAL.get(t, t)}" for t, n in usos).rsplit(", ", 1))
@@ -324,6 +324,10 @@ class App:
         if not os.path.isdir(nueva):
             que = "es un archivo, no una carpeta" if os.path.exists(nueva) else "no existe (¿está bien escrita?). Si quieres empezar allí, créala antes en el Explorador"
             raise ValueError(f"No se ha podido usar «{nueva}»: {que}. Sigues con {self.carpeta.raiz}.")
+        # Una carpeta sin datos de FinanceBuddy empieza de cero: antes se pide confirmación (sin ella no se crea nada)
+        if not os.path.exists(os.path.join(nueva, "datos.db")) and d.get("confirmado") is not True:
+            return {"ok": False, "necesita_confirmar": True,
+                    "mensaje": f"La carpeta «{nueva}» no tiene datos de FinanceBuddy: si la usas, se creará una base nueva y vacía. Tus datos actuales siguen en {self.carpeta.raiz}."}
         try:
             self.abrir(nueva)
         except Exception as e:  # la carpeta de antes sigue abierta: solo hay que contar qué ha pasado
@@ -355,12 +359,17 @@ class App:
         origen = os.path.join(self.carpeta.copias, nombre)
         if not nombre.endswith(".db") or not os.path.exists(origen): raise ValueError("No encuentro esa copia.")
         comprobar_copia(origen)  # dañada o de una versión más nueva: se dice y no se toca nada
-        self.copia("antes de restaurar", forzar=True)
-        import sqlite3
-        src = sqlite3.connect(origen)
-        with self.alm.lock:
-            src.backup(self.alm.con)
-        src.close()
+        import sqlite3, shutil
+        # Se aparta una copia de trabajo antes: la de «antes de restaurar» puede empujar fuera del límite de 30 a la que se restaura
+        with tempfile.TemporaryDirectory() as tmp:
+            trabajo = os.path.join(tmp, "copia.db")
+            shutil.copy2(origen, trabajo)
+            self.copia("antes de restaurar", forzar=True)
+            src = sqlite3.connect(trabajo)
+            try:
+                with self.alm.lock:
+                    src.backup(self.alm.con)
+            finally: src.close()
         return {"ok": True, "mensaje": f"Restaurada la copia «{nombre}»."}
 
     def copias(self):
@@ -533,6 +542,14 @@ class App:
             k = str(d.get("clave") or "")[:120]
             ya = a.config("avisos_descartados") or []
             if k: a.set_config("avisos_descartados", [x for x in ya if x != k] if d.get("volver") else list(dict.fromkeys(ya + [k]))[-200:])
+            return {"ok": True}
+        if ruta == "/api/config/visto":  # «lo que cambió desde la última vez» del Inicio: solo anota hasta dónde llegaba lo que ya viste
+            try: mx, neto = max(0, int(d.get("max_id"))), d.get("neto")
+            except (TypeError, ValueError, OverflowError): raise ValueError("Falta hasta qué movimiento has visto.")
+            neto = float(neto) if isinstance(neto, (int, float)) and not isinstance(neto, bool) and abs(neto) < 1e12 else None
+            fecha = str(d.get("fecha") or "")
+            a.set_config("ultima_vista", {"max_id": mx, "neto": neto, "fecha": fecha if re.fullmatch(r"\d{4}-\d{2}-\d{2}", fecha) else None,
+                                         "avisos": [str(x)[:120] for x in (d.get("avisos") if isinstance(d.get("avisos"), list) else []) if isinstance(x, str)][:100]})
             return {"ok": True}
         if ruta == "/api/carpeta": return self.cambiar_carpeta(d)
         if ruta == "/api/copia_extra":  # segunda carpeta donde dejar las copias (USB, otro disco); vacío = solo la de siempre

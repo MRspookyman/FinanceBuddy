@@ -30,7 +30,7 @@ class TestCarpetaYBaseDatos(unittest.TestCase):
     def test_cambiar_de_carpeta_bien(self):
         otra = os.path.join(self.dir, "otra")
         os.makedirs(otra)  # una carpeta nueva y vacía: se empieza de cero allí
-        r = self.app.manejar("/api/carpeta", {"carpeta": otra})
+        r = self.app.manejar("/api/carpeta", {"carpeta": otra, "confirmado": True})
         self.assertTrue(r["ok"])
         self.assertEqual(self.app.carpeta.raiz, os.path.abspath(otra))
         # y la carpeta elegida se recuerda para la próxima vez (en el ajustes.json apartado, no en el del usuario)
@@ -124,7 +124,7 @@ class TestCarpetaYBaseDatos(unittest.TestCase):
         app = servidor.App(d, fija=True)
         try:
             os.makedirs(os.path.join(self.dir, "otra"))
-            app.manejar("/api/carpeta", {"carpeta": os.path.join(self.dir, "otra")})
+            app.manejar("/api/carpeta", {"carpeta": os.path.join(self.dir, "otra"), "confirmado": True})
             self.assertEqual(rutas.leer_ajustes()["datos"], os.path.join(self.dir, "los-de-verdad"))
             app.ejemplo = True
             app.manejar("/api/ejemplo", {"activar": False})
@@ -169,6 +169,69 @@ class TestCarpetaYBaseDatos(unittest.TestCase):
         self.assertEqual([c["nombre"] for c in self.app.alm.todos("cuenta")], ["La de ahora"])
         self.assertEqual(self.app.alm.config("version_esquema"), almacen.VERSION_ESQUEMA)
         self.assertEqual(set(os.listdir(copias)), antes, "si no se restaura, tampoco se hace la copia de «antes de restaurar»")
+
+    def test_una_copia_vacia_no_se_restaura(self):
+        self.app.manejar("/api/guardar", {"tipo": "cuenta", "datos": {"nombre": "La de ahora"}})
+        copias = self.app.carpeta.copias
+        open(os.path.join(copias, "datos 2026-01-01 vacia.db"), "wb").close()
+        antes = set(os.listdir(copias))
+        with self.assertRaises(ValueError) as e: self.app.manejar("/api/restaurar", {"copia": "datos 2026-01-01 vacia.db"})
+        self.assertIn("no se han tocado", str(e.exception))
+        self.assertEqual([c["nombre"] for c in self.app.alm.todos("cuenta")], ["La de ahora"])
+        self.assertEqual(set(os.listdir(copias)), antes)
+
+    def test_el_limite_de_copias_no_borra_la_que_se_va_a_restaurar(self):
+        # Con 30 copias, la de «antes de restaurar» empuja fuera la más vieja: si es la que se restaura, se quedaba sin origen
+        # (SQLite abría un archivo vacío y se pisaban los datos con nada).
+        self.app.manejar("/api/guardar", {"tipo": "cuenta", "datos": {"nombre": "La de antes"}})
+        copias = self.app.carpeta.copias
+        vieja = self.app.copia("vieja", forzar=True)
+        vieja_n = os.path.join(copias, "datos 2020-01-01 vieja.db"); os.replace(vieja, vieja_n)
+        for i in range(almacen.COPIAS_MAX - len(almacen.copias_de(copias))):
+            shutil.copy2(vieja_n, os.path.join(copias, f"datos 2021-01-{i + 1:02d} relleno.db"))
+        self.assertEqual(len(almacen.copias_de(copias)), almacen.COPIAS_MAX)
+        self.app.manejar("/api/guardar", {"tipo": "cuenta", "datos": {"nombre": "La de después"}})
+        r = self.app.manejar("/api/restaurar", {"copia": "datos 2020-01-01 vieja.db"})
+        self.assertTrue(r["ok"], r)
+        self.assertEqual([c["nombre"] for c in self.app.alm.todos("cuenta")], ["La de antes"])
+        nombres = self.app.copias()
+        self.assertTrue([n for n in nombres if "antes de restaurar" in n], "la copia de lo de antes tiene que seguir ahí")
+
+    def test_cambiar_de_carpeta_a_un_archivo_o_sin_permiso_no_toca_nada(self):
+        rutas.guardar_ajustes({"datos": self.dir})
+        archivo = os.path.join(self.dir, "soy-un-archivo.txt")
+        with open(archivo, "w", encoding="utf-8") as fh: fh.write("x")
+        with self.assertRaises(ValueError) as e: self.app.manejar("/api/carpeta", {"carpeta": archivo})
+        self.assertIn("es un archivo", str(e.exception))
+        sin = os.path.join(self.dir, "sin-permiso"); os.makedirs(sin)
+        real = servidor.Almacen
+        def no_puede(ruta): raise PermissionError(13, "Acceso denegado")
+        servidor.Almacen = no_puede
+        try:
+            with self.assertRaises(ValueError) as e: self.app.manejar("/api/carpeta", {"carpeta": sin, "confirmado": True})
+        finally: servidor.Almacen = real
+        self.assertIn("Sigues con", str(e.exception))
+        self.assertEqual(self.app.carpeta.raiz, os.path.abspath(self.dir))
+        self.assertEqual(rutas.leer_ajustes(), {"datos": self.dir}, "si falla, ajustes.json no se reescribe")
+
+    def test_una_carpeta_sin_datos_pide_confirmar_antes_de_empezar_de_cero(self):
+        rutas.guardar_ajustes({"datos": self.dir})
+        vacia = os.path.join(self.dir, "vacia"); os.makedirs(vacia)
+        r = self.app.manejar("/api/carpeta", {"carpeta": vacia})
+        self.assertTrue(r.get("necesita_confirmar")); self.assertFalse(r["ok"])
+        self.assertIn("no tiene datos de FinanceBuddy", r["mensaje"])
+        self.assertEqual(os.listdir(vacia), [], "sin confirmar no se crea ninguna base")
+        for no_es_si in ("false", "true", 1, "si"):  # solo vale el booleano true
+            r = self.app.manejar("/api/carpeta", {"carpeta": vacia, "confirmado": no_es_si})
+            self.assertTrue(r.get("necesita_confirmar"), repr(no_es_si)); self.assertEqual(os.listdir(vacia), [])
+        self.assertEqual(self.app.carpeta.raiz, os.path.abspath(self.dir))
+        self.assertEqual(rutas.leer_ajustes(), {"datos": self.dir})
+        r = self.app.manejar("/api/carpeta", {"carpeta": vacia, "confirmado": True})
+        self.assertTrue(r["ok"])
+        self.assertEqual(self.app.carpeta.raiz, os.path.abspath(vacia))
+        # una carpeta que ya tiene datos no pregunta
+        r = self.app.manejar("/api/carpeta", {"carpeta": self.dir})
+        self.assertTrue(r["ok"])
 
     def test_si_ya_hay_una_app_abierta_la_segunda_no_toca_los_datos(self):
         srv = servidor.crear(self.app, 8795)

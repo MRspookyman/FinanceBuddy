@@ -143,6 +143,27 @@ class TestDividir(unittest.TestCase):
             app.alm.cerrar()
             self.a = Almacen(rutas.Carpeta(self.dir).db)
 
+    def test_anotar_lo_visto_no_anula_deshacer_y_limpia_lo_que_llega(self):
+        self.a.cerrar()
+        app = servidor.App(self.dir, fija=True)
+        try:
+            app.deshacer = app.alm.instantanea()
+            r = app.manejar("/api/config/visto", {"max_id": "7", "neto": 1234.5, "fecha": "2026-10-01", "avisos": ["inicio:a", 5, "x" * 300]})
+            self.assertTrue(r["ok"])
+            self.assertIsNotNone(app.deshacer)
+            v = app.alm.config("ultima_vista")
+            self.assertEqual((v["max_id"], v["neto"], v["fecha"], v["avisos"]), (7, 1234.5, "2026-10-01", ["inicio:a", "x" * 120]))
+            app.manejar("/api/config/visto", {"max_id": 2, "neto": "mucho", "fecha": "ayer"})
+            v = app.alm.config("ultima_vista")
+            self.assertEqual((v["neto"], v["fecha"], v["avisos"]), (None, None, []))
+            with self.assertRaises(ValueError): app.manejar("/api/config/visto", {"neto": 1})
+            with self.assertRaises(ValueError): app.manejar("/api/config/visto", {"max_id": float("inf")})  # no un 500
+            app.manejar("/api/config/visto", {"max_id": 3, "avisos": "abc"})  # un texto no es una lista de avisos
+            self.assertEqual(app.alm.config("ultima_vista")["avisos"], [])
+        finally:
+            app.alm.cerrar()
+            self.a = Almacen(rutas.Carpeta(self.dir).db)
+
     def test_quitar_un_aviso_y_volver_a_ponerlo(self):
         self.a.cerrar()
         app = servidor.App(self.dir, fija=True)

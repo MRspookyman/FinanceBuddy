@@ -11,7 +11,7 @@ function pintarFijos(cont, r) {
   if (!r.ok) { mensaje(cont, r.mensaje || "Error", "err"); return; }
   const p1 = panel(cont, "Ingresos y gastos que se repiten cada mes", null, "Mismo pagador o comercio, al menos dos meses seguidos, una vez al mes y con importe y día parecidos.");
   if (!r.fijos.length) {
-    vacio(p1, "No hay nada nuevo que se repita cada mes", " Hacen falta al menos dos meses de movimientos importados. Lo que ya tienes como fijo no se vuelve a proponer.");
+    vacio(p1, "No hay nada nuevo que se repita cada mes", " Hacen falta al menos dos meses de movimientos importados. Lo que ya tienes como fijo no se vuelve a proponer.", registros("movimiento").length ? null : { texto: "Importar el extracto", ruta: "#importar" });
   } else {
     p1.createDiv({ cls: "fin-note", text: "Revisa el nombre, la categoría y el importe, desmarca lo que no sea fijo y pulsa «Crear». Se usarán para la previsión y los próximos se reconocerán solos al importar." });
     // En una categoría de gasto variable, Jev (si está activado) dice si parece una cuota fija o algo que coincide
@@ -50,8 +50,18 @@ function pintarFijos(cont, r) {
   }
   enlace(p1.createDiv({ cls: "fin-note" }), "Ver todos tus recurrentes →", "#gestionar/recurrente");
 
+  const H = huchaAnual(recurrentes(), hoy);
+  if (H.filas.length) {
+    const pH = panel(cont, "Lo que tienes que ir apartando al mes", null, "Para los gastos fijos que no se pagan cada mes (un seguro, el IBI…): su importe de todo el año repartido en 12 meses, para que el día del pago ya lo tengas guardado.");
+    filasDato(pH, [{ l: "Apartar cada mes", s: `para ${H.filas.length} pago${H.filas.length > 1 ? "s" : ""} que no ${H.filas.length > 1 ? "son" : "es"} mensual${H.filas.length > 1 ? "es" : ""}`, v: eur(H.total) }]);
+    const cuando = (f) => `${f.proximo.toFormat("dd/MM/yyyy")} · ${f.enMeses === 0 ? "este mes" : f.enMeses === 1 ? "el mes que viene" : `en ${f.enMeses} meses`}`;
+    const veces = (n) => (n === 1 ? "una vez al año" : n === 2 ? "dos veces al año" : n === 4 ? "cada trimestre" : `${n} veces al año`);
+    plegable(pH, "Ver el detalle", (c) => tabla(c, [{ t: "Pago" }, { t: "Importe", num: true }, { t: "Cuándo toca" }, { t: "Apartar al mes", num: true }],
+      H.filas.map((f) => [{ text: f.nombre, badge: veces(f.veces) }, eur(f.importe), cuando(f), eur(f.alMes)])), { extra: `${H.filas.length}` });
+  }
+
   const p2 = panel(cont, "De dónde viene tu dinero", null, "Tus ingresos, lo que te devuelven y lo que entra desde tus otras cuentas, agrupado por quién lo paga. «Al mes» es la media de los meses con movimientos.");
-  if (!r.origenes.length) { vacio(p2, "Aún no hay ingresos importados"); return; }
+  if (!r.origenes.length) { vacio(p2, "Aún no hay ingresos importados", "", registros("movimiento").length ? null : { texto: "Importar el extracto", ruta: "#importar" }); return; }
   const porTipo = {};
   for (const o of r.origenes) porTipo[o.tipo] = (porTipo[o.tipo] || 0) + o.media_mes;
   filasDato(p2, Object.entries(porTipo).sort((a, b) => b[1] - a[1]).map(([t, v]) => ({ l: t, v: `${eur(v, 0)} al mes` })));
@@ -97,7 +107,7 @@ function vistaRevision() {
   if (seguros.length > 1) {
     const bT = pH.createDiv({ cls: "fb-fila" }).createEl("button", { cls: "fb-btn sec", text: `Cambiar los ${seguros.length} en los que Jev está seguro (≥ ${Math.round(100 * JEV_SEGURA)} %)` });
     bT.onclick = async () => {
-      if (!confirm(`¿Cambiar la categoría de ${seguros.length} comercios (${sum(seguros.map((h) => h.n))} movimientos)?`)) return;
+      if (!(await confirmar(`Vas a cambiar la categoría de ${seguros.length} comercios (${sum(seguros.map((h) => h.n))} movimientos).`, { titulo: "¿Cambiar las categorías?", si: "Cambiarlas" }))) return;
       bT.disabled = true;
       let n = 0;
       for (const h of seguros) if (await resolver(h, "aplicar")) n++;
