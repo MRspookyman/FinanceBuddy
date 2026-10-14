@@ -181,6 +181,14 @@ class TestBanco(Base):
         self.assertEqual(r["nuevas"], 2)
         self.assertEqual(sorted((m["clase"], m["importe"]) for m in self.movs()), [("gasto", 23.1), ("ingreso", 1500.0)])
 
+    def test_importe_con_miles_incoherente_va_a_ilegibles(self):
+        ruta = os.path.join(self.c.banco, "miles.csv")
+        escribir(ruta, "utf-8", "Fecha;Concepto;Importe\n01/09/2026;Mercadona;-1.234\n02/09/2026;Lidl;-12.345.6\n")
+        IM.crear_perfil(self.a, "Banco M", "banco", {"fecha": "Fecha", "concepto": "Concepto", "importe": "Importe"}, "Nómina")
+        r = self.importar(ruta)
+        self.assertEqual(sorted(m["importe"] for m in self.movs()), [1234.0])
+        self.assertEqual([(x["fila"], x["que"], x["valor"]) for x in r["ilegibles"]], [(3, "el importe", "-12.345.6")])
+
     def test_las_filas_que_no_se_leen_se_avisan_y_lo_demas_se_importa(self):
         ruta = os.path.join(self.c.banco, "a_mano.csv")
         escribir(ruta, "utf-8", "Fecha;Concepto;Importe\n01/09/2026;Mercadona;-23,45\n2026-09-03T10:15:00Z;Lidl;-9,90\n05/09/2026;Kiosko;-3,2O\n31/02/2026;Farmacia;-7,00\n\nTotal;;-43,55\n")
@@ -804,6 +812,12 @@ class TestLectura(unittest.TestCase):
                        ("1.2345", 1.2345), ("1,234", 1.234), ("1.234.567", 1234567)]:
             self.assertEqual(L.numero(txt), n, txt)
         self.assertEqual(L.numero("1.234", miles=False), 1.234)
+    def test_agrupacion_de_miles_incoherente_no_se_adivina(self):
+        for txt in ("12.345.6", "1,23,4", "1.23,45", "1,5.23", "1.234,5.6", "1.2.3", "€ 12.34.567"):
+            self.assertIsNone(L.numero(txt), txt)
+            self.assertIsNone(L.numero(txt, miles=False), txt)
+        for txt, n in [("+1.234.567,89", 1234567.89), ("1,234,567.8", 1234567.8), ("€ 1.234", 1234), ("-1.234.567", -1234567), ("1234,56", 1234.56)]:
+            self.assertEqual(L.numero(txt), n, txt)
     def test_punto_decimal_se_decide_por_archivo(self):
         self.assertTrue(L.punto_decimal(["1.234", "12.50"]))  # «12.50»: el punto es la coma decimal
         self.assertTrue(L.punto_decimal(["199.98 EUR"]))

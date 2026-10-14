@@ -138,6 +138,33 @@ function lineas(padre, { etiquetas, series, marcas, etiquetasX, alto = 200 }) {
     return s.join("") + "</svg>";
   });
 }
+// Donut de un reparto. partes: [{ nombre, valor, frac, color }] (frac: de 0 a 1); centro: el texto del medio (el total).
+// Las porciones son trazos de un círculo (stroke-dasharray) con un hueco entre ellas; la leyenda, con texto de verdad, al lado.
+function donut(padre, partes, { centro } = {}) {
+  const T = 190, r = 76, grueso = 26, C = 2 * Math.PI * r, hueco = partes.length > 1 ? 3 : 0;
+  const w = padre.createDiv({ cls: "fb-donut" });
+  const tapar = (t) => (typeof FB !== "undefined" && FB.enmascarar ? FB.enmascarar(t) : t);
+  const porc = (f) => (f > 0 && f < 0.005 ? "<1 %" : `${nf(f * 100, 0, 0)} %`);
+  const s = [`<svg width="${T}" height="${T}" viewBox="0 0 ${T} ${T}" role="group" aria-label="Reparto por categoría"><g transform="rotate(-90 ${T / 2} ${T / 2})">`];
+  let ini = 0;
+  for (const p of partes) {
+    const largo = Math.max(1, p.frac * C - hueco), txt = tapar(`${p.nombre}: ${eur(p.valor, 0)}, ${porc(p.frac)}`);
+    s.push(`<circle cx="${T / 2}" cy="${T / 2}" r="${r}" role="img" aria-label="${esc(txt)}" style="fill:none;stroke:${p.color};stroke-width:${grueso}" stroke-dasharray="${largo.toFixed(2)} ${(C - largo).toFixed(2)}" stroke-dashoffset="${(-ini).toFixed(2)}"><title>${esc(`${p.nombre}: ${porc(p.frac)}`)}</title></circle>`);
+    ini += p.frac * C;
+  }
+  s.push(`</g>`);
+  if (centro) s.push(`<text class="v" x="${T / 2}" y="${T / 2 + 2}" text-anchor="middle">${esc(centro)}</text><text x="${T / 2}" y="${T / 2 + 20}" text-anchor="middle">en total</text>`);
+  w.innerHTML = s.join("") + "</svg>";
+  const l = w.createDiv({ cls: "ley" });
+  for (const p of partes) {
+    const f = l.createDiv({ cls: "f" });
+    setVar(f.createSpan({ cls: "fin-dot" }), "--dc", p.color);
+    f.createSpan({ cls: "n", text: p.nombre });
+    f.createSpan({ cls: "p", text: porc(p.frac) });
+    f.createSpan({ cls: "e", text: eur(p.valor, 0) });
+  }
+  return w;
+}
 // Barras de los 7 días de una semana. dias: [{ etiqueta, valor, futuro, hoy }], meta: gasto por día de referencia.
 function barrasSemana(padre, dias, meta) {
   const max = Math.max(meta || 0, ...dias.map((d) => d.valor), 1) * 1.1;

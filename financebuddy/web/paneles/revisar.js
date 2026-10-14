@@ -227,7 +227,7 @@ const resolverGrupo = (card, g, extra) => async (datos, btn) => {
 };
 // Traspaso a una cuenta tuya que aún no está en la app: se crea y se resuelve el grupo.
 async function nuevaCuentaYTraspaso(hecho, btn) {
-  const nombre = (prompt("Nombre de la cuenta (p. ej. «Cuenta BBVA» o «Revolut»):") || "").trim();
+  const nombre = ((await pedirTexto("Pon el nombre de la cuenta (p. ej. «Cuenta BBVA» o «Revolut»).", "Nombre de la cuenta", { titulo: "Cuenta nueva" })) || "").trim();
   if (!nombre) return;
   const r = await FB.api("/api/guardar", { tipo: "cuenta", datos: { nombre, tipo: "corriente", extracto: false } });
   if (!r.ok) { FB.aviso(r.mensaje || "No se ha podido crear la cuenta", true); return; }

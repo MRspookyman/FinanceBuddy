@@ -7,7 +7,7 @@
 #   --guion=ARCHIVO.js: unos clics sueltos con las mismas ayudas que los flujos (ir, hasta, campo, escribir, porTexto, caso…); con
 #            --shot captura después la pantalla indicada. Para mirar cómo queda algo sin tocar pruebas_flujos.js
 #   --puerto=N: otro puerto (8799 si no se dice) y su propia carpeta de datos y capturas (%TEMP%\fb-pruebas\N), para pasar varias a la vez
-#   --datos: usa esa carpeta de datos en lugar de crear una de ejemplo (p. ej. para ver tus datos reales)
+#   --datos: usa esa carpeta de datos en lugar de crear una de ejemplo (p. ej. para ver tus datos reales); sin --tests
 #   FB_NAVEGADOR: ruta de otro Chrome/Chromium (p. ej. fuera de Windows)
 # Códigos de salida: 0 bien · 1 algo falla · 3 no hay navegador con el que probar (build.bat lo avisa y sigue).
 import html, os, re, subprocess, sys, tempfile, time, urllib.request
@@ -33,6 +33,9 @@ def main():
         entorno["FB_GUION"] = os.path.join(SALIDA, "guion.js")
         with open(entorno["FB_GUION"], "w", encoding="utf-8") as fh: fh.write(base + open(flags["guion"], encoding="utf-8").read() + "\n  return casos;\n})();\n")
         flags["flujos"] = "1"
+    if "tests" in flags and "datos" in flags:  # pruebas_calculos.js comprueba cifras y nombres de los datos de ejemplo
+        print("Con --datos no se pasan las pruebas de cálculos (van con los datos de ejemplo): solo se recorren las pantallas.")
+        del flags["tests"]
     pantallas = ["inicio"] if "flujos" in flags and "guion" not in flags else (args[0] if args else "inicio" if "guion" in flags else PANTALLAS).split(",")
     edge = next((e for e in [os.environ.get("FB_NAVEGADOR", "")] + EDGES if e and os.path.exists(e)), None)
     if not edge:
@@ -52,19 +55,19 @@ def main():
         perfil = tempfile.mkdtemp()
         fallos = 0
         for i, v in enumerate(pantallas):
-            qs = "&".join((["pruebas=1"] if ("tests" in flags or "flujos" in flags) and i == 0 else []) + (["flujos=1"] if "flujos" in flags else [])
+            qs = "&".join((["pruebas=1"] if ("tests" in flags or "flujos" in flags) and "datos" not in flags and i == 0 else []) + (["flujos=1"] if "flujos" in flags else [])
                           + (["tema=" + flags["tema"]] if "tema" in flags else []))
             url = f"http://127.0.0.1:{puerto}/{'?' + qs if qs else ''}#{v}"
+            tam = f"--window-size={flags.get('ancho', '1440' if 'capturas' in flags else '1200')},{flags.get('alto', '2600')}"
             base = [edge, "--headless", "--disable-gpu", "--no-first-run", f"--user-data-dir={perfil}", f"--virtual-time-budget={60000 if 'flujos' in flags else 6000}"]
             if os.name != "nt": base.append("--no-sandbox")
-            out = subprocess.run(base + ["--dump-dom", url], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120).stdout
+            out = subprocess.run(base + ([tam] if "guion" in flags and "ancho" in flags else []) + ["--dump-dom", url], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120).stdout
             m = re.search(r'<div id="log">(.*?)</div>', out, re.S)
             texto = html.unescape(m.group(1)).strip() if m else "(sin log)"
             h2 = re.search(r"<h2[^>]*>(.*?)</h2>", out, re.S)
             if not out.strip(): texto = "(el navegador no devolvió la página)"
             if "Error" in texto or "✕" in texto or not out.strip(): fallos += 1
             print(f"── {v} [{html.unescape(h2.group(1)) if h2 else '—'}]: {texto or 'ok'}")
-            tam = f"--window-size={flags.get('ancho', '1440' if 'capturas' in flags else '1200')},{flags.get('alto', '2600')}"
             # quieto=1: sin animaciones, o las cifras salen a medio contar en la foto
             if "shot" in flags:
                 png = os.path.join(SALIDA, f"{v.replace('/', '-')}{'-' + flags['tema'] if 'tema' in flags else ''}.png")

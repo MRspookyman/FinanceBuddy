@@ -313,5 +313,17 @@ class TestComparar(Base):
         self.assertAlmostEqual(precios._xirr([(d(2025, 1, 1), -1000), (d(2026, 1, 1), 1100)]), 0.10, 3)
         self.assertIsNone(precios._xirr([(d(2025, 1, 1), -1000)]))
 
+    def test_xirr_rentabilidad_enorme(self):
+        d = datetime.date
+        r = precios._xirr([(d(2025, 1, 1), -100), (d(2025, 4, 1), 400)])  # x4 en tres meses: unos +28.000 % anual
+        self.assertIsNotNone(r)
+        self.assertGreater(r, 10)
+        self.assertAlmostEqual(100 - 400 / (1 + r) ** (90 / 365.0), 0, 3)
+
+    def test_xirr_sin_solucion(self):
+        d = datetime.date
+        self.assertIsNone(precios._xirr([(d(2025, 1, 1), -100), (d(2025, 1, 1), 150)]))  # sin tiempo entre flujos
+        self.assertIsNone(precios._xirr([(d(2025, 1, 1), -100), (d(2025, 1, 2), 1e12)]))  # fuera de toda cifra razonable
+
 if __name__ == "__main__":
     unittest.main()

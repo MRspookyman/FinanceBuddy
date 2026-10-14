@@ -65,6 +65,30 @@ for (let i = 1; i < P.length; i++) {
   ms.pop();
   caso("Un movimiento importado al que le pones una fecha futura se resta una sola vez (en su mes, no hoy)", cerca(est, sin) && cerca(exa, sin) && cerca(fijosCon, fijosSin + 100) && cerca(finCon, finSin - 100), [sin, est, exa, fijosCon - fijosSin, finCon - finSin]);
 }
+// Un traspaso «por revisar» (no se sabe aún a qué cuenta va) ya ha salido de la suya: resta ahí, sin tocar la otra. Clasificado,
+// pasa a restar en la suya y sumar en la otra, una sola vez. Con las dos patas por revisar, cada una mueve solo su cuenta.
+{
+  const u = P[P.length - 1], ms = F.movimientos(), pend = FB.DB.pendientes, n0 = pend.length;
+  const [nom, aho, bro] = ["Cuenta nómina", "Ahorro", "Bróker"], hasta = F.DateTime.fromISO("2026-09-30").endOf("day");
+  const saldos = (exacto) => { const s = F.proyectar(u, hasta, exacto).cuentas.saldos; return [s[nom], s[aho], s[bro]]; };
+  const fila = (cuenta, importe, tipo = "banco") => ({ tipo_import: tipo, cuenta, fila: { op: "2026-09-15", texto: "Traspaso inventado", importe, clase: "transferencia", concepto: "Traspaso" } });
+  const base = saldos(false);
+  pend.push(fila(bro, 80, "inversion"));
+  const conBroker = saldos(false);
+  pend.push(fila(nom, -300));
+  const [rev, revExa] = [saldos(false), saldos(true)];
+  pend.push(fila(aho, 300));
+  const dosPatas = saldos(false);
+  pend.length = n0;
+  ms.push({ p: {}, fecha: F.DateTime.fromISO("2026-09-15"), importe: 300, clase: "transferencia", categoria: "", concepto: "A Ahorro", recurrente: "", destino: aho, origen: "", cuenta: nom, auto: false, previsto: false, gasto: 0 });
+  const clasif = saldos(false);
+  ms.pop();
+  const igual = (a, b) => a.every((x, i) => cerca(x, b[i]));
+  caso("Sin traspasos por revisar los saldos no cambian (y uno del bróker no cuenta)", cerca(base[0], 1697.06) && igual(conBroker, base), [base, conBroker]);
+  caso("Un traspaso por revisar de 300 € resta en su cuenta y no toca la otra (también en el cuadre)", igual(rev, [base[0] - 300, base[1], base[2]]) && igual(revExa, rev), [base, rev, revExa]);
+  caso("Con las dos patas por revisar, cada una mueve solo su cuenta (no se cuenta dos veces)", igual(dosPatas, [base[0] - 300, base[1] + 300, base[2]]), dosPatas);
+  caso("Clasificado hacia Ahorro: −300 en la nómina y +300 en Ahorro, una sola vez", igual(clasif, [base[0] - 300, base[1] + 300, base[2]]), clasif);
+}
 
 // 2. Recurrentes sin duplicar: en septiembre cada uno aparece una vez y es el real (no el automático).
 const S = F.finMes("2026-09");
@@ -85,10 +109,31 @@ caso("El seguro anual (marzo) no aparece en septiembre", !S.ms.some((m) => m.rec
   const A = mover("Alquiler", "2026-09", "2026-08-31", "2026-09-01"), autosA = autosDe(A, "Alquiler"), RA = año(A);
   caso("Alquiler con valor 31/08 y operación 01/09: septiembre no lleva Alquiler automático y el año sigue en 7.252,94 €",
     !autosA.includes("2026-09") && !autosA.includes("2026-08") && autosA[0] === "2026-10" && cerca(RA.gastos, 7252.94) && cerca(año(reales).gastos, 7252.94)
-    && cerca(RA.filas.find((f) => f.key === "2026-08").gastos - año(reales).filas.find((f) => f.key === "2026-08").gastos, 700), [autosA.slice(0, 3), RA.gastos]);
+    && cerca(RA.filas.find((f) => f.key === "2026-08").gastos - año(reales).filas.find((f) => f.key === "2026-08").gastos, 0), [autosA.slice(0, 3), RA.gastos]);
+  // El reparto por mes sigue al mes que paga: el alquiler con valor 31/08 cuenta en septiembre (agosto ya no enseña dos y septiembre ninguno).
+  const filaDe = (R, k) => R.filas.find((f) => f.key === k).gastos, base = año(reales);
+  caso("Alquiler con valor 31/08 y operación 01/09: cada mes lleva un alquiler (agosto y septiembre como sin desfase), el movimiento conserva su fecha",
+    ["2026-07", "2026-08", "2026-09"].every((k) => cerca(filaDe(RA, k), filaDe(base, k))) && A.some((m) => m.recurrente === "Alquiler" && m.mesPago === "2026-09" && m.fecha.toISODate() === "2026-08-31"),
+    [filaDe(RA, "2026-08"), filaDe(base, "2026-08"), filaDe(RA, "2026-09"), filaDe(base, "2026-09")]);
+  // Fecha y banco en el mismo mes: no se mueve nada.
+  const mismo = mover("Alquiler", "2026-09", "2026-09-03", "2026-09-03"); año(mismo);
+  caso("Alquiler con fecha y banco en el mismo mes (03/09): no cambia de mes", mismo.every((m) => !m.mesPago) && cerca(filaDe(año(mismo), "2026-09"), filaDe(base, "2026-09")), null);
+  // «Tu mes» desde el 25: fecha 24/05 y banco 25/05 caen en el mismo mes natural, no se mueve nada; 31/08→01/09 sí pasa a septiembre.
+  {
+    const g = (f) => ({ clase: "gasto", auto: false, fecha: d(f) });
+    caso("Con tu mes desde el 25: 24/05 apuntado el 25/05 no cambia de mes; con el día 1, 31/08 apuntado el 01/09 pasa a septiembre",
+      F.mesPagoDe(g("2026-05-24"), d("2026-05-25"), 25) === undefined && F.mesPagoDe(g("2026-08-31"), d("2026-09-01"), 1) === "2026-09"
+      && F.mesPagoDe(g("2026-08-31"), d("2026-09-01"), 25) === undefined && F.mesPagoDe(g("2026-12-31"), d("2027-01-01"), 1) === undefined
+      && F.mesPagoDe(g("2026-06-30"), d("2026-07-01"), 1) === "2026-07", null);
+  }
   // Apuntado a mano el 31/08 (sin extracto): agosto tiene dos y septiembre ninguno → el del 31/08 paga septiembre.
   const B = mover("Alquiler", "2026-09", "2026-08-31", ""), autosB = autosDe(B, "Alquiler");
-  caso("Dos alquileres en agosto (01/08 y 31/08) y ninguno en septiembre: el segundo paga septiembre", !autosB.includes("2026-09") && autosB[0] === "2026-10" && cerca(año(B).gastos, 7252.94), autosB.slice(0, 3));
+  caso("Dos alquileres en agosto (01/08 y 31/08) y ninguno en septiembre: el segundo paga septiembre y cuenta en septiembre", !autosB.includes("2026-09") && autosB[0] === "2026-10" && cerca(año(B).gastos, 7252.94)
+    && cerca(filaDe(año(B), "2026-08"), filaDe(base, "2026-08")) && cerca(filaDe(año(B), "2026-09"), filaDe(base, "2026-09")), autosB.slice(0, 3));
+  // Pago solo (sin otro en agosto) con valor 31/08 y banco 01/09: septiembre lo lleva.
+  const Cs = mover("Alquiler", "2026-09", "2026-08-31", "2026-09-01").filter((m) => !(m.recurrente === "Alquiler" && m.fecha.toFormat("yyyy-MM") === "2026-08" && m.fecha.day === 1));
+  año(Cs);
+  caso("Un solo pago con valor 31/08 y banco 01/09: cuenta en septiembre", Cs.find((m) => m.recurrente === "Alquiler" && m.fecha.toISODate() === "2026-08-31").mesPago === "2026-09", null);
   // Una nómina del día 1 cobrada el último día del mes anterior.
   const nomina = F.recurrentes().find((r) => r.nombre === "Nómina"), dia = nomina.dia;
   nomina.dia = 1;
@@ -114,6 +159,45 @@ caso("El seguro anual (marzo) no aparece en septiembre", !S.ms.some((m) => m.rec
   caso("Gimnasio de agosto con fecha 31/08 apuntado el 01/09 y el de septiembre sin llegar: agosto no lleva automático y septiembre sí",
     autosH[0] === "2026-09" && autosH[1] === "2026-10", autosH.slice(0, 3));
   caso("Lo mismo con el día 28 y apuntado el 02/09", autosI[0] === "2026-09" && autosI[1] === "2026-10", autosI.slice(0, 3));
+  // Fijo de pocos meses (seguro de marzo, día 1) pagado de una vez el 28/02, sin extracto: paga marzo, no queda su automático y el año no cambia.
+  const seg = F.recurrentes().find((r) => r.nombre === "Seguro del coche"), diaS = seg.dia, desdeS = seg.desde;
+  seg.dia = 1; seg.desde = d("2026-01-01");
+  const pagoSeg = (fecha) => ({ ...reales.find((m) => m.recurrente === "Luz"), recurrente: "Seguro del coche", concepto: "Seguro del coche", categoria: "Seguros", importe: 310, gasto: 310, fecha: d(fecha), p: { ext_fecha: "" } });
+  const segEn = (...fechas) => [...reales, ...fechas.map(pagoSeg)];
+  const S1 = segEn("2026-02-28"), autosS = autosDe(S1, "Seguro del coche"), RS = año(S1), base0 = año(reales).gastos;
+  const S2 = segEn("2026-01-05"), autosS2 = autosDe(S2, "Seguro del coche");
+  const S3 = segEn("2026-02-28", "2026-03-02"), autosS3 = autosDe(S3, "Seguro del coche");
+  const autosS4 = autosDe(segEn("2026-02-09"), "Seguro del coche"), autosS5 = autosDe(segEn("2026-02-10"), "Seguro del coche");
+  seg.dia = diaS; seg.desde = desdeS;
+  caso("Seguro de marzo pagado el 28/02: marzo no lleva automático, el pago cuenta en marzo y el año suma un solo seguro (310 €)",
+    !autosS.includes("2026-03") && autosS.includes("2027-03") && S1.find((m) => m.recurrente === "Seguro del coche").mesPago === "2026-03" && cerca(RS.gastos, base0 + 310), [autosS, RS.gastos, base0]);
+  caso("Seguro de marzo (día 1): pagado el 10/02 (19 días antes) se enlaza; el 09/02 (20 justos) no", !autosS5.includes("2026-03") && autosS4.includes("2026-03"), [autosS4, autosS5]);
+  caso("Seguro de marzo pagado el 05/01 (lejos): marzo sigue llevando su automático", autosS2.includes("2026-03"), autosS2);
+  caso("Seguro de marzo con un pago el 28/02 y otro el 02/03: el de marzo paga marzo (no se toca)", !autosS3.includes("2026-03") && S3.filter((m) => m.recurrente === "Seguro del coche").every((m) => !m.mesPago), autosS3);
+}
+// Fijo con el día mal puesto: avisa cuando casi todos sus pagos caen en otro día. Fijos y pagos de mentira.
+{
+  const d = (s) => F.DateTime.fromISO(s), hoyT = d("2026-09-30");
+  const rF = (id, nombre, dia, clase = "gasto") => ({ p: { id }, nombre, clase, dia, desde: d("2025-01-01"), hasta: null });
+  const pagosEn = (nombre, dias, meses = ["2026-04", "2026-05", "2026-06", "2026-07", "2026-08"]) => meses.map((k, i) => ({ fecha: d(`${k}-${String(dias[i % dias.length]).padStart(2, "0")}`), recurrente: nombre }));
+  const av = (rs, ps) => F.fijosDiaDistinto(rs, ps, hoyT);
+  const mal = av([rF(1, "Alquiler", 20)], pagosEn("Alquiler", [2, 3, 2, 3, 3])), cerrado = av([rF(2, "Gimnasio", 3)], pagosEn("Gimnasio", [1, 2, 5, 3, 4]));
+  caso("Fijo con el día mal puesto: el alquiler del 20 que se paga el 2-3 avisa (con el día de siempre), el del 3 que se paga entre el 1 y el 5 no",
+    mal.length === 1 && mal[0].id === 1 && mal[0].dia === 20 && [2, 3].includes(mal[0].tipico) && cerrado.length === 0, JSON.stringify([mal, cerrado]));
+  const cambioMes = av([rF(3, "Recibo", 1)], pagosEn("Recibo", [28]));
+  caso("Fijo del día 1 que se paga el 28 del mes anterior avisa (cae al otro lado del cambio de mes); el del día 3 pagado el 31, no",
+    cambioMes.length === 1 && cambioMes[0].tipico === 28 && av([rF(4, "Recibo", 3)], pagosEn("Recibo", [31])).length === 0, JSON.stringify(cambioMes));
+  caso("Fijo del 31 pagado el 31 y el 01 alternando: no avisa; pagos que cambian cada mes (3, 12, 25, 18, 8): no avisa; solo 2 pagos: no avisa; pagos de hace más de un año: no avisa",
+    av([rF(5, "Gim", 31)], pagosEn("Gim", [31, 1])).length === 0 && av([rF(6, "Luz", 20)], pagosEn("Luz", [3, 12, 25, 18, 8])).length === 0
+    && av([rF(7, "Poco", 20)], pagosEn("Poco", [2], ["2026-07", "2026-08"])).length === 0 && av([rF(8, "Viejo", 20)], pagosEn("Viejo", [2], ["2025-01", "2025-02", "2025-03", "2025-04"])).length === 0, null);
+  caso("Aviso de día del fijo: ingreso y aportación también, y un fijo terminado no", av([rF(9, "Nómina", 20, "ingreso"), rF(10, "Plan", 20, "aportacion"), { ...rF(11, "Antiguo", 20), hasta: d("2026-01-01") }],
+    [...pagosEn("Nómina", [2]), ...pagosEn("Plan", [2]), ...pagosEn("Antiguo", [2])]).map((x) => x.id).join() === "9,10", null);
+  const alq = F.recurrentes().find((r) => r.nombre === "Alquiler"), diaA = alq.dia;
+  const claves = () => F.avisos().filter((a) => /^inicio:fijo-dia:/.test(a.clave));
+  const sinMal = claves().length;
+  alq.dia = 20; const conMal = claves(); alq.dia = diaA;
+  caso("Con los datos de ejemplo ningún fijo tiene el día mal; si se pone el alquiler en el 20, sale un aviso warn con clave y enlace a editarlo",
+    sinMal === 0 && conMal.length === 1 && conMal[0].nivel === "warn" && /^Alquiler suele pagarse sobre el día \d+, pero lo tienes en el 20/.test(conMal[0].texto) && /^#editar\/recurrente\/\d+$/.test(conMal[0].ruta) && conMal[0].clave.startsWith("inicio:fijo-dia:"), JSON.stringify(conMal));
 }
 
 // 3. «Te lo devolvieron» resta del gasto: cena de 84 € − 42 € de la parte del amigo = 42 € netos.
@@ -210,6 +294,42 @@ const FY = F.fifoVentas([op(1, "2026-01-10", "A", 100, 10), op(2, "2026-02-10", 
 caso("Vender más de lo comprado: se avisa de lo que falta (5 participaciones)", cerca(FY.ventas[0].faltan, 5) && cerca(FY.ventas[0].unidades, 10) && cerca(FY.ventas[0].valor, 200), FY.ventas[0]);
 caso("Dividendos: sin cobros en los datos de ejemplo, la ganancia no cambia", F.cobros().length === 0 && RI.filas.every((f) => f.cobrado === 0), F.cobros().length);
 
+// Comisiones de fondos (TER × valor) e ingresos pasivos: funciones puras, con datos inventados.
+{
+  const C = F.comisionesFondos([{ nombre: "A", valor: 10000, ter: 0.2 }, { nombre: "B", valor: 5000, ter: 1 }, { nombre: "C", valor: 3000, ter: null }, { nombre: "D", valor: 0, ter: 0.5 }]);
+  caso("Comisiones: 10.000 € al 0,20 % + 5.000 € al 1 % = 70 €/año; sin TER no cuenta (ni se inventa un 0)", C.filas.length === 2 && cerca(C.total, 70) && C.sinTer === 1 && cerca(C.filas[0].coste, 20), C);
+  const C0 = F.comisionesFondos([{ nombre: "C", valor: 3000, ter: null }]);
+  caso("Comisiones: sin ningún TER no hay filas ni total", C0.filas.length === 0 && C0.total === 0, C0);
+  const d = (s) => F.DateTime.fromISO(s), hoyT = d("2026-09-30");
+  const G = F.ingresosPasivos([
+    { fecha: d("2026-03-10"), activo: "A", tipo: "dividendo", importe: 30 }, { fecha: d("2025-12-10"), activo: "A", tipo: "dividendo", importe: 20 },
+    { fecha: d("2025-06-10"), activo: "A", tipo: "dividendo", importe: 99 }, { fecha: d("2026-05-01"), activo: "A", tipo: "comision", importe: 5 },
+    { fecha: d("2026-07-01"), activo: "B", tipo: "dividendo", importe: 10 }],
+    [{ fecha: d("2026-02-01"), importe: 4 }, { fecha: d("2025-02-01"), importe: 6 }], [{ nombre: "A", valor: 1000 }, { nombre: "B", valor: 0 }], hoyT);
+  caso("Ingresos pasivos por año: 2026 = 40 € + 4 € y 2025 = 119 € + 6 €; las comisiones no cuentan",
+    G.años.length === 2 && G.años[0].año === 2026 && cerca(G.años[0].dividendos, 40) && cerca(G.años[0].intereses, 4) && cerca(G.años[1].total, 125), G.años);
+  caso("Rendimiento: A cobró 50 € en 12 meses sobre 1.000 € = 5 % (lo de junio de 2025 ya no entra); B sin valor sale sin porcentaje",
+    G.activos.length === 2 && G.activos[0].nombre === "A" && cerca(G.activos[0].rend, 0.05, 1e-9) && Number.isNaN(G.activos[1].rend), G.activos);
+  const G0 = F.ingresosPasivos([], [], [{ nombre: "A", valor: 1000 }], hoyT);
+  caso("Ingresos pasivos: sin cobros ni intereses no hay nada que enseñar", !G0.hay && G0.años.length === 0 && G0.activos.length === 0, G0);
+}
+
+// Un dividendo cobrado es dinero en tus cuentas: sube el total de Inicio y no entra en «lo que has metido» (ganValor = solo el cambio de valor).
+{
+  const CO = F.cobros(), f0 = RI.filas.find((f) => f.conValorReal && f.conocido && f.aportado > 0);
+  const ult = F.patrimonio()[F.patrimonio().length - 1];
+  const R0 = F.resumenInversion(), n0 = F.estimacion().neto;
+  CO.push({ p: { id: -81 }, fecha: ult.fecha.plus({ days: 1 }), activo: f0.nombre, tipo: "dividendo", importe: 50, retencion: 0, cuenta: "" });
+  const R1 = F.resumenInversion(), n1 = F.estimacion().neto;
+  CO.push({ p: { id: -82 }, fecha: ult.fecha.plus({ days: 1 }), activo: f0.nombre, tipo: "comision", importe: 5, retencion: 0, cuenta: "" });
+  const R2 = F.resumenInversion(), n2 = F.estimacion().neto;
+  CO.splice(-2);
+  caso("Dividendo de 50 €: la ganancia total sube 50 €, el cambio de valor y lo aportado no se mueven y el patrimonio sube 50 €",
+    cerca(R1.gan - R0.gan, 50) && cerca(R1.ganValor, R0.ganValor) && cerca(R1.aportado, R0.aportado) && cerca(n1 - n0, 50), [R1.gan - R0.gan, R1.ganValor - R0.ganValor, n1 - n0]);
+  caso("Con y sin dividendo, «Invertido» de Inicio (valor − cambio de valor) es lo aportado; la comisión de 5 € baja el patrimonio y no toca el cambio de valor",
+    cerca(R0.total - R0.ganValor, R0.aportado) && cerca(R1.total - R1.ganValor, R1.aportado) && cerca(R2.ganValor, R0.ganValor) && cerca(n2 - n1, -5), [R0.total - R0.ganValor, R0.aportado, n2 - n1]);
+}
+
 // 14. Precio de mercado de internet: manda si se conocen las participaciones y es más nuevo que lo anotado
 const Pn = { conPart: true, part: 10, vendido: false }, Mx = { precio: 5, fecha: d("2026-09-29") };
 caso("Mercado: sin valor anotado, manda el precio de internet", F.usaMercado(Pn, Mx, { conValor: false, fechaValor: null }), null);
@@ -261,9 +381,55 @@ const RP1 = F.rentabilidadPeriodo(EVP, 1), RP3 = F.rentabilidadPeriodo(EVP, 3);
 caso("Rentabilidad del mes: 1.750 − 1.500 − 200 metidos = 50 € sobre 1.600 €", RP1.ok && cerca(RP1.gan, 50) && cerca(RP1.r, 50 / 1600, 1e-9), JSON.stringify(RP1));
 caso("Rentabilidad de 3 meses: 1.750 − 1.100 − 600 = 50 €", RP3.ok && cerca(RP3.gan, 50) && RP3.desde === "2026-06", JSON.stringify(RP3));
 caso("Rentabilidad: sin valor de partida o sin tanto historial, no se calcula", !F.rentabilidadPeriodo(EVP, 2).ok && !F.rentabilidadPeriodo(EVP, 12).ok && !F.rentabilidadPeriodo(null, 1).ok);
+// TIR anual (xirr) con flujos inventados: negativo = lo que metes, positivo = lo que vale o te da.
+const flx = (...xs) => xs.map(([f, i]) => ({ fecha: dt(f), importe: i }));
+const X = (...xs) => F.xirr(flx(...xs));
+caso("TIR: 1.000 € que en un año valen 1.100 € = +10 %", cerca(X(["2025-01-01", -1000], ["2026-01-01", 1100]), 0.10, 1e-6));
+caso("TIR: dos aportaciones (1.000 € y 500 € a mitad) que valen 1.700 € al año = entre 10 % y 20 %",
+  (() => { const r = X(["2025-01-01", -1000], ["2025-07-02", -500], ["2026-01-01", 1700]); return r > 0.10 && r < 0.20; })());
+caso("TIR: 100 € que en un año valen 2.100 € = +2.000 % (antes salía NaN)", cerca(X(["2025-01-01", -100], ["2026-01-01", 2100]), 20, 1e-4));
+caso("TIR: pérdida casi total, 1.000 € que en un año valen 10 € = −99 %", cerca(X(["2025-01-01", -1000], ["2026-01-01", 10]), -0.99, 1e-4));
+caso("TIR: 1.000 € que en un año valen 5 € = −99,5 %", cerca(X(["2025-01-01", -1000], ["2026-01-01", 5]), -0.995, 1e-4));
+caso("TIR: un solo flujo, todo positivo o todo negativo: no hay cifra",
+  isNaN(X(["2025-01-01", -1000])) && isNaN(X(["2025-01-01", 1000], ["2026-01-01", 1100])) && isNaN(X(["2025-01-01", -1000], ["2026-01-01", -100])));
+caso("TIR: todo el mismo día no se anualiza", isNaN(X(["2026-01-01", -100], ["2026-01-01", 150])) && isNaN(X(["2026-01-01", -100], ["2026-01-01", 100])));
+caso("TIR: el doble en 10 días (miles de millones % al año) no es una cifra razonable", isNaN(X(["2026-01-01", -100], ["2026-01-11", 200])));
 // Colchón: sin fijarlo a mano es el calculado.
 const PLANC = F.planReparto();
 caso("Colchón automático si no se fija a mano", !PLANC || (!PLANC.manual && PLANC.colchon === PLANC.colchonAuto), JSON.stringify(PLANC && [PLANC.colchon, PLANC.colchonAuto]));
+// Sin límite puesto, el colchón cuenta el gasto variable real (varEst); con límite, el límite, como siempre.
+{
+  const PV = F.prevision(), fijosM = suma(F.recurrentes().filter((r) => r.clase === "gasto" && !(r.meses && r.meses.length < 12)).map((r) => r.importe));
+  const base = (v) => Math.round((fijosM + PV.sueltoEst + v) / 50) * 50;
+  const sinL = F.planReparto(0), conL = F.planReparto(777);
+  caso("Colchón sin límite: cuenta el gasto variable real, no 0 €", PV.varEst > 0 && sinL && sinL.base === base(PV.varEst) && sinL.base > base(0), JSON.stringify([PV.varEst, sinL && sinL.base, base(0)]));
+  caso("Colchón con límite: cuenta el límite, igual que antes", conL && conL.base === base(777), JSON.stringify([conL && conL.base, base(777)]));
+}
+// Un fijo dado de alta (el Gimnasio, 29,90 €) cuya categoría es variable: se cuenta una sola vez, como fijo. Antes sus pagos
+// entraban también en el gasto variable (varEst, «sin contar fijos», colchón) y la previsión sumaba además el fijo.
+{
+  const cat = F.categorias().find((c) => c.nombre === "Suscripciones"), grupo0 = cat.grupo;
+  const meses = F.mesesHasta(F.mesAnterior(F.hoyKey), 3).map(F.finMes), mH = F.finMes(F.hoyKey);
+  const pagosGim = (M) => suma(M.real.filter((m) => m.recurrente === "Gimnasio" && m.gasto).map((m) => m.gasto));
+  const sueltoDeCat = (M) => suma(M.real.filter((m) => m.categoria === "Suscripciones" && m.gasto && !m.recurrente).map((m) => m.gasto));
+  const antes = [...meses, mH].map((M) => F.gastoVariable(M)), pv0 = F.prevision(), limite0 = F.limiteVar;
+  cat.grupo = "variable";
+  try {
+    const despues = [...meses, mH].map((M) => F.gastoVariable(M)), pv1 = F.prevision(), pg = pagosGim(meses[0]);
+    caso("Fijo en categoría variable: sus pagos no cuentan como gasto variable (solo lo que no es el fijo)",
+      pg > 0 && [...meses, mH].every((M, i) => cerca(despues[i], antes[i] + sueltoDeCat(M))), JSON.stringify([pg, antes, despues]));
+    caso("…y la media variable de la previsión es la de antes más solo lo suelto de esa categoría (no el Gimnasio)",
+      cerca(pv1.varEst, pv0.varEst + F.mesesHasta(F.mesAnterior(F.hoyKey), 3).map(F.finMes).reduce((s, M) => s + sueltoDeCat(M), 0) / pv0.nMesesReal), JSON.stringify([pv0.varEst, pv1.varEst]));
+    const fijosM = suma(F.recurrentes().filter((r) => r.clase === "gasto" && !(r.meses && r.meses.length < 12)).map((r) => r.importe));
+    const base = (v) => Math.round((fijosM + pv1.sueltoEst + v) / 50) * 50, sinL = F.planReparto(0), conL = F.planReparto(777);
+    caso("Colchón con el fijo en categoría variable: sin límite cuenta varEst sin el fijo, con límite el límite (y el fijo una vez)",
+      sinL.base === base(pv1.varEst) && conL.base === base(777), JSON.stringify([sinL.base, base(pv1.varEst), conL.base, base(777)]));
+    caso("Un fijo en categoría variable no cambia el límite «sin contar fijos»: el presupuesto de la semana no incluye sus pagos",
+      cerca(F.presupuestoSemana().vari, despues[3]) && despues[3] <= antes[3] + sueltoDeCat(mH) + 0.01);
+  } finally { cat.grupo = grupo0; }
+  caso("Sin fijos en categorías variables, el gasto variable es el de siempre (el del ejemplo no cambia)",
+    F.limiteVar === limite0 && antes.every((v, i) => cerca(v, suma([...meses, mH][i].real.filter((m) => m.gasto && F.grupoDe(m.categoria) !== "fijo" && !m.recurrente).map((m) => m.gasto)))));
+}
 
 // ── Inicio: avisos plegados, objetivos con fecha, recordatorios que se repiten, fijos y renta ──
 const d0 = (iso) => F.DateTime.fromISO(iso);
@@ -357,7 +523,41 @@ caso("Mi año: sin el mes con solo fijos automáticos, lo previsto ni lo de otro
 caso("Mi año: mejor mes enero (600 €), peor febrero (200 €); hasta enero solo cuenta enero",
   R25.mejor.key === "2025-01" && cerca(R25.mejor.ahorro, 600) && R25.peor.key === "2025-02" && cerca(R25.peor.ahorro, 200) && F.resumenAño(2025, MOV25, "2025-01").meses === 1 && cerca(F.resumenAño(2025, MOV25, "2025-01").gastos, 400),
   [R25.mejor && R25.mejor.key, R25.peor && R25.peor.key]);
-const EVA = { keys: ["2025-11", "2025-12", "2026-01", "2026-02", "2026-03"], aportado: [1000, 1000, 1100, 1200, 1200], valor: [1000, 1050, null, 1300, 1320] };
+// Mi año: media al mes (solo meses acabados con datos), categorías que bajan y ritmo del año
+const MM25 = F.mediaMensualAño(R25, "2026-10"), MM25c = F.mediaMensualAño(R25, "2025-02");
+caso("Mi año: media al mes sobre los 2 meses con datos (1.000 entran, 600 salen); con febrero en curso, solo enero; sin meses acabados, nada",
+  MM25.meses === 2 && cerca(MM25.ingresos, 1000) && cerca(MM25.gastos, 600) && !MM25.enCurso && MM25c.meses === 1 && cerca(MM25c.gastos, 400) && MM25c.enCurso && F.mediaMensualAño(R25, "2025-01") === null,
+  [MM25, MM25c]);
+const filaI = (key, i, g) => ({ key, ingresos: i, gastos: g, ahorro: i - g, datos: true });
+const MMi = F.mediaMensualAño({ filas: [filaI("2026-01", 2000, 1500), filaI("2026-02", 0.3, 0), filaI("2026-03", 0.3, 0), filaI("2026-04", 2000, 1700)] }, "2026-06");
+caso("Mi año: un mes con solo 0,30 € de intereses no cuenta para la media; los de gasto real sí",
+  MMi.meses === 2 && cerca(MMi.ingresos, 2000) && cerca(MMi.gastos, 1600), JSON.stringify(MMi));
+const BAJ = F.categoriasQueBajan(new Map([["Ocio", 100], ["Viajes", 900], ["Ropa", 20]]), new Map([["Ocio", 400], ["Viajes", 1000], ["Ropa", 30], ["Coche", 250]]), true);
+caso("Lo que más bajó: ≥ 50 € menos que el año anterior, de más a menos (también lo que ya no gastas); nada sin año anterior",
+  JSON.stringify(BAJ.map((x) => [x.nombre, x.dif])) === '[["Ocio",-300],["Coche",-250],["Viajes",-100]]' && F.categoriasQueBajan(new Map(), new Map([["Ocio", 400]]), false).length === 0,
+  JSON.stringify(BAJ));
+const filaR = (key, i, g, datos = true) => ({ key, ingresos: datos ? i : 0, gastos: datos ? g : 0, ahorro: datos ? i - g : 0, datos });
+const filasR = [filaR("2026-01", 2000, 1500), filaR("2026-02", 2000, 1700), filaR("2026-03", 2000, 1600), filaR("2026-04", 0, 0, false), filaR("2026-05", 2000, 1900)];
+const RIT = F.ritmoAño({ año: 2026, ahorro: 1300, filas: filasR }, "2026-05");
+caso("Ritmo del año: ahorrado hasta hoy (1.300 €) + media de 3 meses acabados (400 €) × 7 meses que quedan = 4.100 €; con 2 meses o en un año cerrado, nada",
+  RIT && RIT.meses === 3 && cerca(RIT.mensual, 400) && RIT.quedan === 7 && cerca(RIT.año, 4100) && F.ritmoAño({ año: 2026, ahorro: 800, filas: filasR.slice(0, 2) }, "2026-03") === null
+  && F.ritmoAño({ año: 2025, ahorro: 1300, filas: filasR }, "2026-05") === null, JSON.stringify(RIT));
+const RD8 = F.repartoDonut([["A", 500], ["B", 100], ["C", 300], ["D", 50], ["E", 40], ["F", 30], ["G", 20], ["H", -10], ["I", 0.2]]);
+const RD6 = F.repartoDonut([["A", 600], ["B", 200], ["C", 100], ["D", 50], ["E", 30], ["F", 20]]);
+caso("Donut de Mi año: las 5 mayores y «Otras 2» con el resto (sin negativos ni céntimos); con 6 categorías, todas y sin «Otras»",
+  JSON.stringify(RD8.partes.map((p) => p.nombre)) === '["A","C","B","D","E","Otras 2"]' && RD8.partes[5].otras && RD8.partes[5].valor === 50 && RD8.total === 1040
+  && cerca(suma(RD8.partes.map((p) => p.frac)), 1, 1e-9) && RD6.partes.length === 6 && !RD6.partes.some((p) => p.otras) && F.repartoDonut([]).partes.length === 0,
+  JSON.stringify([RD8, RD6.partes.length]));
+caso("Mi año: si el año anterior no tiene ingresos, «sin datos de 2025» y no «0 € (+2.159.034,6 %)»",
+  F.frenteAño(10795, 0.3, 2025, true) === "sin datos de 2025" && F.frenteAño(10795, 0, 2025, true) === "sin datos de 2025" && F.frenteAño(1100, 1000, 2025, true) === "2025: 1.000 € (+10,0 %)"
+  && F.frenteAño(1100, 0, 2025, false) === "", [F.frenteAño(10795, 0.3, 2025, true), F.frenteAño(1100, 1000, 2025, true)]);
+caso("Mi año: un año con solo 0,30 € de intereses dice «sin ingresos ni gastos este año», no «100,0 % de lo que entró»",
+  F.tasaAñoTexto({ ingresos: 0.3, gastos: 0, ahorro: 0.3, tasa: 1 }) === "sin ingresos ni gastos este año"
+  && F.tasaAñoTexto({ ingresos: 0, gastos: 120, ahorro: -120, tasa: NaN }) === "sin ingresos este año"
+  && F.tasaAñoTexto({ ingresos: 2000, gastos: 1500, ahorro: 500, tasa: 0.25 }) === "25,0 % de lo que entró"
+  && F.tasaAñoTexto({ ingresos: 2000, gastos: 2500, ahorro: -500, tasa: -0.25 }) === "",
+  [F.tasaAñoTexto({ ingresos: 0.3, gastos: 0, ahorro: 0.3, tasa: 1 }), F.tasaAñoTexto({ ingresos: 2000, gastos: 1500, ahorro: 500, tasa: 0.25 })]);
+const EVA = { keys:["2025-11", "2025-12", "2026-01", "2026-02", "2026-03"], aportado: [1000, 1000, 1100, 1200, 1200], valor: [1000, 1050, null, 1300, 1320] };
 const RAÑ = F.rentabilidadAño(EVA, 2026);
 caso("Rentabilidad del año: de fin de diciembre (1.050 €) a marzo (1.320 €) metiendo 200 € → gana 70 € (6,1 %)",
   RAÑ.ok && RAÑ.desde === "2025-12" && RAÑ.hasta === "2026-03" && cerca(RAÑ.metido, 200) && cerca(RAÑ.gan, 70) && cerca(RAÑ.r, 70 / 1150, 1e-9), JSON.stringify(RAÑ));
@@ -380,8 +580,19 @@ caso("Aportación que no llega: avisa de la de septiembre de A (solo hay la auto
   SL.length === 1 && SL[0].id === 1 && SL[0].mes === "2026-09" && SL[0].fecha.toISODate() === "2026-09-05" && SL[0].activo === "Fondo 1", JSON.stringify(SL.map((x) => [x.id, x.mes])));
 caso("Aportación que no llega: hasta el 9 de septiembre todavía no toca avisar (5 días de margen)", F.aportacionesSinLlegar([rA(1, "Plan A", 5, "2026-01-05")], meses8("Plan A", "05"), d0("2026-09-09")).length === 0
   && F.aportacionesSinLlegar([rA(1, "Plan A", 5, "2026-01-05")], meses8("Plan A", "05"), d0("2026-09-10")).length === 1);
+// La referencia es lo último importado del bróker: con su extracto de octubre sin la aportación del 5, avisa ya; sin importarlo, no.
+const PLA = [rA(1, "Plan A", 5, "2026-01-05")], REALES_A = meses8("Plan A", "05").concat([apA("2026-09-05", "Plan A")]);
+const refBr = (fs) => F.ultimoDatoBroker(fs.map(d0), d0("2026-10-20"));
+const sinImportar = F.aportacionesSinLlegar(PLA, REALES_A, refBr(REALES_A.map((a) => a.fecha.toISODate())));
+const conExtracto = F.aportacionesSinLlegar(PLA, REALES_A, refBr([...REALES_A.map((a) => a.fecha.toISODate()), "2026-10-12"]));
+const llegada = F.aportacionesSinLlegar(PLA, [...REALES_A, apA("2026-10-05", "Plan A")], refBr([...REALES_A.map((a) => a.fecha.toISODate()), "2026-10-12"]));
+caso("Aportación que no llega: con el extracto del bróker importado hasta el 12/10 y sin la del 5/10, avisa; sin importarlo (lo último, 5/09), no; si llegó, no; sin nada del bróker, no",
+  conExtracto.length === 1 && conExtracto[0].mes === "2026-10" && sinImportar.length === 0 && llegada.length === 0 && refBr([]) === null && F.aportacionesSinLlegar(PLA, REALES_A, refBr([])).length === 0
+  && refBr(["2026-09-05", "2026-11-01"]).toISODate() === "2026-09-05", JSON.stringify([conExtracto.map((x) => x.mes), sinImportar.length, llegada.length]));
 caso("Aportaciones del ejemplo: todas han llegado, ningún aviso", !F.avisos().some((a) => /^inicio:aporta:/.test(a.clave)) && F.aportacionesSinLlegar(F.recurrentes(), F.aportaciones(), F.hoy).length === 0,
   JSON.stringify(F.avisos().map((a) => a.clave)));
+const A8 = (extra) => F.aportacionesSinLlegar([rA(1, "Plan A", 5, "2026-01-05")], [...meses8("Plan A", "05"), apA(extra, "Plan A")], d0("2026-09-30"));
+caso("Aportación llegada el 29/08 para la del 05/09: sigue avisando (el enlace es por mes natural y septiembre mantiene su automática)", A8("2026-08-29").length === 1 && A8("2026-08-20").length === 1, null);
 
 // Regla de los dos meses en «Para la renta»: se marca la venta con pérdidas, sin cambiar su resultado.
 const CL = { F: "fondo", E: "etf", A: "accion", B: "accion", C: "cripto", G: "accion" };
@@ -399,6 +610,29 @@ caso("Dos meses: marca el fondo (recompra en un año) y la acción con compra re
   && D2.find((x) => x.activo === "A").compra.toISODate() === "2026-02-15", JSON.stringify(D2.map((x) => [x.activo, x.perdida, x.compra.toISODate(), x.meses])));
 caso("Dos meses: el resultado de las ventas no cambia (solo se marca)", cerca(FV2.ventas.find((v) => v.activo === "F").resultado, -200) && cerca(FV2.ventas.find((v) => v.activo === "A").resultado, -300));
 
+// «¿Qué pasa si vendo hoy?»: venta inventada sobre una copia, sin tocar las operaciones.
+{
+  const hoyS = d("2026-09-30"), clS = (n) => (n === "F" ? "fondo" : "accion");
+  const base = [op(1, "2026-01-10", "A", 1000, 10), op(2, "2026-08-20", "A", 600, 5), op(3, "2026-01-10", "F", 1000, 10), op(4, "2026-03-10", "F", 500, 5)];
+  const copiaAntes = JSON.stringify(base);
+  const S1 = F.simularVenta(base, "A", 4, 90, hoyS, clS);
+  caso("Simular venta parcial: 4 de 15 a 90 € salen del lote más antiguo (coste 400 €) y dan −40 €; la pérdida cae en la regla por la compra reciente que te queda",
+    cerca(S1.valor, 360) && cerca(S1.coste, 400) && cerca(S1.resultado, -40) && S1.dudosa && S1.dudosa.compra.toISODate() === "2026-08-20" && cerca(S1.dudosa.perdida, 40), S1);
+  const S2 = F.simularVenta(base, "A", null, 120, hoyS, clS);
+  caso("Simular venta total («todas»): 15 a 120 € = 1.800 € menos 1.600 € de coste, +200 €, sin aviso", S2.unidades === 15 && cerca(S2.resultado, 200) && S2.dudosa === null && !S2.excede, S2);
+  const S3 = F.simularVenta(base, "A", 15, 80, hoyS, clS);
+  caso("Simular venta total con pérdida: vendiéndolo todo, la compra reciente ya no queda y no salta la regla", cerca(S3.resultado, -400) && S3.dudosa === null, S3);
+  const S4 = F.simularVenta(base, "F", 2, 80, hoyS, clS);
+  caso("Simular un fondo: la regla es de un año (la compra de marzo la activa si pierdes); con ganancia no hay aviso",
+    cerca(S4.resultado, -40) && S4.dudosa && S4.dudosa.meses === 12 && F.simularVenta(base, "F", 2, 120, hoyS, clS).dudosa === null, S4);
+  const S5 = F.simularVenta([op(1, "2025-01-10", "A", 1000, 10)], "A", 5, 80, hoyS, clS);
+  caso("Simular venta de una acción sin compras en los dos meses: pierde pero no hay aviso", cerca(S5.resultado, -100) && S5.dudosa === null, S5);
+  const S6 = F.simularVenta(base, "A", 99, 100, hoyS, clS);
+  caso("Simular más participaciones de las que hay: se limita a las 15 y se avisa", S6.excede && S6.unidades === 15 && S6.disponibles === 15, S6);
+  caso("Simular: sin participaciones anotadas no se calcula; no toca los datos de entrada",
+    F.simularVenta([op(1, "2026-01-10", "Z", 100, null)], "Z", 1, 10, hoyS, clS).sinDatos === true && JSON.stringify(base) === copiaAntes);
+}
+
 // Primeros pasos: cada casilla se tacha sola según lo que ya hay
 const PP0 = F.primerosPasos({ cuentas: 1, movimientos: 0, pendientes: 0, fijos: 0, limite: 0, saldos: 0 });
 const PP1 = F.primerosPasos({ cuentas: 2, movimientos: 80, pendientes: 3, fijos: 4, limite: 600, saldos: 1 });
@@ -406,6 +640,20 @@ caso("Primeros pasos: con solo las cuentas, lo demás por hacer (y sin importar,
   PP0.filter((x) => x.hecho).map((x) => x.id).join() === "cuentas" && PP0.length === 6, JSON.stringify(PP0.map((x) => [x.id, x.hecho])));
 caso("Primeros pasos: con dudas por revisar, solo falta eso y dice cuántas quedan",
   PP1.filter((x) => !x.hecho).map((x) => x.id).join() === "revisar" && /quedan 3/.test(PP1.find((x) => x.id === "revisar").s), JSON.stringify(PP1.map((x) => [x.id, x.hecho])));
+
+// «Lo que cambió desde la última vez»: primera vez (solo anota), sin cambios (nada), con importación nueva y con un aviso nuevo
+const mV = (id, fecha, mas = {}) => ({ id, fecha, ...mas });
+const ahoraV = { movs: [mV(1, "2026-09-01"), mV(2, "2026-09-02"), mV(5, "2026-10-03"), mV(6, "2026-10-09"), mV(7, "2026-10-09", { parte_de: 6 })], neto: 5300, avisos: [{ clave: "inicio:a", texto: "A" }, { clave: "inicio:b", texto: "B" }, { clave: "", texto: "sin clave" }] };
+const CV0 = F.cambiosDesdeVista(null, ahoraV);
+caso("Lo que cambió: la primera vez no sale nada y la foto lleva el último movimiento, el saldo y los avisos con clave",
+  CV0.primera && !CV0.hay && CV0.snap.max_id === 7 && CV0.snap.neto === 5300 && CV0.snap.avisos.join() === "inicio:a,inicio:b", JSON.stringify(CV0));
+const CV1 = F.cambiosDesdeVista({ max_id: 7, neto: 5300.4, avisos: ["inicio:a", "inicio:b"] }, ahoraV);
+caso("Lo que cambió: sin movimientos ni avisos nuevos no hay franja (un saldo que se mueve menos de 1 € no cuenta)", !CV1.primera && !CV1.hay && CV1.dif === null, JSON.stringify(CV1));
+const CV2 = F.cambiosDesdeVista({ max_id: 2, neto: 5000, avisos: ["inicio:a", "inicio:b"], fecha: "2026-09-20" }, ahoraV);
+caso("Lo que cambió: con una importación nueva dice cuántos (sin contar las partes de un dividido), de qué fechas y cuánto cambió el saldo",
+  CV2.hay && CV2.nuevos === 2 && CV2.desde === "2026-10-03" && CV2.hasta === "2026-10-09" && CV2.dif === 300 && CV2.avisosNuevos.length === 0 && CV2.fecha === "2026-09-20", JSON.stringify(CV2));
+const CV3 = F.cambiosDesdeVista({ max_id: 7, neto: 5300, avisos: ["inicio:a"] }, ahoraV);
+caso("Lo que cambió: un aviso con clave que no estaba basta para la franja (el que no tiene clave, no)", CV3.hay && CV3.nuevos === 0 && CV3.avisosNuevos.map((a) => a.clave).join() === "inicio:b", JSON.stringify(CV3));
 
 // Dónde más gastas: por comercio (movimientos de mentira). Mercadona en mayúsculas es el mismo; las dos partes de Ikea son una
 // compra; el Bizum enlazado resta de la cena; fuera el alquiler (fijo), lo automático, lo previsto, lo por revisar y lo de otro año.
@@ -428,6 +676,24 @@ const PSx = F.presupuestosSugeridos([{ nombre: "Super", grupo: "variable" }, { n
 caso("Presupuestos sugeridos: Supermercado 318 € de media → 320 €, Ocio 85 € → 90 € (y dice que ahora tiene 100 €); fuera lo fijo, lo oculto y lo que no llega a 10 €",
   JSON.stringify(PSx.map((x) => [x.nombre, x.propuesta, x.actual])) === '[["Super",320,0],["Ocio",90,100]]', JSON.stringify(PSx));
 caso("Presupuestos sugeridos: sin meses de referencia, nada", F.presupuestosSugeridos([{ nombre: "Super", grupo: "variable" }], []).length === 0);
+
+// Hucha de pagos anuales (datos de mentira): seguro anual en marzo, IBI semestral (abril y octubre), comunidad trimestral, un fijo mensual y un ingreso.
+{
+  const dd = (s) => F.DateTime.fromISO(s);
+  const fijo = (nombre, importe, dia, meses, extra) => ({ nombre, importe, clase: "gasto", dia, meses, desde: dd("2025-01-01"), hasta: null, ...extra });
+  const rs = [fijo("Seguro", 240, 15, [3]), fijo("IBI", 300, 20, [4, 10]), fijo("Comunidad", 90, 5, [1, 4, 7, 10]), fijo("Alquiler", 700, 1, null),
+    { ...fijo("Paga extra", 1000, 15, [6, 12]), clase: "ingreso" }];
+  const H = F.huchaAnual(rs, dd("2026-10-14"));
+  caso("Hucha: seguro anual 240 € → 20 € al mes; IBI 2 × 300 € → 50 €; comunidad 4 × 90 € → 30 €; total 100 € (ni el alquiler ni el ingreso)",
+    H.filas.length === 3 && cerca(H.total, 100) && cerca(H.filas.find((f) => f.nombre === "Seguro").alMes, 20) && cerca(H.filas.find((f) => f.nombre === "IBI").alMes, 50), JSON.stringify(H.filas.map((f) => [f.nombre, f.alMes])));
+  caso("Hucha: el próximo pago y los meses que faltan (IBI 20/10 en 6 días, comunidad 05/01/2027, seguro 15/03/2027), por orden",
+    H.filas.map((f) => f.proximo.toISODate() + ":" + f.enMeses).join(" ") === "2026-10-20:0 2027-01-05:3 2027-03-15:5", H.filas.map((f) => f.proximo.toISODate() + ":" + f.enMeses).join(" "));
+  caso("Hucha: un pago de hoy mismo cuenta como próximo; uno de ayer, no",
+    F.huchaAnual([fijo("A", 120, 14, [10])], dd("2026-10-14")).filas[0].enMeses === 0 && F.huchaAnual([fijo("A", 120, 13, [10])], dd("2026-10-14")).filas[0].proximo.toISODate() === "2027-10-13");
+  caso("Hucha: un fijo que ya terminó no cuenta", F.huchaAnual([fijo("A", 120, 14, [10], { hasta: dd("2026-06-30") })], dd("2026-10-14")).filas.length === 0);
+  const V = F.huchaAnual([fijo("Alquiler", 700, 1, null), fijo("Todo el año", 10, 1, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])], dd("2026-10-14"));
+  caso("Hucha: sin fijos que no sean mensuales, no hay nada que apartar", V.filas.length === 0 && V.total === 0);
+}
 
 // Aviso de rebalanceo: el activo que más se aleja de tu objetivo y a cuál llevar la próxima aportación; sin objetivo o dentro de la banda, nada.
 const AVR = F.avisoReparto([{ nombre: "A", valor: 7000, p: { objetivo: 50 } }, { nombre: "B", valor: 2000, p: { objetivo: 25 } }, { nombre: "C", valor: 1000, p: { objetivo: 25 } }]);
@@ -465,6 +731,19 @@ caso("Meta de ahorro: si no llega (faltan 112,90 €), no propone límite", !LM2
     [Vs, Rs.total - R0.total, ns - n0, Rs.cerradas]);
 }
 
+// «Más filtros» de Movimientos: cuenta, importe (absoluto, desde/hasta) y solo sin revisar; un tope vacío o inválido no filtra.
+{
+  const ms = [
+    { concepto: "a", cuenta: "Cuenta A", importe: 10, clase: "gasto" }, { concepto: "b", cuenta: "Cuenta A", importe: 250.5, clase: "ingreso" },
+    { concepto: "c", cuenta: "Cuenta B", importe: 1200, clase: "gasto", pendiente: true }, { concepto: "d", cuenta: "Cuenta B", importe: 99.99, clase: "gasto", pendiente: true }];
+  const n = (f) => F.filtrarMas(ms, f).map((m) => m.concepto).join("");
+  caso("Más filtros: sin nada puesto no filtra y cuenta 0 filtros", n({}) === "abcd" && n({ desde: "", hasta: "abc", cuenta: "", sinRevisar: false }) === "abcd" && F.filtrosMasActivos({ desde: "", hasta: "x" }) === 0, n({}));
+  caso("Más filtros: por cuenta", n({ cuenta: "Cuenta B" }) === "cd" && n({ cuenta: "Otra" }) === "", n({ cuenta: "Cuenta B" }));
+  caso("Más filtros: importe desde/hasta (con coma española y miles), un solo tope vale", n({ desde: "100" }) === "bc" && n({ hasta: "99,99" }) === "ad" && n({ desde: "10", hasta: "250,50" }) === "abd" && n({ desde: "1.000" }) === "c", [n({ desde: "100" }), n({ hasta: "99,99" })]);
+  caso("Más filtros: solo sin revisar y combinados; cuenta los activos (rango = 1)", n({ sinRevisar: true }) === "cd" && n({ sinRevisar: true, cuenta: "Cuenta B", hasta: "100" }) === "d"
+    && F.filtrosMasActivos({ sinRevisar: true, cuenta: "Cuenta B", desde: "1", hasta: "2" }) === 3 && F.filtrosMasActivos({ desde: "1", hasta: "2" }) === 1, n({ sinRevisar: true }));
+}
+
 // «¿Me puedo permitir un gasto?»: el importe como se escribe en España y las tres cifras con el gasto restado.
 caso("Importe escrito: «300», «300,50», «1.200», «1.200,50 €» y «300.50» se leen bien; «abc», «1.2.3», «-5» y vacío, no",
   F.leerImporte("300") === 300 && F.leerImporte("300,50") === 300.5 && F.leerImporte("1.200") === 1200 && F.leerImporte(" 1.200,50 € ") === 1200.5 && F.leerImporte("300.50") === 300.5
@@ -490,6 +769,27 @@ caso("Importe escrito: «300», «300,50», «1.200», «1.200,50 €» y «300.
     cerca(PE.limite, F.presupuestoSemana().disponible - 300) && cerca(PE.finMes, FE.filas[0].saldo - 300) && cerca(PE.minimo.saldo, FE.minimo.saldo - 300) && PE.minimo.key === FE.minimo.key,
     JSON.stringify([PE, FE.filas[0].saldo, FE.minimo]));
   caso("Permitir (ejemplo): con 72 € ya pasados del límite, 300 € más son 372 € de más", cerca(PE.limite, -372, 0.5) && PE.texto.startsWith("Te pasarías 372 € del límite de este mes"), JSON.stringify(PE));
+}
+
+// Datos atrasados: hoy es 30/09 pero los movimientos llegan hasta el 15/09. El mes en curso de la previsión reserva gasto para
+// los 15 días sin datos (antes, para los 0 que quedan hasta fin de mes desde hoy) y el ritmo reparte lo gastado en 15 días, no en 30.
+{
+  const corte = F.DateTime.fromISO("2026-09-15").endOf("day"), M = F.finMes(F.hoyKey), real0 = M.real;
+  const tapados = F.movimientos().filter((m) => !m.auto && !m.previsto && m.fecha > corte && m.fecha <= F.hoy.endOf("day"));
+  tapados.forEach((m) => (m.previsto = true));
+  M.real = real0.filter((m) => m.fecha <= corte);
+  const fd = F.fechaDatos(), PV = F.prevision(), f0 = PV.filas[0], vari = F.gastoVariable(M), suelto = F.gastoFijoSuelto(M);
+  const dia = fd ? fd.day : 30, esperado = (est, llevas) => Math.min(Math.max(0, est - llevas), (est * (30 - dia)) / 30);
+  const extra = Math.max(0, 400 - vari);  // gasto inventado del 10/09 para llevar al menos 400 €: a ese ritmo (×2) se pasa de 600 €
+  M.real = [...M.real, { fecha: F.DateTime.fromISO("2026-09-10"), importe: extra, clase: "gasto", categoria: "Ocio", concepto: "Prueba", gasto: extra, auto: false, previsto: false }];
+  const variR = F.gastoVariable(M), ritmo = F.avisos().find((a) => a.clave === `inicio:ritmo:${F.hoyKey}`);
+  M.real = real0; tapados.forEach((m) => (m.previsto = false));
+  const proy = ritmo && Number((ritmo.texto.match(/con ([\d.]+)\s€/) || [, ""])[1].replace(/\./g, ""));
+  caso("Datos hasta el 15/09 con hoy 30/09: el mes en curso de la previsión cuenta los días sin datos, no los 0 que quedan desde hoy",
+    fd && fd.toISODate() <= "2026-09-15" && fd.toISODate() >= "2026-09-10" && esperado(PV.varEst, vari) > 0 && cerca(f0.variable, esperado(PV.varEst, vari)) && cerca(f0.suelto, esperado(PV.sueltoEst, suelto)),
+    [fd && fd.toISODate(), f0.variable, esperado(PV.varEst, vari), f0.suelto, esperado(PV.sueltoEst, suelto)]);
+  caso("Datos hasta el 15/09 con hoy 30/09: el aviso de ritmo reparte lo gastado en los días con datos, no en los 30 hasta hoy",
+    variR <= 600 && !!ritmo && cerca(proy, (variR / dia) * 30, 0.5), [dia, variR, ritmo && ritmo.texto]);
 }
 
 return casos;

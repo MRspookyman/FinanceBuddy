@@ -2,7 +2,7 @@
 // Parte del saldo de cada cuenta en el registro `u` y le suma lo ocurrido hasta `hasta`:
 // · ingresos y «te lo devolvieron» suman en su cuenta; gastos restan;
 // · un traspaso resta en su cuenta y suma en la otra (o al revés) — la otra solo si NO importas su extracto
-//   (si lo importas, el traspaso ya viene en su propio extracto);
+//   (si lo importas, el traspaso ya viene en su propio extracto); uno «por revisar» solo mueve su cuenta (`traspasosPorRevisar`);
 // · las compras de activos se pagan con el efectivo del bróker; si no llega, sale de la cuenta principal (`deBanco`).
 // Los activos valen su valor actual (+ aportaciones posteriores a su fecha de valor).
 // Cada movimiento cuenta desde el día en que el banco lo apuntó (`ext_fecha`), no desde su fecha valor, que puede ser anterior:
@@ -26,6 +26,7 @@ function proyectar(u, hasta, exacto = false) {
       else if (m.origen) { mover(m.cuenta, m.importe); if (!conExtracto(m.origen) && m.origen !== m.cuenta) mover(m.origen, -m.importe); }
     }
   }
+  for (const t of traspasosPorRevisar().filter((t) => tras(t.fecha))) mover(t.cuenta, t.importe);  // por revisar: solo su cuenta
   let apo = 0, deBanco = 0;
   for (const a of aportaciones().filter((a) => !(exacto && a.auto) && tras(a.fecha))) {
     apo += a.importe;
@@ -98,7 +99,11 @@ function fondoEmergencia() {
 // ───────────── presupuesto ─────────────
 const limiteVar = num(cfg.limite_variable);
 const grupoDe = (nombre) => (categorias().find((c) => c.nombre === nombre) || {}).grupo || "variable";
-const gastoVariable = (M) => sum(M.real.filter((m) => m.gasto && grupoDe(m.categoria) !== "fijo").map((m) => m.gasto));
+// Gasto variable: lo que no es de una categoría fija ni el pago de un fijo dado de alta (aunque su categoría sea variable: la
+// previsión, la meta y el colchón ya suman ese fijo aparte, y contarlo aquí también sería contarlo dos veces).
+const nombresFijosDeGasto = () => new Set(recurrentes().filter((r) => r.clase === "gasto").map((r) => r.nombre));
+const esGastoVariable = (m, fijos = nombresFijosDeGasto()) => !!m.gasto && grupoDe(m.categoria) !== "fijo" && !(m.recurrente && fijos.has(m.recurrente));
+const gastoVariable = (M) => { const f = nombresFijosDeGasto(); return sum(M.real.filter((m) => esGastoVariable(m, f)).map((m) => m.gasto)); };
 // Gastos de una categoría fija que no son el pago de ningún fijo dado de alta (un seguro, un recibo que no llega cada mes):
 // no son gasto variable ni los trae ningún fijo, así que la previsión y el colchón tienen que contarlos aparte.
 // Para no contar un fijo dos veces (como fijo y como suelto), lo que no está enlazado se atribuye primero a los fijos de su
@@ -138,6 +143,12 @@ function fechaDatos() {
   const f = movimientos().filter((m) => !m.auto && !m.previsto && !esDelBroker(m)).map((m) => m.fecha);
   return f.length ? DateTime.max(...f) : null;
 }
+// Días de tu mes en curso que ya cubren los movimientos importados: hasta `fechaDatos()`, no hasta hoy (lo gastado desde
+// entonces aún no está). Con los últimos datos de un mes anterior, ninguno; sin movimientos, hasta hoy.
+function diasConDatos() {
+  const fd = fechaDatos();
+  return fd && keyDe(fd) === hoyKey ? diaDeMes(fd) : fd && fd < iniMes(hoyKey) ? 0 : diaDeMes(hoy);
+}
 function presupuestoSemana() {
   const fd = fechaDatos();
   const enMes = fd && keyDe(fd) === hoyKey;
@@ -146,7 +157,8 @@ function presupuestoSemana() {
   const disponible = limiteVar - vari;
   const ref = enMes ? fd : hoy;
   const lunes = ref.startOf("week"), domingo = lunes.plus({ days: 6 }).endOf("day");
-  const semana = sum(movimientos().filter((m) => !m.previsto && m.gasto && grupoDe(m.categoria) !== "fijo" && m.fecha >= lunes && m.fecha <= domingo).map((m) => m.gasto));
+  const fijosG = nombresFijosDeGasto();
+  const semana = sum(movimientos().filter((m) => !m.previsto && esGastoVariable(m, fijosG) && m.fecha >= lunes && m.fecha <= domingo).map((m) => m.gasto));
   return {
     fechaDatos: fd, diasSinDatos: fd ? diasDesde(fd) : null, vari, disponible, restantes, dm,
     porSemana: restantes > 0 ? (disponible * 7) / restantes : disponible, porDia: restantes > 0 ? disponible / restantes : disponible,
@@ -174,11 +186,11 @@ function resumenCategorias(key) {
 }
 // Ritmo del gasto variable del mes en curso: acumulado día a día frente a la media de los meses de referencia.
 function ritmoMes(key = hoyKey) {
-  const dm = diasMes(key), fd = fechaDatos();
+  const dm = diasMes(key), fd = fechaDatos(), fijosG = nombresFijosDeGasto();
   const dia = key !== hoyKey ? dm : fd && keyDe(fd) === hoyKey ? diaDeMes(fd) : diaDeMes(hoy);
   const acumulado = (key, hasta) => {
     const por = new Array(diasMes(key)).fill(0);
-    for (const m of finMes(key).real) if (m.gasto && grupoDe(m.categoria) !== "fijo") por[diaDeMes(m.fecha) - 1] += m.gasto;
+    for (const m of finMes(key).real) if (esGastoVariable(m, fijosG)) por[diaDeMes(m.fecha) - 1] += m.gasto;
     let a = 0;
     return Array.from({ length: hasta }, (_, i) => (a += por[Math.min(i, por.length - 1)] || 0));
   };
@@ -197,6 +209,28 @@ function presupuestosSugeridos(cats, meses) {
   return cats.filter((c) => (c.grupo || "variable") === "variable" && !c.oculta)
     .map((c) => { const m = media(meses.map((x) => Math.max(0, x.get(c.nombre) || 0))); return { nombre: c.nombre, media: m, propuesta: Math.round(m / 10) * 10, actual: c.presupuesto || 0 }; })
     .filter((x) => x.propuesta >= 10).sort((a, b) => b.media - a.media);
+}
+
+// Hucha de pagos anuales: lo que hay que ir apartando al mes para los gastos fijos que no son mensuales (los que tienen `meses`).
+// Al mes = importe × veces al año ÷ 12. Próximo pago: la primera fecha desde `hoy` en uno de sus meses, dentro de su vigencia.
+// rs: recurrentes() · hoy: DateTime → { filas: [{ nombre, importe, veces, alMes, proximo, enMeses }] por fecha de pago, total }
+function huchaAnual(rs, hoy) {
+  const h0 = hoy.startOf("day"), filas = [];
+  for (const r of rs) {
+    if (r.clase !== "gasto" || !r.meses || r.meses.length >= 12 || !(r.importe > 0)) continue;
+    let proximo = null;
+    for (let i = 0; i <= 12 && !proximo; i++) {
+      const d = h0.startOf("month").plus({ months: i });
+      if (!r.meses.includes(d.month)) continue;
+      const f = d.set({ day: Math.min(r.dia, d.daysInMonth) });
+      if (f >= h0 && (!r.desde || f >= r.desde.startOf("day")) && (!r.hasta || f <= r.hasta)) proximo = f;
+    }
+    if (!proximo) continue;
+    filas.push({ nombre: r.nombre, importe: r.importe, veces: r.meses.length, alMes: r.importe * r.meses.length / 12, proximo,
+      enMeses: (proximo.year - h0.year) * 12 + proximo.month - h0.month });
+  }
+  filas.sort((a, b) => a.proximo - b.proximo);
+  return { filas, total: filas.reduce((s, f) => s + f.alMes, 0) };
 }
 
 // ───────────── dónde más gastas: por comercio ─────────────
@@ -248,15 +282,16 @@ const hayIngresosFijos = () => recurrentes().some((r) => r.clase === "ingreso");
 
 // ───────────── qué hacer con tu dinero (plan de reparto) ─────────────
 // Colchón en la cuenta corriente = un mes de gasto (fijos mensuales + los gastos fijos que no están dados de alta + límite de
-// gasto variable, redondeado a 50 €) + el déficit de los meses negativos de la previsión en los próximos 6 meses. Lo que sobre, por orden:
+// gasto variable, o lo que gastas de verdad si no hay límite; redondeado a 50 €) + el déficit de los meses negativos de la previsión en los próximos 6 meses. Lo que sobre, por orden:
 // 1) al objetivo vinculado a una cuenta (fondo de emergencia) hasta su meta; 2) al bróker si su efectivo se acaba en ≤ 3 meses; 3) libre.
 const aDiez = (x) => Math.floor(x / 10) * 10;
-function planReparto() {
+// Sin límite puesto, el gasto variable del colchón es lo que gastas de verdad (`prevision().varEst`), no 0.
+function planReparto(limite = limiteVar) {
   const E = estimacion();
   if (!E || !cuentasTipo("corriente").length) return null;
   const mensuales = recurrentes().filter((r) => r.clase === "gasto" && !(r.meses && r.meses.length < 12));
   const F = prevision();
-  const base = Math.round((sum(mensuales.map((r) => r.importe)) + F.sueltoEst + limiteVar) / 50) * 50;
+  const base = Math.round((sum(mensuales.map((r) => r.importe)) + F.sueltoEst + (limite > 0 ? limite : F.varEst)) / 50) * 50;
   // Sin ingresos fijos la previsión solo ve gastos: no se reserva colchón por un déficit que no es real.
   const deficit = !hayIngresosFijos() ? 0 : -sum(F.filas.filter((f) => f.key !== hoyKey).slice(0, 6).filter((f) => f.neto < 0).map((f) => f.neto));
   // El colchón se puede fijar a mano (Ajustes → config.colchon); si no, se calcula.
@@ -309,8 +344,9 @@ function prevision(n = 12, sup = {}) {
   const mesesSuelto = mesesHasta(mesAnterior(hoyKey), 12).map(finMes).filter((M) => M.real.some((m) => !m.auto && m.clase === "gasto"));
   const sueltoEst = mesesSuelto.length ? Math.max(0, media(mesesSuelto.map(gastoFijoSuelto))) : 0;
   const sueltoMes = gastoFijoSuelto(finMes(hoyKey));
-  // Mes en curso: lo que falta hasta la estimación, sin pasar de la parte proporcional a los días que quedan.
-  const queda = (est, llevas) => Math.min(Math.max(0, est - llevas), est * (diasMes(hoyKey) - diaDeMes(hoy)) / diasMes(hoyKey));
+  // Mes en curso: lo que falta hasta la estimación, sin pasar de la parte proporcional a los días que aún no traen tus datos.
+  const dc = diasConDatos();
+  const queda = (est, llevas) => Math.min(Math.max(0, est - llevas), est * (diasMes(hoyKey) - dc) / diasMes(hoyKey));
   let saldo = inicio;
   const filas = mesesDesde(hoyKey, n).map((key) => {
     const pend = movimientos().filter((m) => m.previsto && keyDe(m.fecha) === key && !esDelBroker(m));
@@ -377,7 +413,8 @@ function puedoPermitirme(importe, d) {
       : `No te llega: tus cuentas se quedarían en ${eur(peor.saldo, 0)} ${cuando}.` };
   }
   const pasado = limite != null && limite <= -0.5;
-  const tPasa = `te pasarías ${eur(-limite, 0)} del límite de este mes`, tColchon = `dejaría tu cuenta del día a día ${eur(bajoColchon, 0)} por debajo de tu colchón`;
+  const tPasa = `te pasarías ${eur(-limite, 0)} del límite de este mes`, yaBajo = d.colchon && d.colchon.sobra <= -0.5;
+  const tColchon = yaBajo ? `tu cuenta del día a día ya está ${eur(-d.colchon.sobra, 0)} por debajo de tu colchón` : `dejaría tu cuenta del día a día ${eur(bajoColchon, 0)} por debajo de tu colchón`;
   const frase = (s) => s[0].toUpperCase() + s.slice(1) + ".";
   if (pasado && bajoColchon) return { ...out, nivel: "ojo", texto: frase(`${tPasa} y ${tColchon}`) };
   if (pasado) return { ...out, nivel: "ojo", texto: finMes == null ? frase(tPasa) : `Tus cuentas lo aguantan, pero ${tPasa}.` };
@@ -391,4 +428,22 @@ function datosPermitir() {
   const F = estimacion() ? prevision() : null, R = planReparto(), conIng = hayIngresosFijos();
   return { limite: limiteVar, disponible: presupuestoSemana().disponible, finMes: F ? F.filas[0].saldo : null,
     minimo: F && conIng ? { key: F.minimo.key, saldo: F.minimo.saldo } : null, colchon: R ? { sobra: R.sobra, importe: R.colchon } : null, sinIngresos: !!F && !conIng };
+}
+
+// ───────────── «Más filtros» de Movimientos ─────────────
+// f: { cuenta: "" (todas) | nombre, desde, hasta: texto como lo escribe un español ("" = sin tope), sinRevisar: bool }. El importe es el absoluto
+// (movimiento.importe va siempre en positivo: da igual si es gasto o ingreso). Un tope que no es un importe válido no filtra.
+function filtrosMasLimpios(f) {
+  const g = f || {}, n = (t) => { const v = leerImporte(t); return isFinite(v) ? v : null; };
+  return { cuenta: String(g.cuenta || ""), desde: n(g.desde), hasta: n(g.hasta), sinRevisar: !!g.sinRevisar };
+}
+// Cuántos de los filtros de «Más filtros» están puestos (0 = ninguno).
+function filtrosMasActivos(f) {
+  const g = filtrosMasLimpios(f);
+  return (g.cuenta ? 1 : 0) + (g.desde != null || g.hasta != null ? 1 : 0) + (g.sinRevisar ? 1 : 0);
+}
+function filtrarMas(ms, f) {
+  const g = filtrosMasLimpios(f);
+  return ms.filter((m) => (!g.cuenta || m.cuenta === g.cuenta) && (g.desde == null || m.importe >= g.desde - 0.005)
+    && (g.hasta == null || m.importe <= g.hasta + 0.005) && (!g.sinRevisar || !!m.pendiente));
 }

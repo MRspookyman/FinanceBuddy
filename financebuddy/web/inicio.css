@@ -3,7 +3,7 @@
 .fb-saludo h2{margin:0;font-size:1.9em;font-weight:650;letter-spacing:-.005em;line-height:1.1}
 .fb-saludo .sub{color:var(--ink-2);font-size:.92em;margin-top:6px;display:flex;flex-wrap:wrap;align-items:center;gap:8px}
 .fb-cab-der{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.fb-saludo .fb-personalizar{align-self:center;font-size:.86em;font-weight:600;color:var(--ink-2);text-decoration:none;padding:7px 12px;border-radius:8px;border:1px solid var(--line);background:var(--surface)}
+.fb-saludo .fb-personalizar{align-self:center;font-size:.87em;font-weight:600;color:var(--ink-2);text-decoration:none;padding:7px 12px;border-radius:8px;border:1px solid var(--line);background:var(--surface)}
 .fb-saludo .fb-personalizar:hover{color:var(--ink);border-color:var(--ink-3)}
 /* primeros pasos: casillas que se tachan solas */
 .fb-pasos{margin-bottom:16px}
@@ -13,7 +13,7 @@
 .fb-pasos-lista li.hecho .c{background:var(--brand);border-color:var(--brand);color:var(--on-brand)}
 .fb-pasos-lista li.hecho .t{text-decoration:line-through;color:var(--ink-2)}
 .fb-pasos-lista .s{color:var(--ink-2);font-size:.9em}
-.fb-chip{display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border-radius:6px;font-size:.82em;font-weight:650;color:var(--ink);background:var(--surface);border:1px solid var(--line);text-decoration:none}
+.fb-chip{display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border-radius:6px;font-size:.87em;font-weight:650;color:var(--ink);background:var(--surface);border:1px solid var(--line);text-decoration:none}
 .fb-chip.aviso{background:color-mix(in srgb,var(--amber) 18%,var(--surface));border-color:transparent}
 .fb-chip.brand{color:var(--brand);background:var(--brand-soft);border-color:transparent}
 a.fb-chip:hover{border-color:var(--ink-3)}
@@ -25,14 +25,14 @@ body.theme-dark .fb-hero,body.theme-dark .fb-bienvenida{box-shadow:inset 0 0 0 1
 .fb-hero{display:grid;grid-template-columns:minmax(300px,1fr) minmax(0,1.2fr) auto;column-gap:36px;align-items:center;padding:26px 30px;margin-bottom:var(--g);border-radius:16px}
 .fb-hero .iz{grid-column:1;display:flex;flex-direction:column;align-items:flex-start;min-width:0}
 .fb-hero .graf{grid-column:2;min-width:0}
-.fb-hero .l{font-size:.8em;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-2)}
+.fb-hero .l{font-size:.87em;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-2)}
 .fb-hero .graf .l{margin-bottom:6px}
 .fb-hero .v{font-size:clamp(3.2em,6vw,4.6em);font-weight:650;letter-spacing:-.015em;line-height:1;margin:10px 0 18px;color:var(--brand)}
 .fb-hero .v small{font-size:.32em;font-weight:650;letter-spacing:0;white-space:nowrap}
 .fb-hero.pasado .v{color:var(--coral-t)} .fb-hero.alto .v{color:var(--amber-t)} .fb-hero.neutro .v{color:var(--ink)}
 .fb-hero .s{font-size:.9em;color:var(--ink-2);margin-top:4px;max-width:560px}
 .fb-hero .pills{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
-.fb-hero .pill{all:unset;cursor:pointer;padding:6px 12px;border-radius:8px;font-size:.84em;font-weight:600;color:var(--ink);background:var(--surface);border:1px solid var(--line);text-decoration:none}
+.fb-hero .pill{all:unset;cursor:pointer;padding:6px 12px;border-radius:8px;font-size:.87em;font-weight:600;color:var(--ink);background:var(--surface);border:1px solid var(--line);text-decoration:none}
 .fb-hero .pill:hover,.fin .fb-hero a.pill:hover{color:var(--ink);border-color:var(--ink-3)}
 a.fb-hero-link{color:var(--brand)}
 /* dentro de la portada, lo que flota (ayuda y etiqueta del gráfico) vuelve a ser claro sobre oscuro al revés */
@@ -46,10 +46,10 @@ a.fb-hero-link{color:var(--brand)}
 .fb-hero.neutro .fb-progreso .rel{background:var(--ink-3)}
 .fb-hero.pasado .fb-progreso .rel{background:var(--coral)}
 .fb-progreso .dia{position:absolute;top:0;bottom:0;width:2px;background:var(--ink);opacity:.8}
-.fb-hero .pie{margin-top:10px;font-size:.84em;font-weight:650;color:var(--ink);font-variant-numeric:tabular-nums}
+.fb-hero .pie{margin-top:10px;font-size:.87em;font-weight:650;color:var(--ink);font-variant-numeric:tabular-nums}
 /* «¿Me puedo permitir un gasto?»: cerrado es una línea discreta bajo la barra; el coral es pasarse del límite y el rosa, quedarse sin dinero */
 .fb-permitir{--rose:#FF7A6B;width:100%;max-width:560px;margin-top:14px}
-.fin .fb-permitir>summary{display:inline-block;margin:0;list-style:none;font-size:.84em;font-weight:600;color:var(--ink-2);border-radius:4px}
+.fin .fb-permitir>summary{display:inline-block;margin:0;list-style:none;font-size:.87em;font-weight:600;color:var(--ink-2);border-radius:4px}
 .fb-permitir>summary::-webkit-details-marker{display:none}
 .fb-permitir>summary::before{content:"›";display:inline-block;width:12px;font-weight:800;color:var(--ink-3);transition:transform 200ms var(--ease-out)}
 .fb-permitir[open]>summary::before{transform:rotate(90deg)}
@@ -63,12 +63,12 @@ a.fb-hero-link{color:var(--brand)}
 .fb-permitir .n{font-weight:650;text-align:right;font-variant-numeric:tabular-nums}
 .fb-permitir .n.pasa{color:var(--coral-t)} .fb-permitir .n.mal{color:var(--rose)}
 .fb-permitir .n a{color:var(--brand)}
-.fb-permitir .nota{margin-top:8px;font-size:.82em;color:var(--ink-2)}
+.fb-permitir .nota{margin-top:8px;font-size:.87em;color:var(--ink-2)}
 /* resumen del mes: columna a la derecha de la portada */
 .fb-resumen{grid-column:3;align-self:stretch;display:flex;flex-direction:column;justify-content:center;min-width:190px;padding-left:30px;border-left:1px solid var(--line)}
 .fb-resumen .d{display:flex;flex-direction:column;gap:2px;min-width:0;padding:10px 0}
 .fb-resumen .d+.d{border-top:1px solid var(--line)}
-.fb-resumen .k{font-size:.8em;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-3)}
+.fb-resumen .k{font-size:.87em;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-3)}
 .fb-resumen .n{font-size:1.55em;font-weight:650;white-space:nowrap}
 .fb-resumen .entra .n{color:var(--fin-up)} .fb-resumen .neg .n{color:var(--fin-down)}
 @media (max-width:1080px){.fb-hero{grid-template-columns:minmax(0,1fr) auto;row-gap:22px} .fb-hero .graf{grid-column:1/-1;grid-row:2} .fb-resumen{grid-column:2}}
@@ -82,6 +82,10 @@ a.fb-hero-link{color:var(--brand)}
 .fb-franja .t{flex:1;min-width:0}
 .fb-franja .fl{color:var(--ink-3);font-weight:700}
 .fin .fb-franja a.r:hover{color:var(--ink);background:var(--surface-2)}
+.fb-cambios{display:flex;align-items:flex-start;gap:12px;margin:0 0 var(--g);padding:8px 13px;border-radius:var(--r);background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--brand);font-size:.87em;color:var(--ink-2)}
+.fb-cambios details{flex:1;min-width:0}
+.fb-cambios summary{cursor:pointer;font-weight:600;color:var(--ink)}
+.fb-cambios .cuerpo{display:grid;gap:4px;margin-top:6px}
 .fb-franja .r.nota{border-left-color:var(--line)}
 .fb-franja .r.con-x{padding:0;gap:0}
 .fb-franja .r.con-x>a{display:flex;align-items:center;gap:12px;flex:1;min-width:0;padding:10px 8px 10px 13px;color:inherit;text-decoration:none}
@@ -92,18 +96,18 @@ a.fb-hero-link{color:var(--brand)}
 .fb-partes .fb-quitar{flex:none;font-size:1.05em;line-height:1}
 .fb-partes .fb-quitar[hidden]{display:none}
 .fin-note.fb-mal{color:var(--rose)}
-.fin .fb-franja details.mas>summary{margin:0;padding:8px 16px;font-size:.84em;font-weight:600;color:var(--ink-2);border-top:1px solid var(--line)}
+.fin .fb-franja details.mas>summary{margin:0;padding:8px 16px;font-size:.87em;font-weight:600;color:var(--ink-2);border-top:1px solid var(--line)}
 .fb-franja details.mas:first-child>summary{border-top:0}
 .fb-franja details.mas .r{border-top:1px solid var(--line)}
-.fb-resumen .p{font-size:.8em;color:var(--ink-3)}
+.fb-resumen .p{font-size:.87em;color:var(--ink-3)}
 .fb-item .fb-btn.mini{flex:none}
 .fb-sumas{display:flex;flex-wrap:wrap;gap:6px 22px;margin:0 0 12px;font-size:.9em;color:var(--ink-2)}
 .fb-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,150px),1fr));gap:12px;margin-bottom:var(--g)}
 .fb-stat{display:flex;flex-direction:column;gap:4px;padding:16px 18px;border-radius:var(--r);background:var(--surface);border:1px solid var(--line);border-top:3px solid var(--ink-3)}
 .fb-stat .ic{display:none}
-.fb-stat .l{font-size:.8em;color:var(--ink-2);font-weight:700;letter-spacing:.07em;text-transform:uppercase}
+.fb-stat .l{font-size:.87em;color:var(--ink-2);font-weight:700;letter-spacing:.07em;text-transform:uppercase}
 .fb-stat .v{font-size:1.8em;font-weight:650;line-height:1.1;white-space:nowrap}
-.fb-stat .s{font-size:.86em;color:var(--ink-2)}
+.fb-stat .s{font-size:.87em;color:var(--ink-2)}
 .fb-stat.entra{border-top-color:var(--mint)} .fb-stat.sale{border-top-color:var(--coral)} .fb-stat.ahorro{border-top-color:var(--brand)}
 /* barras de la semana */
 .fb-semana{display:grid;grid-template-columns:repeat(7,1fr);gap:8px;align-items:end;height:150px;margin:8px 0 6px;position:relative}
@@ -112,10 +116,10 @@ a.fb-hero-link{color:var(--brand)}
 .fb-semana .d.alto .b{background:var(--rose)}
 .fb-semana .d.fut .b{background:var(--surface-2);border:1px dashed var(--line)}
 .fb-semana .d.hoy .dl{color:var(--ink);font-weight:800}
-.fb-semana .dl{font-size:.8em;color:var(--ink-3);font-weight:650}
+.fb-semana .dl{font-size:.87em;color:var(--ink-3);font-weight:650}
 .fb-semana .dv{font-size:.7em;color:var(--ink-2);font-variant-numeric:tabular-nums;min-height:1.2em}
 .fb-semana .meta{position:absolute;left:0;right:0;border-top:1.5px dashed color-mix(in srgb,var(--ink-3) 70%,transparent);pointer-events:none}
-.fb-semana .meta span{position:absolute;right:0;top:-18px;font-size:.8em;color:var(--ink-3);background:var(--surface);padding:0 4px}
+.fb-semana .meta span{position:absolute;right:0;top:-18px;font-size:.87em;color:var(--ink-3);background:var(--surface);padding:0 4px}
 .fb-barra{height:8px;border-radius:999px;background:var(--surface-2);overflow:hidden;margin:8px 0 4px}
 .fb-barra>div{height:100%;border-radius:inherit;background:var(--brand)}
 .fb-barra.alto>div{background:var(--amber)} .fb-barra.pasado>div{background:var(--rose)}
@@ -128,38 +132,41 @@ a.fb-hero-link{color:var(--brand)}
 a.fb-item:hover,.fb-item.click:hover{background:var(--surface-2);cursor:pointer}
 .fb-item .n{flex:1;min-width:0}
 .fb-item .t{font-weight:620;font-size:.93em;white-space:normal;overflow-wrap:anywhere}
-.fb-item .s{font-size:.84em;color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fb-item .s{font-size:.87em;color:var(--ink-2);overflow-wrap:anywhere}
 .fb-item .v{font-weight:700;white-space:nowrap;font-variant-numeric:tabular-nums;text-align:right}
-.fb-item .v small{display:block;font-size:.8em;font-weight:500;color:var(--ink-3)}
+.fb-item .v small{display:block;font-size:.87em;font-weight:500;color:var(--ink-3)}
 .fb-item .v.pos{color:var(--fin-up)}
 .fb-item.prev{opacity:.62}
 /* Movimientos: casilla para elegir varios y la categoría en la propia fila */
+.fb-mov,.fb-mov :is(input,button,a){scroll-margin-top:150px}
 .fb-mov{display:flex;align-items:center;gap:10px;min-width:0}
 .fb-mov>.fb-item{flex:1;margin:0}
 .fb-mov>input[type=checkbox]{flex:none;width:18px;height:18px;margin:0;accent-color:var(--brand)}
-.fin .fb-mov>select.fb-mov-cat,.fb-mov>.hueco.cat{flex:none;width:180px;max-width:28%;height:34px;font-size:.86em}
+.fin .fb-mov>select.fb-mov-cat,.fb-mov>.hueco.cat{flex:none;width:180px;max-width:28%;height:34px;font-size:.87em}
 .fb-mov>.hueco{flex:none;width:18px}
-.fb-bloque{display:flex;flex-wrap:wrap;gap:12px;align-items:center;padding:10px 14px;margin-bottom:12px;border:1px solid var(--line);border-radius:10px;background:var(--surface-2)}
+.fb-bloque{display:flex;flex-wrap:wrap;gap:12px;align-items:center;padding:10px 14px;margin-bottom:12px;position:sticky;top:66px;z-index:5;box-shadow:0 4px 10px -6px rgba(0,0,0,.35);border:1px solid var(--line);border-radius:10px;background:var(--surface-2)}
 .fb-av{display:grid;place-items:center;flex:none;width:38px;height:38px;border-radius:9px;font-size:18px;background:color-mix(in srgb,var(--cc,var(--brand)) 15%,var(--surface))}
 .fb-av.sm{width:32px;height:32px;border-radius:8px;font-size:15px}
 .fb-fecha{display:grid;place-items:center;flex:none;width:40px;height:42px;border-radius:8px;border:1px solid var(--line);line-height:1.05;text-align:center}
-.fb-fecha b{font-family:var(--num);font-size:1.1em} .fb-fecha span{font-size:.8em;color:var(--ink-2);text-transform:uppercase;font-weight:700;letter-spacing:.04em}
+.fb-fecha b{font-family:var(--num);font-size:1.1em} .fb-fecha span{font-size:.87em;color:var(--ink-2);text-transform:uppercase;font-weight:700;letter-spacing:.04em}
 .fb-total{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;margin:0 0 8px}
 .fb-total .v{font-size:2.4em;font-weight:650;line-height:1.05;white-space:nowrap}
-.fb-total .s{font-size:.84em;color:var(--ink-2)}
+.fb-total .s{font-size:.87em;color:var(--ink-2)}
 .fb-total .s.pos{color:var(--fin-up);font-weight:650} .fb-total .s.neg{color:var(--fin-down);font-weight:650}
 /* «Tus próximos meses»: tres escenarios en una tarjeta de un tercio, sin desplazamiento horizontal */
-.fin table.fb-esc-tabla{margin:6px 0}
+.fin table.fb-esc-tabla{margin:6px 0;table-layout:fixed;width:100%}
+.fin table.fb-esc-tabla thead th:first-child,.fin table.fb-esc-tabla tbody th{width:42%}
 .fin table.fb-esc-tabla th,.fin table.fb-esc-tabla td{white-space:normal;vertical-align:top;padding-left:0;padding-right:0}
 .fin table.fb-esc-tabla .num{padding-left:12px;white-space:nowrap}
 .fin table.fb-esc-tabla thead th{vertical-align:bottom}
+.fin table.fb-esc-tabla thead th.num{white-space:normal;padding-left:6px}
 .fin table.fb-esc-tabla tbody th{padding:10px 0;font-size:1em;font-weight:400;color:var(--ink);text-transform:none;letter-spacing:0;border-bottom:1px solid var(--line)}
 .fin table.fb-esc-tabla tbody tr:last-child th{border-bottom:none}
 .fin table.fb-esc-tabla tbody th .t{font-weight:650}
-.fin table.fb-esc-tabla tbody th .s{font-size:.94em;color:var(--ink-2)}
+.fin table.fb-esc-tabla tbody th .s{font-size:max(13px,.94em);color:var(--ink-2)}
 .fin table.fb-esc-tabla tbody tr:hover td{background:none}
 .fin table.fb-esc-tabla td.num{font-weight:650}
-.fin table.fb-esc-tabla td small{display:block;font-size:.94em;font-weight:400;color:var(--ink-2)}
+.fin table.fb-esc-tabla td small{display:block;white-space:normal;font-size:max(13px,.94em);font-weight:400;color:var(--ink-2)}
 .fb-spark{margin:6px 0 4px}
 .fb-spark svg{display:block;width:100%;height:48px}
 /* plan */
@@ -175,10 +182,14 @@ a.fb-item:hover,.fb-item.click:hover{background:var(--surface-2);cursor:pointer}
 .fin .fb-menu .ops a{padding:8px 12px;border-radius:6px;font-size:.92em;font-weight:600}
 .fin .fb-menu .ops a:hover{color:var(--ink);background:var(--surface-2)}
 .fb-chips{display:flex;flex-wrap:wrap;gap:6px;padding:2px 0 8px;margin-bottom:6px}
-.fb-chips button{all:unset;cursor:pointer;flex:none;display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:8px;font-size:.84em;font-weight:600;color:var(--ink-2);background:var(--surface);border:1px solid var(--line)}
+.fb-chips button{all:unset;cursor:pointer;flex:none;display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:8px;font-size:.87em;font-weight:600;color:var(--ink-2);background:var(--surface);border:1px solid var(--line)}
 .fb-chips button:hover{color:var(--ink);border-color:var(--ink-3)}
 .fb-chips button.act{color:var(--bg);background:var(--ink);border-color:var(--ink)}
 .fb-dia{margin-bottom:12px}
-.fb-dia>.cab{display:flex;justify-content:space-between;padding:4px 0 6px;margin-bottom:2px;border-bottom:1px solid var(--line);font-size:.8em;font-weight:700;color:var(--ink-3);text-transform:uppercase;letter-spacing:.07em}
+.fb-dia>.cab{display:flex;justify-content:space-between;padding:4px 0 6px;margin-bottom:2px;border-bottom:1px solid var(--line);font-size:.87em;font-weight:700;color:var(--ink-3);text-transform:uppercase;letter-spacing:.07em}
 .fb-pagina{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:12px 0}.fb-pagina .fin-note{margin:0;text-align:center}.fb-pagina button:disabled{opacity:.45;cursor:default}
 
+.fb-masfiltros-cuerpo{display:flex;flex-wrap:wrap;gap:12px 16px;align-items:flex-end}
+.fb-campo{display:flex;flex-direction:column;gap:4px;font-size:.87em;color:var(--ink-2)}
+.fb-campo input[type=text]{width:9em}
+.fb-campo-casilla{flex-direction:row;align-items:center;gap:8px;padding-bottom:8px}

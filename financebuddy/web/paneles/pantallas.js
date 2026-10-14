@@ -15,11 +15,11 @@ render();
 if (!(input && input.exponer)) autoCuadre();
 // Para las pruebas automáticas.
 if (input && input.exponer) {
-  window.__fin = { periodoKey, periodoInicio, rentabilidadPeriodo, planReparto, DateTime, finMes, repartoAhorro, estimacion, conciliacion, prevision, resumenInversion, fondoEmergencia, gastoVariable, tasa12, repartoObjetivo, repartoAportacion, validarObjetivos, resumenMes, subidasFijos,
+  window.__fin = { periodoKey, periodoInicio, rentabilidadPeriodo, planReparto, DateTime, finMes, repartoAhorro, estimacion, conciliacion, prevision, resumenInversion, fondoEmergencia, gastoVariable, tasa12, repartoObjetivo, repartoAportacion, validarObjetivos, resumenMes, subidasFijos, xirr, mesPagoDe,
     movimientos, aportaciones, objetivos, patrimonio, avisos, categorias, grupoDe, limiteVar, mesesHasta, mesAnterior, hoyKey,
-    fechaDatos, presupuestoSemana, planReparto, cuentas, proyectar, resumenCategorias, ritmoMes, evolucionInversion, aportacionesMes, constancia, interesesBroker, saludInversion, posicion, valorInfo,
+    fechaDatos, presupuestoSemana, planReparto, cuentas, proyectar, resumenCategorias, ritmoMes, evolucionInversion, aportacionesMes, constancia, interesesBroker, comisionesFondos, ingresosPasivos, saludInversion, posicion, valorInfo,
     hitosPatrimonio, mesesHasta50, tamañoCompras, fifoVentas, cobros, usaMercado, generarResumen,
     repartirAvisos, ritmoObjetivo, siguienteFecha, cuantoFalta, totalesFijos, fijosSinCobrar, cuotaAhorro, rentaPorAño, csvRenta, recordatorios, hoy,
-    gastoFijoSuelto, cierreVale, cierres, comisionesRecientes, cobrosRepetidos, faltaSegundaCopia, resumenAño, rentabilidadAño, patrimonioAño,
-    aportacionesSinLlegar, reglaDosMeses, primerosPasos, recurrentes, activos, porComercio, presupuestosSugeridos, avisoReparto, limitePorMeta, escenariosPrevision, fijosAutomaticos, leerImporte, puedoPermitirme, datosPermitir };
+    gastoFijoSuelto, cierreVale, cierres, comisionesRecientes, cobrosRepetidos, faltaSegundaCopia, resumenAño, mediaMensualAño, categoriasQueBajan, ritmoAño, repartoDonut, frenteAño, tasaAñoTexto, rentabilidadAño, patrimonioAño,
+    aportacionesSinLlegar, fijosDiaDistinto, ultimoDatoBroker, reglaDosMeses, simularVenta, primerosPasos, cambiosDesdeVista, recurrentes, activos, porComercio, presupuestosSugeridos, huchaAnual, avisoReparto, limitePorMeta, escenariosPrevision, fijosAutomaticos, leerImporte, puedoPermitirme, datosPermitir, filtrarMas, filtrosMasActivos };
 }

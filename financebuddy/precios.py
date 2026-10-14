@@ -389,17 +389,20 @@ def _xirr(flujos):
     """flujos: [(date, importe)], negativo = pones, positivo = recibes/vale. → tasa anual o None."""
     if len(flujos) < 2 or not any(v < 0 for _, v in flujos) or not any(v > 0 for _, v in flujos): return None
     f0 = min(f for f, _ in flujos)
+    if all(f == f0 for f, _ in flujos): return None
     def van(r): return sum(v / (1 + r) ** ((f - f0).days / 365.0) for f, v in flujos)
-    lo, hi = -0.99, 10.0
-    try: vlo, vhi = van(lo), van(hi)
-    except (ZeroDivisionError, OverflowError): return None
-    if vlo * vhi > 0: return None
-    for _ in range(200):
-        mid = (lo + hi) / 2; vm = van(mid)
-        if abs(vm) < 1e-7: return mid
-        if vlo * vm <= 0: hi = mid
-        else: lo, vlo = mid, vm
-    return (lo + hi) / 2
+    # Primero entre −99 % y +1.000 %; si ahí no está, hasta +100.000 % y luego hasta −99,99 %. Fuera de eso, None.
+    for lo, hi in ((-0.99, 10.0), (10.0, 1000.0), (-0.9999, -0.99)):
+        try: vlo, vhi = van(lo), van(hi)
+        except (ZeroDivisionError, OverflowError): continue
+        if vlo * vhi > 0: continue
+        for _ in range(200):
+            mid = (lo + hi) / 2; vm = van(mid)
+            if abs(vm) < 1e-7: return mid
+            if vlo * vm <= 0: hi = mid
+            else: lo, vlo = mid, vm
+        return (lo + hi) / 2
+    return None
 
 def comparar(alm, ref):
     """Tus mismas compras y ventas, en las mismas fechas, en otra cartera. → {nombre, detalle, meses, valor, aportado, hoy, puesto, tir, desde, avisos}."""

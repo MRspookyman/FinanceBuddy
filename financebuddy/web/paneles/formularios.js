@@ -285,12 +285,12 @@ function formulario(padre, tipo, reg, opciones = {}) {
     const bB = botones.createEl("button", { cls: "fb-btn sec peligro", text: "Borrar" });
     bB.onclick = async () => {
       const nOps = tipo === "activo" ? (DB.registros.aportacion || []).filter((x) => x.activo === reg.nombre).length : 0;
-      if (!confirm(tipo === "activo" ? `¿Borrar «${reg.nombre}» con sus ${nOps} operaciones y dividendos? No se puede deshacer (salvo restaurando una copia de seguridad).\n\nSi solo quieres dejar de verlo porque lo vendiste, mejor cámbiale el estado a «Vendido».`
-        : `¿Borrar este ${F.uno}? No se puede deshacer (salvo restaurando una copia de seguridad).`)) return;
+      if (!(await confirmar(tipo === "activo" ? `Se borrará «${reg.nombre}» con sus ${nOps} operaciones y dividendos. No se puede deshacer (salvo restaurando una copia de seguridad).\n\nSi solo quieres dejar de verlo porque lo vendiste, mejor cámbiale el estado a «Vendido».`
+        : `Se borrará este ${F.uno}. No se puede deshacer (salvo restaurando una copia de seguridad).`, { titulo: "¿Borrar?", si: "Borrar", peligro: true }))) return;
       let r = tipo === "activo" ? await FB.api("/api/activo/borrar", { id: reg.id }) : await FB.api("/api/borrar", { tipo, id: reg.id });
       // Si algo se apoya en esto (movimientos de una cuenta, gastos de una categoría…), el servidor no lo borra sin que lo veas
       if (r.necesita_confirmar) {
-        if (!confirm(`${r.mensaje}\n\n¿Lo borras de todas formas?`)) return;
+        if (!(await confirmar(`${r.mensaje}\n\n¿Lo borras de todas formas?`, { titulo: "Esto se está usando", si: "Borrar de todas formas", peligro: true }))) return;
         r = await FB.api("/api/borrar", { tipo, id: reg.id, confirmar: true });
       }
       if (!r.ok) { mensaje(msg, r.mensaje || "Error", "err"); return; }
@@ -338,7 +338,7 @@ function panelProbarRegla(p, d) {
     if (r.aplicable) {
       const b = res.createEl("button", { cls: "fb-btn", text: `Aplicar a los ${r.cambian} ya importados`, attr: { type: "button" } });
       b.onclick = async () => {
-        if (!confirm(`¿Pasar ${r.cambian} movimiento${r.cambian === 1 ? "" : "s"} a «${q.categoria}»? Podrás deshacerlo justo después.`)) return;
+        if (!(await confirmar(`Vas a pasar ${r.cambian} movimiento${r.cambian === 1 ? "" : "s"} a «${q.categoria}». Podrás deshacerlo justo después.`, { titulo: "¿Aplicar la regla?", si: "Aplicar" }))) return;
         b.disabled = true;
         const a = await FB.api("/api/regla/aplicar", q);
         FB.aviso(a.mensaje || "Hecho", !a.ok, a.ok ? avisoDeshacer() : undefined);

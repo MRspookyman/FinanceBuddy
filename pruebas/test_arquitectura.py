@@ -84,5 +84,20 @@ class TestArquitectura(unittest.TestCase):
             externos += [f"{os.path.relpath(ruta, RAIZ)}: {m.group(0)}" for m in patron.finditer(leer(ruta))]
         self.assertEqual(externos, [], "recursos cargados de internet")
 
+    def test_colores_de_categoria_se_ven_sobre_el_fondo_claro(self):
+        """Los colores de serie (CAT_COLOR) y los que se reparten a las categorías nuevas (PALETA) pintan puntos, barras y el
+        rosco sobre las tarjetas: en el tema claro tienen que llegar a 3:1 frente a --surface (WCAG, elementos gráficos)."""
+        def lum(h):
+            c = [int(h[i:i + 2], 16) / 255 for i in (1, 3, 5)]
+            r, g, b = [x / 12.92 if x <= 0.03928 else ((x + 0.055) / 1.055) ** 2.4 for x in c]
+            return 0.2126 * r + 0.7152 * g + 0.0722 * b
+        src = leer(os.path.join(WEB, "paneles", "componentes.js"))
+        tonos = re.findall(r"#[0-9A-Fa-f]{6}", re.search(r"const PALETA = \[(.*?)\]", src).group(1))
+        tonos += re.findall(r"#[0-9A-Fa-f]{6}", re.search(r"const CAT_COLOR = \{(.*?)\};", src, re.S).group(1))
+        fondo = re.search(r"--surface:(#[0-9A-Fa-f]{6})", leer(os.path.join(WEB, "estilos.css"))).group(1)
+        self.assertGreater(len(tonos), 20)
+        flojos = [f"{t} {(lum(fondo) + 0.05) / (lum(t) + 0.05):.2f}:1" for t in tonos if (lum(fondo) + 0.05) / (lum(t) + 0.05) < 3]
+        self.assertEqual(flojos, [], f"colores de categoría por debajo de 3:1 sobre {fondo}")
+
 if __name__ == "__main__":
     unittest.main()

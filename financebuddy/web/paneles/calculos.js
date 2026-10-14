@@ -35,12 +35,12 @@ function tasa12(key) {
 // entra (para comparar con el mismo trozo del año anterior). Mejor y peor mes: por ahorro, entre los meses ya acabados.
 function resumenAño(año, ms = movimientos(), hasta = `${año}-12`) {
   const keys = Array.from({ length: 12 }, (_, i) => `${año}-${String(i + 1).padStart(2, "0")}`).filter((k) => k <= hasta);
-  const reales = ms.filter((m) => !m.previsto && keys.includes(keyDe(m.fecha)));
-  const propios = new Set(reales.filter((m) => !m.auto).map((m) => keyDe(m.fecha)));
+  const reales = ms.filter((m) => !m.previsto && keys.includes(mesDe(m)));
+  const propios = new Set(reales.filter((m) => !m.auto).map(mesDe));
   const filas = keys.map((key) => ({ key, ingresos: 0, gastos: 0, datos: propios.has(key) }));
   const gastoCat = new Map(), ingresoCat = new Map();
   for (const m of reales) {
-    const f = filas.find((x) => x.key === keyDe(m.fecha));
+    const f = filas.find((x) => x.key === mesDe(m));
     if (!f.datos) continue;
     if (m.clase === "ingreso") { f.ingresos += m.importe; ingresoCat.set(m.categoria || "Otros", (ingresoCat.get(m.categoria || "Otros") || 0) + m.importe); }
     if (m.gasto) { f.gastos += m.gasto; gastoCat.set(m.categoria || "Otros", (gastoCat.get(m.categoria || "Otros") || 0) + m.gasto); }
@@ -51,6 +51,52 @@ function resumenAño(año, ms = movimientos(), hasta = `${año}-12`) {
   const orden = [...acabados].sort((a, b) => b.ahorro - a.ahorro);
   return { año, keys, filas, meses: con.length, ingresos, gastos, ahorro: ingresos - gastos, tasa: ingresos > 0 ? (ingresos - gastos) / ingresos : NaN,
     gastoCat, ingresoCat, mejor: orden.length >= 2 ? orden[0] : null, peor: orden.length >= 2 ? orden[orden.length - 1] : null };
+}
+// Las porciones del donut de «Mi año»: las `max` categorías que más suman y el resto juntas en «Otras N» (con max + 1 o menos,
+// todas). Lo que no llega a medio euro (o queda en negativo por los reembolsos) no tiene porción.
+function repartoDonut(pares, max = 5) {
+  const pos = pares.filter(([, v]) => v >= 0.5).sort((a, b) => b[1] - a[1]);
+  const total = sum(pos.map(([, v]) => v));
+  const juntar = pos.length > max + 1;
+  const partes = (juntar ? pos.slice(0, max) : pos).map(([nombre, valor]) => ({ nombre, valor }));
+  if (juntar) partes.push({ nombre: `Otras ${pos.length - max}`, valor: sum(pos.slice(max).map(([, v]) => v)), otras: true });
+  return { total, partes: partes.map((p) => ({ ...p, frac: total > 0 ? p.valor / total : 0 })) };
+}
+// «2025: 1.234 € (+5 %)» en las tarjetas de «Mi año». Si aquel año no hubo nada (0 €), «sin datos de 2025»: no un porcentaje disparatado.
+function frenteAño(a, b, añoB, hayB) {
+  if (!hayB) return "";
+  if (Math.abs(b) < 0.5) return `sin datos de ${añoB}`;
+  return `${añoB}: ${eur(b, 0)}${b > 0 ? ` (${pct((a - b) / b, true)})` : ""}`;
+}
+// Debajo de «Ahorraste» en «Mi año»: qué parte de lo que entró ahorraste. Con menos de medio euro de ingresos (p. ej. solo
+// unos céntimos de intereses) no hay nada que repartir: lo dice, en vez de «100,0 % de lo que entró» sobre «+0 €».
+function tasaAñoTexto(A) {
+  if (A.ingresos < 0.5) return A.gastos < 0.5 ? "sin ingresos ni gastos este año" : "sin ingresos este año";
+  return A.ahorro >= 0.5 && isFinite(A.tasa) ? `${pct(A.tasa)} de lo que entró` : "";
+}
+// Media al mes de lo que entra y sale en «Mi año»: solo sobre los meses ya acabados con movimientos propios y algo de gasto (un mes
+// con solo céntimos de intereses del bróker no es un mes de verdad), sin el mes en curso, que está a medias. Sin ninguno, null: no se enseña una media inventada.
+function mediaMensualAño(A, hoy = hoyKey) {
+  const f = A.filas.filter((x) => x.datos && x.gastos >= 1 && x.key < hoy);
+  if (!f.length) return null;
+  const ingresos = sum(f.map((x) => x.ingresos)) / f.length, gastos = sum(f.map((x) => x.gastos)) / f.length;
+  return { meses: f.length, ingresos, gastos, ahorro: ingresos - gastos, enCurso: A.filas.some((x) => x.datos && x.key >= hoy) };
+}
+// Hermano de «Lo que más ha subido»: las categorías que más bajaron (≥ 50 €) frente al año anterior, de más a menos. Sin año
+// anterior con datos (`hayB` falso) no hay con qué comparar: lista vacía.
+function categoriasQueBajan(gastoA, gastoB, hayB, max = 3) {
+  if (!hayB) return [];
+  const nombres = new Set([...gastoA.keys(), ...gastoB.keys()]);
+  return [...nombres].map((n) => ({ nombre: n, dif: (gastoA.get(n) || 0) - (gastoB.get(n) || 0) })).filter((x) => x.dif <= -50).sort((a, b) => a.dif - b.dif).slice(0, max);
+}
+// Ritmo del año (solo el año en curso, con 3 meses acabados con datos o más): lo ahorrado hasta hoy (lo que enseña «Ahorraste»)
+// más el ahorro medio mensual por los meses completos que quedan después del actual. Año cerrado o con pocos datos: null.
+function ritmoAño(A, hoy = hoyKey) {
+  if (hoy.slice(0, 4) !== String(A.año)) return null;
+  const m = mediaMensualAño(A, hoy);
+  if (!m || m.meses < 3) return null;
+  const quedan = 12 - Number(hoy.slice(5, 7));
+  return { meses: m.meses, mensual: m.ahorro, hasta: A.ahorro, quedan, año: A.ahorro + m.ahorro * quedan };
 }
 // ───────────── inversión ─────────────
 // El `valor` de un activo es a `fecha_valor`; las aportaciones posteriores aún no están dentro → se suman.
@@ -111,19 +157,25 @@ function valorInfo(a) {
 const valorHoy = (a) => valorInfo(a).valor;
 const conValorReal = (a) => ["anotado", "precio", "mercado"].includes(valorInfo(a).fuente);
 // TIR anualizada (XIRR). flujos: [{ fecha, importe }], negativo = dinero que pones, positivo = lo que recibes/vale.
+// Busca primero entre −99 % y +1.000 %; si ahí no está, hasta +100.000 % y luego hasta −99,99 %. Fuera de eso
+// (o sin tiempo entre flujos) devuelve NaN: no hay una cifra razonable y las pantallas no la enseñan.
 function xirr(fl) {
   if (fl.length < 2 || !fl.some((f) => f.importe > 0) || !fl.some((f) => f.importe < 0)) return NaN;
   const t0 = DateTime.min(...fl.map((f) => f.fecha));
   const años = fl.map((f) => f.fecha.diff(t0, "days").days / 365);
+  if (!años.some((a) => a > 0)) return NaN;
   const npv = (r) => sum(fl.map((f, i) => f.importe / Math.pow(1 + r, años[i])));
-  let lo = -0.99, hi = 10, flo = npv(lo), fhi = npv(hi);
-  if (!isFinite(flo) || !isFinite(fhi) || flo * fhi > 0) return NaN;
-  for (let i = 0; i < 200; i++) {
-    const mid = (lo + hi) / 2, fm = npv(mid);
-    if (Math.abs(fm) < 1e-7) return mid;
-    if (fm * flo > 0) { lo = mid; flo = fm; } else hi = mid;
+  for (let [lo, hi] of [[-0.99, 10], [10, 1000], [-0.9999, -0.99]]) {
+    let flo = npv(lo), fhi = npv(hi);
+    if (!isFinite(flo) || !isFinite(fhi) || flo * fhi > 0) continue;
+    for (let i = 0; i < 200; i++) {
+      const mid = (lo + hi) / 2, fm = npv(mid);
+      if (Math.abs(fm) < 1e-7) return mid;
+      if (fm * flo > 0) { lo = mid; flo = fm; } else hi = mid;
+    }
+    return (lo + hi) / 2;
   }
-  return (lo + hi) / 2;
+  return NaN;
 }
 // Flujos de un activo para la TIR: aportado inicial en `fecha_inicio`, aportaciones reales y el valor de hoy.
 function flujosActivo(a) {
@@ -158,10 +210,11 @@ function resumenInversion(soloLargo = false) {
   const total = sum(filas.map((f) => f.valor));
   const con = filas.filter((f) => f.conValorReal && f.conocido && f.aportado > 0);
   const aportado = sum(con.map((f) => f.aportado)), gan = sum(con.map((f) => f.gan));
+  const ganValor = gan - sum(con.map((f) => f.cobrado));  // solo el cambio de valor: lo cobrado (dividendos − comisiones) ya está en tus cuentas
   const conTir = filas.filter((f) => f.fl);
   const tir = conTir.length ? xirr(conTir.flatMap((f) => f.fl)) : NaN;
   const desde = conTir.length ? DateTime.min(...conTir.map((f) => f.desde)) : null;
-  return { filas, cerradas, total, aportado, gan, dividendos: sum(filas.map((f) => f.dividendos)), AP, sinAport: filas.filter((f) => !f.conocido).length, sinValor: filas.filter((f) => f.fuente === "metido").length,
+  return { filas, cerradas, total, aportado, gan, ganValor, dividendos: sum(filas.map((f) => f.dividendos)), AP, sinAport: filas.filter((f) => !f.conocido).length, sinValor: filas.filter((f) => f.fuente === "metido").length,
     estimados: filas.filter((f) => f.fuente === "precio").length, mercado: filas.filter((f) => f.fuente === "mercado").length,
     fechaMercado: filas.filter((f) => f.fuente === "mercado").reduce((m, f) => (!m || f.precioEstimado.fecha < m ? f.precioEstimado.fecha : m), null),
     aportadoTodo: sum(filas.map((f) => f.aportado)), tir, tirParcial: conTir.length < filas.length, tirCorta: desde ? hoy.diff(desde, "days").days < 365 : false };
@@ -321,5 +374,31 @@ function interesesBroker() {
   const año = ms.filter((m) => m.fecha.year === hoy.year);
   return { año: sum(año.filter((m) => m.clase === "ingreso").map((m) => m.importe)), comisiones: sum(año.filter((m) => m.clase === "gasto").map((m) => m.importe)),
     total: sum(ms.filter((m) => m.clase === "ingreso").map((m) => m.importe)), n: ms.length };
+}
+
+// Lo que te cuestan al año las comisiones de tus fondos: valor de hoy × TER. Solo cuenta lo que tiene TER (> 0) y valor;
+// el resto no entra ni se supone 0 (`sinTer`: cuántos activos con valor se quedan fuera, para decirlo).
+// filas: [{ nombre, valor, ter (% al año o null) }] → { filas: [{ nombre, ter, coste }], total, sinTer }
+function comisionesFondos(filas) {
+  const con = filas.filter((f) => f.valor > 0 && isFinite(f.ter) && f.ter > 0).map((f) => ({ nombre: f.nombre, ter: f.ter, coste: f.valor * f.ter / 100 }));
+  return { filas: con, total: sum(con.map((f) => f.coste)), sinTer: filas.filter((f) => f.valor > 0 && !(isFinite(f.ter) && f.ter > 0)).length };
+}
+
+// Ingresos pasivos: dividendos de los activos e intereses del dinero sin invertir, por año (el más reciente primero), y el
+// rendimiento de cada activo = dividendos de los últimos 12 meses ÷ lo que vale hoy (no cuenta cambios de valor ni comisiones).
+// cobrosL: [{ fecha, activo, tipo, importe }] · interesesL: [{ fecha, importe }] (solo lo que entra) · filas: [{ nombre, valor }]
+// → { años: [{ año, dividendos, intereses, total }], activos: [{ nombre, cobrado, valor, rend }] (los 12 meses, de más a menos), hay }
+function ingresosPasivos(cobrosL, interesesL, filas, hoyF) {
+  const divs = cobrosL.filter((c) => c.tipo === "dividendo" && c.importe > 0);
+  const porAño = new Map();
+  const fila = (año) => { if (!porAño.has(año)) porAño.set(año, { año, dividendos: 0, intereses: 0, total: 0 }); return porAño.get(año); };
+  for (const c of divs) { const f = fila(c.fecha.year); f.dividendos += c.importe; f.total += c.importe; }
+  for (const i of interesesL.filter((i) => i.importe > 0)) { const f = fila(i.fecha.year); f.intereses += i.importe; f.total += i.importe; }
+  const desde = hoyF.minus({ years: 1 });
+  const activos = filas.map((f) => {
+    const cobrado = sum(divs.filter((c) => c.activo === f.nombre && c.fecha > desde && c.fecha <= hoyF.endOf("day")).map((c) => c.importe));
+    return { nombre: f.nombre, cobrado, valor: f.valor, rend: f.valor > 0 ? cobrado / f.valor : NaN };
+  }).filter((f) => f.cobrado > 0).sort((a, b) => b.cobrado - a.cobrado);
+  return { años: [...porAño.values()].sort((a, b) => b.año - a.año), activos, hay: porAño.size > 0 };
 }
 

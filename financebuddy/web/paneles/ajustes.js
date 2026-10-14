@@ -175,12 +175,12 @@ function vistaAjustes() {
   const sCop = fr.createEl("select", { attr: { "aria-label": "Copia de seguridad" } });
   FB.api("/api/copias").then((r) => { for (const n of r.copias || []) { const o = sCop.createEl("option", { text: n }); o.value = n; } });
   const bRes = fr.createEl("button", { cls: "fb-btn sec", text: "Restaurar" });
-  bRes.onclick = async () => { if (!sCop.value || !confirm(`¿Volver a los datos de «${sCop.value}»? Lo de ahora se guarda antes en otra copia.`)) return; const r = await FB.api("/api/restaurar", { copia: sCop.value }); FB.aviso(r.mensaje || "Hecho", !r.ok); await FB.refrescar(); };
+  bRes.onclick = async () => { if (!sCop.value || !(await confirmar(`Vas a volver a los datos de «${sCop.value}». Lo de ahora se guarda antes en otra copia, así que podrás recuperarlo.`, { titulo: "¿Volver a una copia?", si: "Volver a esta copia" }))) return; const r = await FB.api("/api/restaurar", { copia: sCop.value }); FB.aviso(r.mensaje || "Hecho", !r.ok); await FB.refrescar(); };
   const det2 = pC.createEl("details"); det2.createEl("summary", { text: "Usar otra carpeta de datos" });
   const fr2 = det2.createDiv({ cls: "fb-fila" });
   const iC = fr2.createEl("input", { attr: { type: "text", placeholder: "C:\\Users\\…\\FinanceBuddy", "aria-label": "Carpeta de datos" } }); iC.value = DB.info.carpeta;
   const bC = fr2.createEl("button", { cls: "fb-btn sec", text: "Cambiar" });
-  bC.onclick = async () => { const r = await FB.api("/api/carpeta", { carpeta: iC.value }); FB.aviso(r.mensaje || "Hecho", !r.ok); await FB.recargar(); FB.ir("#inicio"); };
+  bC.onclick = async () => { let r = await FB.api("/api/carpeta", { carpeta: iC.value }); if (r.necesita_confirmar) { if (!(await confirmar(r.mensaje, { titulo: "¿Empezar de cero en esa carpeta?", si: "Crear base nueva" }))) return; r = await FB.api("/api/carpeta", { carpeta: iC.value, confirmado: true }); } FB.aviso(r.mensaje || "Hecho", !r.ok); await FB.recargar(); FB.ir("#inicio"); };
   det2.createDiv({ cls: "fin-note", text: "La carpeta tiene que existir (créala antes en el Explorador si es nueva). Si no tiene datos, se empieza de cero allí (tus datos actuales siguen en la carpeta de antes)." });
   const det3 = pC.createEl("details"); det3.createEl("summary", { text: "Borrar todos los datos" });
   det3.createDiv({ cls: "fin-note", text: "Se guarda una copia antes. Escribe BORRAR para confirmar." });

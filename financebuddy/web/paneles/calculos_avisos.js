@@ -38,6 +38,14 @@ function fijosSinCobrar() {
   return recurrentes().filter((r) => r.clase !== "aportacion" && !r.meses && !(r.hasta && r.hasta < hoy) && ult.has(r.nombre) && fd.diff(ult.get(r.nombre), "days").days > 62)
     .map((r) => ({ id: r.p.id, nombre: r.nombre, clase: r.clase, ultima: ult.get(r.nombre) }));
 }
+// Fecha de lo último que hay importado del bróker (hasta hoy): aportaciones reales, dividendos/comisiones de activos y
+// movimientos de sus cuentas. null si no hay nada.
+// fechas: las de esas tres cosas (las que sean reales).
+function ultimoDatoBroker(fechas = [...aportacionesReales().filter((a) => !a.auto).map((a) => a.fecha), ...cobros().map((c) => c.fecha),
+  ...movimientos().filter((m) => !m.auto && !m.previsto && esDelBroker(m)).map((m) => m.fecha)], hoyF = hoy) {
+  const f = fechas.filter((x) => x && x <= hoyF.endOf("day"));
+  return f.length ? DateTime.max(...f) : null;
+}
 // Aportaciones fijas que no han llegado (fijosSinCobrar deja fuera las aportaciones): mientras falta la real, la app pone una
 // automática, así que si la orden se canceló o falló el cargo nadie lo diría y la previsión la seguiría contando.
 // Solo las que alguna vez casaron con una aportación real, y la última vez que tocaba hasta `ref` (el último día con datos
@@ -62,6 +70,25 @@ function aportacionesSinLlegar(recs, aports, ref, margen = 5) {
   }
   return out;
 }
+// Fijos cuyo día no casa con cuándo se pagan de verdad (último año, al menos 3 pagos, casi todos en torno al mismo día): con el día
+// mal puesto, un pago que cae en el mes de al lado deja su automático y el mes sale contado dos veces. Solo avisa si la diferencia es de
+// 5 días o más, o de 3 o más cuando el pago cae en el otro lado del cambio de mes (día 1 que se cobra el 28).
+// recs: como recurrentes() · pagos: [{ fecha, recurrente }] reales (movimientos y aportaciones).
+const distDia = (a, b) => Math.min(Math.abs(a - b), 30 - Math.abs(a - b));
+function fijosDiaDistinto(recs, pagos, hoyF) {
+  const out = [], desde = hoyF.minus({ months: 12 });
+  for (const r of recs) {
+    if (r.hasta && r.hasta < hoyF) continue;
+    const dias = pagos.filter((a) => a.recurrente === r.nombre && a.fecha && a.fecha > desde && a.fecha <= hoyF.endOf("day")).map((a) => a.fecha.day);
+    if (dias.length < 3) continue;
+    const tipico = dias.map((c) => ({ c, s: dias.reduce((t, x) => t + distDia(c, x), 0) })).reduce((m, x) => (x.s < m.s ? x : m)).c;
+    if (dias.filter((x) => distDia(x, tipico) <= 3).length * 3 < dias.length * 2) continue;
+    const dist = distDia(r.dia, tipico);
+    if (dist < 5 && !(dist >= 3 && Math.abs(r.dia - tipico) > 15)) continue;
+    out.push({ id: r.p.id, nombre: r.nombre, clase: r.clase, dia: r.dia, tipico });
+  }
+  return out;
+}
 // «Primeros pasos» del Inicio: lo que conviene hacer al empezar, cada paso hecho o no según lo que ya hay.
 // e: { cuentas, movimientos, pendientes, fijos, limite, saldos } (cuántos hay de cada cosa; limite: el límite de gasto).
 function primerosPasos(e) {
@@ -73,6 +100,19 @@ function primerosPasos(e) {
     { id: "limite", t: "Poner un límite de gasto al mes", s: "lo que quieres gastar en comer fuera, compras, ocio…", ruta: "#ajustes", hecho: e.limite > 0 },
     { id: "saldos", t: "Anotar cuánto tienes en cada cuenta", s: "así la app sabe cuánto tienes y cuánto tendrás", ruta: "#cerrar", hecho: e.saldos > 0 },
   ];
+}
+// «Lo que cambió desde la última vez»: compara lo de ahora con la foto que se guardó al darle a «Entendido» (config.ultima_vista).
+// prev: { max_id, neto, avisos: [claves], fecha } o nada (primera vez) · ahora: { movs: [{ id, fecha: "aaaa-mm-dd", parte_de }], neto, avisos: [{ clave, texto }] }.
+// Solo hay franja si hay movimientos nuevos o avisos nuevos; el cambio de saldo es un dato más. Las partes de un movimiento dividido no cuentan.
+function cambiosDesdeVista(prev, ahora) {
+  const movs = (ahora.movs || []).filter((m) => !m.parte_de);
+  const snap = { max_id: Math.max(0, ...(ahora.movs || []).map((m) => Number(m.id) || 0)), neto: isFinite(ahora.neto) ? ahora.neto : null, avisos: (ahora.avisos || []).map((a) => a.clave).filter(Boolean) };
+  if (!prev || !isFinite(prev.max_id)) return { primera: true, hay: false, snap };
+  const nuevos = movs.filter((m) => Number(m.id) > prev.max_id), fechas = nuevos.map((m) => m.fecha).filter(Boolean).sort();
+  const vistos = new Set(prev.avisos || []);
+  const avisosNuevos = (ahora.avisos || []).filter((a) => a.clave && !vistos.has(a.clave));
+  const dif = snap.neto != null && isFinite(prev.neto) && Math.abs(snap.neto - prev.neto) >= 1 ? snap.neto - prev.neto : null;
+  return { primera: false, hay: nuevos.length > 0 || avisosNuevos.length > 0, nuevos: nuevos.length, desde: fechas[0] || null, hasta: fechas[fechas.length - 1] || null, dif, avisosNuevos, fecha: prev.fecha || null, snap };
 }
 // Qué avisos van a la vista en el Inicio y cuáles plegados («y N avisos más»). Arriba, como mucho `max` de los que piden
 // actuar (warn); el resto de esos y las notas (info), plegados. Fuera: lo de «Por revisar» (ya está en el menú, con su número)
@@ -149,10 +189,10 @@ function avisos() {
   const nPend = (DB.pendientes || []).length;
   if (nPend) add("warn", `${nPend} movimiento${nPend > 1 ? "s" : ""} por revisar: la app no ha sabido clasificarlo${nPend > 1 ? "s" : ""} sola`, "#revisar");
   for (const x of subidasFijos()) add("warn", `${x.nombre} ha subido: de ${eur(x.antes, 2)} a ${eur(x.ahora, 2)}`, "#gestionar/recurrente", `subida:${x.nombre}:${x.ahora}`);
-  const ultAport = aportacionesReales().filter((a) => !a.auto).reduce((m, a) => (!m || a.fecha > m ? a.fecha : m), null);
-  // Hasta donde llegan los datos del bróker; sin nada importado en un mes, se mira igual (puede que lo que falte sea su extracto).
-  const refAport = ultAport ? DateTime.max(ultAport, hoy.minus({ days: 30 })) : null;
-  for (const x of aportacionesSinLlegar(recurrentes(), aportacionesReales(), refAport)) add("warn", `La aportación de ${mesLbl(x.mes).toLowerCase()} a ${x.activo} no ha llegado (${x.nombre}, la esperabas el ${x.fecha.toFormat("dd/MM")}) · mira tu bróker; si la has parado, desactívala: la previsión la sigue contando`, `#editar/recurrente/${x.id}`, `aporta:${x.id}:${x.mes}`);
+  // Hasta donde llegan los datos del bróker: sin extracto suyo más reciente no se puede saber si falta una aportación, y no se avisa.
+  for (const x of aportacionesSinLlegar(recurrentes(), aportacionesReales(), ultimoDatoBroker())) add("warn", `La aportación de ${mesLbl(x.mes).toLowerCase()} a ${x.activo} no ha llegado (${x.nombre}, la esperabas el ${x.fecha.toFormat("dd/MM")}) · mira tu bróker; si la has parado, desactívala: la previsión la sigue contando`, `#editar/recurrente/${x.id}`, `aporta:${x.id}:${x.mes}`);
+  const pagosReales = [...movimientos().filter((m) => !m.auto && !m.previsto), ...aportacionesReales().filter((a) => !a.auto)];
+  for (const x of fijosDiaDistinto(recurrentes(), pagosReales, hoy).slice(0, 3)) add("warn", `${x.nombre} suele ${x.clase === "ingreso" ? "cobrarse" : x.clase === "aportacion" ? "llegar" : "pagarse"} sobre el día ${x.tipico}, pero lo tienes en el ${x.dia} · ¿lo cambias? Así la previsión no lo cuenta dos veces`, `#editar/recurrente/${x.id}`, `fijo-dia:${x.id}:${x.dia}:${x.tipico}`);
   for (const x of fijosSinCobrar()) add("info",`${x.nombre} no aparece en tus movimientos desde el ${x.ultima.toFormat("dd/MM")} · si ya no lo ${x.clase === "ingreso" ? "cobras" : "pagas"}, desactívalo: sigue contando cada mes`, `#editar/recurrente/${x.id}`, `sincobrar:${x.id}:${x.ultima.toISODate()}`);
   // Lo que trae el extracto y conviene mirar: una comisión (se puede reclamar o evitar) y un cobro que parece repetido.
   // Cada uno lleva el movimiento en su clave: quitado con su ×, no vuelve.
@@ -194,16 +234,18 @@ function avisos() {
     const meses = Math.round(mesDT(F.agota.key).diff(mesDT(hoyKey), "months").months);
     add(meses <= 1 ? "warn" : "info", `El dinero sin invertir de ${nombresBroker()} se acaba en ${mesLbl(F.agota.key).toLowerCase()}: ese mes faltan ${eur(F.agota.apoBanco, 0)} para las aportaciones · pasa dinero desde el banco antes`, "#inicio", `agota:${F.agota.key}`);
   }
-  // Ritmo del gasto variable del mes en curso (desde el día 7, mientras no se haya pasado ya: eso lo dice la barra).
-  const Mh = finMes(hoyKey), vari = gastoVariable(Mh), d = diaDeMes(hoy), dm = diasMes(hoyKey);
-  if (limiteVar > 0 && d >= 7 && d < dm && vari <= limiteVar) {
-    const proy = (vari / d) * dm;
+  // Ritmo del gasto variable del mes en curso (desde el día 7, mientras no se haya pasado ya: eso lo dice la barra). El ritmo,
+  // con los días que traen tus datos: con datos atrasados, lo gastado hasta su último día no se reparte hasta hoy.
+  const Mh = finMes(hoyKey), vari = gastoVariable(Mh), d = diaDeMes(hoy), dm = diasMes(hoyKey), dr = diasConDatos();
+  if (limiteVar > 0 && dr >= 7 && dr < dm && vari <= limiteVar) {
+    const proy = (vari / dr) * dm;
     if (proy > limiteVar * 1.05) add("warn", `A este ritmo acabarás ${mesLbl(hoyKey).toLowerCase()} con ${eur(proy, 0)} de gasto variable (límite ${eur(limiteVar, 0)}; llevas ${eur(vari, 0)})`, "#movimientos", `ritmo:${hoyKey}`);
   }
   // Categorías disparadas este mes: ≥ 2× su media de los meses anteriores con datos (y al menos 50 € más).
   const previos = mesesHasta(mesAnterior(hoyKey), 3).filter(conDatos);
   if (previos.length >= 2 && d >= 5) {
-    const porCat = (M) => { const m = new Map(); for (const x of M.real.filter((x) => x.gasto && grupoDe(x.categoria) !== "fijo")) m.set(x.categoria, (m.get(x.categoria) || 0) + x.gasto); return m; };
+    const fijosG = nombresFijosDeGasto();
+    const porCat = (M) => { const m = new Map(); for (const x of M.real.filter((x) => esGastoVariable(x, fijosG))) m.set(x.categoria, (m.get(x.categoria) || 0) + x.gasto); return m; };
     const actual = porCat(Mh), antes = previos.map((k) => porCat(finMes(k)));
     for (const [cat, v] of actual) {
       const med = media(antes.map((m) => m.get(cat) || 0));
@@ -375,6 +417,24 @@ function reglaDosMeses(ops, ventas, claseDe) {
     if (c) out.push({ id: v.id, fecha: v.fecha, activo: v.activo, perdida: -v.resultado, compra: c.fecha, meses });
   }
   return out;
+}
+// «¿Qué pasa si vendo hoy?»: una venta inventada de `unidades` (null = todas) de un activo, a `precio` por participación, que se
+// añade a una COPIA de las operaciones y pasa por fifoVentas y reglaDosMeses: no guarda ni cambia nada. ops: los de fifoVentas.
+// → { sinDatos } si faltan participaciones · { disponibles, unidades, excede, valor, coste, resultado, dudosa } con dudosa
+// { compra, meses, perdida } si la pérdida cae en la regla de los dos meses (compra reciente que sigues teniendo).
+function simularVenta(ops, activo, unidades, precio, hoy, claseDe) {
+  const suyas = ops.filter((o) => o.activo === activo && !o.ajuste);
+  if (!suyas.length || suyas.some((o) => o.part == null || !isFinite(o.part) || Math.abs(o.part) < 1e-9)) return { sinDatos: true };
+  const disponibles = Math.max(0, sum(suyas.map((o) => (o.importe < 0 ? -1 : 1) * Math.abs(o.part))));
+  const pedidas = unidades == null ? disponibles : unidades;
+  if (!(pedidas > 1e-9) || !(disponibles > 1e-9)) return { disponibles, unidades: 0, excede: false, valor: 0, coste: 0, resultado: 0, dudosa: null };
+  const u = Math.min(pedidas, disponibles);
+  const sim = { id: "__simulada__", fecha: hoy, activo, importe: -u * precio, part: -u, traspaso: false, ajuste: false };
+  const copia = [...ops, sim], F = fifoVentas(copia), v = F.ventas.find((x) => x.id === sim.id);
+  if (!v) return { sinDatos: true };
+  const dudosa = reglaDosMeses(copia, [v], claseDe)[0] || null;
+  return { disponibles, unidades: u, excede: pedidas > disponibles + 1e-9, valor: v.valor, coste: v.coste, resultado: v.resultado,
+    dudosa: dudosa ? { compra: dudosa.compra, meses: dudosa.meses, perdida: dudosa.perdida } : null };
 }
 // ───────────── estimación de la renta (base del ahorro) ─────────────
 // Tramos estatales + autonómicos de la base del ahorro (desde 2025): [hasta, tipo].
