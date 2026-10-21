@@ -10,14 +10,14 @@ function vistaImportar() {
   const tipoSel = pS.createDiv({ cls: "fb-fila", attr: { role: "radiogroup", "aria-label": "Qué archivo subes" } });
   let tipo = "";
   tipoSel.createSpan({ cls: "fb-et", text: "Qué archivo es" });
-  const radios = [["", "Que lo detecte la app"], ["banco", "Extracto del banco"], ["inversion", "Movimientos del bróker"]].map(([v, t]) => {
+  const radios = [["", "Que lo detecte la app"], ["banco", "Banco"], ["inversion", "Inversión"]].map(([v, t]) => {
     const l = tipoSel.createEl("label"); const r = l.createEl("input", { attr: { type: "radio", name: "tipoimp" } }); r.checked = v === tipo; r.onchange = () => (tipo = v); l.appendText(t); return r;
   });
   const fp = pS.createDiv({ cls: "fb-fila" });
   const lp = fp.createEl("label"); const cp = lp.createEl("input", { attr: { type: "checkbox" } }); cp.checked = quierePrevia(); cp.onchange = () => guardarPrevia(cp.checked);
   lp.appendText("Ver antes de importar (no se guarda nada hasta que lo confirmes)");
-  const inp = pS.createEl("input", { attr: { type: "file", accept: ".xlsx,.xls,.csv,.txt", multiple: "" } }); inp.style.display = "none";
-  const zona = zonaSoltar(pS, "Arrastra aquí el Excel o CSV, o pulsa para elegirlo", () => inp.click(), (files) => subir(files));
+  const inp = pS.createEl("input", { attr: { type: "file", accept: ".xlsx,.xls,.csv,.txt,.n43,.ofx,.qfx,.qif", multiple: "" } }); inp.style.display = "none";
+  const zona = zonaSoltar(pS, "Arrastra aquí el extracto (Excel, CSV, Norma 43, OFX o QIF), o pulsa para elegirlo", () => inp.click(), (files) => subir(files));
   const subir = async (files) => {
     for (const f of files) {
       zona.textContent = `Importando ${f.name}…`;
@@ -34,7 +34,7 @@ function vistaImportar() {
   const pC = panel(g, "O déjalo en la carpeta Importar");
   pC.createDiv({ cls: "fin-note", text: "Guarda los extractos en «Importar\\Banco» o «Importar\\Inversión» (dentro de tu carpeta de datos) y pulsa el botón. Los archivos importados pasan a «Procesados»." });
   const arch = (DB.info || {}).archivos || [];
-  if (arch.length) filasDato(pC, arch.map((a) => ({ l: a.nombre, s: a.tipo === "banco" ? "banco" : a.tipo === "inversion" ? "bróker" : "se detectará el tipo", v: "" })));
+  if (arch.length) filasDato(pC, arch.map((a) => ({ l: a.nombre, s: a.tipo === "banco" ? "banco" : a.tipo === "inversion" ? "inversión" : "se detectará el tipo", v: "" })));
   const fb = pC.createDiv({ cls: "fb-fila" });
   // Relleno solo si hay archivos esperando: entonces sí es lo que toca hacer. Vacío, es un camino más entre otros.
   const bI = fb.createEl("button", { cls: arch.length ? "fb-btn" : "fb-btn sec", text: arch.length ? `Importar ${arch.length} archivo${arch.length > 1 ? "s" : ""}` : "Importar la carpeta" });
@@ -49,9 +49,18 @@ function vistaImportar() {
     const pR = panel(root, "Resultado");
     for (const r of resultadosImport) resultadoImport(pR, r);
   }
+  const lotes = cfg.importaciones || [];
+  if (lotes.length) plegable(root, "Importaciones recientes", (c) => {
+    c.createDiv({ cls: "fin-note", text: "Cada fila es un archivo que importaste. «Quitar» borra todo lo que trajo ese archivo, aunque hayas hecho otras cosas después; lo que apuntaste a mano no se toca. Si lo vuelves a importar, sus filas vuelven a entrar." });
+    for (const e of lotes) {
+      const f = c.createDiv({ cls: "fb-fila" });
+      f.createSpan({ text: `${DateTime.fromISO(e.cuando).toFormat("dd/MM/yyyy HH:mm")} · ${e.archivo}${e.cuenta ? ` · ${e.cuenta}` : ""} · ${textoRegistrosLote(e.registros)}` });
+      botonQuitarImportacion(f, e, "Quitar", `Quitar la importación de ${e.archivo} del ${DateTime.fromISO(e.cuando).toFormat("dd/MM/yyyy HH:mm")}`);
+    }
+  }, { extra: String(lotes.length) });
   plegable(root, "¿Cómo descargo el extracto?", (c) => {
     filasDato(c, [
-      { l: "Banco", s: "En la web o la app de tu banco: Cuentas → Movimientos → elige las fechas → Descargar / Exportar en Excel (o CSV). Mejor si incluye la columna de saldo: así la app comprueba que no falta nada.", v: "" },
+      { l: "Banco", s: "En la web o la app de tu banco: Cuentas → Movimientos → elige las fechas → Descargar / Exportar en Excel (o CSV). Mejor si incluye la columna de saldo: así la app comprueba que no falta nada. También sirven Norma 43, OFX o QIF: el formato se reconoce solo.", v: "" },
       { l: "Bróker", s: "Busca los movimientos de la cuenta de efectivo (compras, ventas, intereses) y expórtalos en Excel o CSV.", v: "" },
       { l: "Órdenes de fondos", s: "En MyInvestor, Fondos → Órdenes → descargar (CSV). Añade las participaciones de cada compra y los traspasos entre fondos, que no salen en la cuenta de efectivo. Lo que ya estaba no se duplica.", v: "" },
       { l: "Operaciones con títulos", s: "Un Excel con Fecha, Tipo (Compra/Venta), Activo, Estado y Títulos: pone las participaciones a las compras de ETF y cripto del extracto de la cuenta.", v: "" },
@@ -108,14 +117,14 @@ function detallePrevia(card, V) {
   const M = V.movimientos, A = V.aportaciones;
   const t = [];
   if (M.n) t.push({ l: "Movimientos nuevos", v: String(M.n), s: V.desde ? `del ${fechaCorta(V.desde)} al ${fechaCorta(V.hasta)}` : "" }, { l: "Entra", v: eur(M.ingresos, 2), t: "pos" }, { l: "Sale", v: eur(M.gastos, 2), s: M.traspasos ? `+ ${M.traspasos} traspaso${M.traspasos > 1 ? "s" : ""}` : "" });
-  if (A.n) t.push({ l: "Compras y ventas", v: String(A.n), s: `compras ${eur(A.compras, 0)}${A.ventas ? ` · ventas ${eur(A.ventas, 0)}` : ""}` });
+  if (A.n) t.push({ l: "Compras y ventas", v: String(A.n), s: `compras ${eur(A.compras, 2)}${A.ventas ? ` · ventas ${eur(A.ventas, 2)}` : ""}` });
   if (V.saldo_final) t.push({ l: "Saldo del extracto", v: eur(V.saldo_final.saldo, 2), s: `a ${fechaCorta(V.saldo_final.fecha)}: compáralo con tu banco` });
   if (V.sugeridos) t.push({ l: "Con categoría sugerida", v: String(V.sugeridos), s: "se guardan ya, por confirmar" });
   t.push({ l: "Ya estaban", v: String(V.existentes), s: "se omiten, no se duplican" }, { l: "Por revisar", v: String(V.dudas.n), t: V.dudas.n ? "neg" : "" });
   tiles(card, t);
   filasSinLeer(card, V.ilegibles);
   if (V.activos_nuevos.length) card.createDiv({ cls: "fin-note", text: `Se crearían los activos: ${V.activos_nuevos.join(", ")}.` });
-  if (V.categorias.length) card.createDiv({ cls: "fin-note", text: "Más gasto: " + V.categorias.map((c) => `${c.categoria} ${eur(c.total, 0)}`).join(" · ") });
+  if (V.categorias.length) card.createDiv({ cls: "fin-note", text: "Más gasto: " + V.categorias.map((c) => `${c.categoria} ${eur(c.total, 2)}`).join(" · ") });
   if (V.muestra.length) plegable(card, `Ver los últimos ${V.muestra.length} movimientos`, (c) => tabla(c, [{ t: "Fecha" }, { t: "Concepto" }, { t: "Categoría", opt: true }, { t: "Importe", num: true }],
     V.muestra.map((m) => [fechaCorta(m.fecha), m.concepto, m.clase === "transferencia" ? "Entre tus cuentas" : { text: m.categoria, badge: m.sugerido ? "por confirmar" : "" }, { text: eurS(m.importe), cls: m.importe < 0 ? "neg" : "" }])));
   if (V.dudas.n) plegable(card, `Lo que quedaría por revisar (${V.dudas.n})`, (c) => tabla(c, [{ t: "Fecha" }, { t: "Texto del extracto" }, { t: "Importe", num: true }],
@@ -141,11 +150,13 @@ function resultadoImport(padre, r) {
   if (r.ok) {
     mensaje(card, r.mensaje || "Importado", "ok");
     filasSinLeer(card, r.ilegibles, true);
+    const lote = (cfg.importaciones || []).find((e) => e.id === r.lote);  // queda algo de este archivo que quitar
+    if (lote) botonQuitarImportacion(card.createDiv({ cls: "fb-fila" }), lote, "Quitar esta importación", `Quitar esta importación: ${r.archivo}`);
     cuadreExtracto(card, r);
     if (r.sugeridas) enlace(card, `Ver o confirmar las ${r.sugeridas} categoría${r.sugeridas > 1 ? "s" : ""} sugerida${r.sugeridas > 1 ? "s" : ""} →`, "#revisar");
     if (r.dudas) enlace(card.createDiv({ cls: "fb-fila" }), r.dudas > 1 ? `Revisar las ${r.dudas} dudas →` : "Revisar la duda →", "#revisar").className += " fb-btn";  // lo que toca hacer después: grande y a la vista
     if (r.tipo === "banco" && r.nuevas) enlace(card, "Detectar tus ingresos y gastos fijos →", "#fijos");
-    if (r.jev_hallazgos) enlace(card, "✨ Revisar tus categorías →", "#revision");
+    if (r.jev_en_marcha && r.tipo === "banco" && r.nuevas) enlace(card, "✨ Revisar tus categorías →", "#revision");  // solo lo que Jev audita tras importar movimientos nuevos
     return;
   }
   if (r.necesita === "cuenta") {
@@ -183,6 +194,28 @@ function cuadreExtracto(card, r) {
   const u = [...P].reverse().find((x) => x.fecha < f.startOf("day")) || P[0];
   const est = u ? proyectar(u, f.endOf("day"), true).cuentas.saldos[r.cuenta] : null;
   if (est != null && Math.abs(ext.saldo - est) < 0.01) card.createDiv({ cls: "fin-note", text: `✓ El saldo de ${r.cuenta} (${eur(ext.saldo)}) es el que dice tu banco.` });
+}
+// Quitar de golpe todo lo que trajo una importación (un lote). Siempre con confirmación: dice cuántos registros se van y que se
+// pierde lo que hayas cambiado en ellos. El servidor lo deja deshacer con «Deshacer».
+const NOMBRES_LOTE = { movimiento: ["movimiento", "movimientos"], aportacion: ["compra o venta", "compras y ventas"], cobro: ["cobro", "cobros"],
+  pendiente: ["fila por revisar", "filas por revisar"], operacion: ["orden en espera", "órdenes en espera"], ignorado: ["fila descartada", "filas descartadas"] };
+const textoRegistrosLote = (reg) => {
+  const partes = Object.entries(reg || {}).filter(([t, n]) => n && NOMBRES_LOTE[t]).map(([t, n]) => `${n} ${NOMBRES_LOTE[t][n === 1 ? 0 : 1]}`);
+  return partes.length > 1 ? `${partes.slice(0, -1).join(", ")} y ${partes[partes.length - 1]}` : partes[0] || "nada";
+};
+function botonQuitarImportacion(padre, lote, texto, nombreAccesible) {
+  const b = padre.createEl("button", { cls: "fb-btn sec peligro", text: texto, attr: { "aria-label": nombreAccesible || texto } });
+  b.onclick = async () => {
+    const total = Object.values(lote.registros || {}).reduce((s, n) => s + n, 0);
+    if (!(await confirmar(`Se quitarán ${total} registro${total === 1 ? "" : "s"} de «${lote.archivo}»: ${textoRegistrosLote(lote.registros)}.\n\nLos cambios que hayas hecho sobre ellos (categorías, divisiones…) se pierden. Lo que apuntaste a mano no se toca. Podrás deshacerlo justo después.`,
+      { titulo: "¿Quitar esta importación?", si: "Quitar la importación", no: "Cancelar", peligro: true }))) return;
+    b.disabled = true;
+    const r = await FB.api("/api/importar/deshacer", { lote: lote.id });
+    FB.aviso(r.mensaje || "Hecho", !r.ok, r.ok && r.quitados ? avisoDeshacer() : undefined);
+    guardarImport(resultadosImport.filter((x) => x.lote !== lote.id));
+    await FB.refrescar();
+  };
+  return b;
 }
 // El saldo de cada cuenta con extracto es el que dice el banco: si la app calcula otro, se anota el del banco (un registro de saldos de ese día;
 // el mes no se cierra ni cambia el valor de la inversión). Se intenta una vez por cada saldo distinto del extracto.
@@ -244,7 +277,7 @@ function configurarFormato(card, r) {
     form.innerHTML = "";
     if (!r.tipo) {
       form.createDiv({ cls: "et", text: "Este archivo es" });
-      const s = form.createEl("select"); for (const [v, l] of [["banco", "Extracto del banco"], ["inversion", "Movimientos del bróker"]]) { const o = s.createEl("option", { text: l }); o.value = v; }
+      const s = form.createEl("select"); for (const [v, l] of [["banco", "Banco"], ["inversion", "Inversión"]]) { const o = s.createEl("option", { text: l }); o.value = v; }
       s.value = tipo; s.onchange = () => { tipo = s.value; pintar(); };
     }
     for (const [k, l, req] of campos()) {

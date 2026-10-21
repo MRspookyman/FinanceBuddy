@@ -62,14 +62,14 @@ function repartoDonut(pares, max = 5) {
   if (juntar) partes.push({ nombre: `Otras ${pos.length - max}`, valor: sum(pos.slice(max).map(([, v]) => v)), otras: true });
   return { total, partes: partes.map((p) => ({ ...p, frac: total > 0 ? p.valor / total : 0 })) };
 }
-// «2025: 1.234 € (+5 %)» en las tarjetas de «Mi año». Si aquel año no hubo nada (0 €), «sin datos de 2025»: no un porcentaje disparatado.
+// «2025: 1.234,00 € (+5 %)» en las tarjetas de «Mi año». Si aquel año no hubo nada (0 €), «sin datos de 2025»: no un porcentaje disparatado.
 function frenteAño(a, b, añoB, hayB) {
   if (!hayB) return "";
   if (Math.abs(b) < 0.5) return `sin datos de ${añoB}`;
-  return `${añoB}: ${eur(b, 0)}${b > 0 ? ` (${pct((a - b) / b, true)})` : ""}`;
+  return `${añoB}: ${eur(b, 2)}${b > 0 ? ` (${pct((a - b) / b, true)})` : ""}`;
 }
 // Debajo de «Ahorraste» en «Mi año»: qué parte de lo que entró ahorraste. Con menos de medio euro de ingresos (p. ej. solo
-// unos céntimos de intereses) no hay nada que repartir: lo dice, en vez de «100,0 % de lo que entró» sobre «+0 €».
+// unos céntimos de intereses) no hay nada que repartir: lo dice, en vez de «100,0 % de lo que entró».
 function tasaAñoTexto(A) {
   if (A.ingresos < 0.5) return A.gastos < 0.5 ? "sin ingresos ni gastos este año" : "sin ingresos este año";
   return A.ahorro >= 0.5 && isFinite(A.tasa) ? `${pct(A.tasa)} de lo que entró` : "";
@@ -236,7 +236,7 @@ function saludInversion(soloDe) {
     if (!normales.length) continue;
     if (normales.every((x) => x.importe < 0) && !normales.some((x) => hasNum(x.p.participaciones)) && !(a.aportadoIni > 0) && traspasos.add(a.nombre))
       add({ clave: `traspaso|${a.nombre}`, nivel: "error", activo: a, accion: { text: "Revisar", ruta: ficha(a) },
-        texto: `«${a.nombre}» solo tiene ventas (${eur(-sum(normales.map((x) => x.importe)), 0)}) y ninguna compra. ¿Era dinero que pasaste desde tu banco?` });
+        texto: `«${a.nombre}» solo tiene ventas (${eur(-sum(normales.map((x) => x.importe)), 2)}) y ninguna compra. ¿Era dinero que pasaste desde tu banco?` });
     if (traspasos.has(a.nombre)) continue;  // lo demás de este activo sobra hasta aclarar eso
     else if (P.conPart && P.part < 0 && !P.vendido)
       add({ clave: `negativas|${a.nombre}|${nf(P.part, 0, 4)}`, nivel: "error", activo: a, accion: { text: "Ajustar participaciones", ruta: ficha(a) },
@@ -350,20 +350,20 @@ function patrimonioAño(año, P = patrimonio(), netoHoy = null) {
   return { keys, valores, inicio: ini ? ini.neto : null, fechaInicio: ini ? ini.fecha : null, dentro: !!ini && !antes.length, fin: fin ? fin[0] : null, mesFin: fin ? keys[fin[1]] : null,
     cambio: ini && fin && !mismo ? fin[0] - ini.neto : null };
 }
-// Compras (y ventas) de cada mes: lo que has metido en tu inversión. Los traspasos entre fondos (vender uno para comprar
-// otro) no son dinero nuevo: no cuentan.
+// Compras (y ventas) de cada mes: lo que has metido en tu inversión, en el mes de su cargo (`cargoDe`: la del 29/08 para la fija
+// del 05/09 es de septiembre, como en el reparto del ahorro). Los traspasos entre fondos (vender uno para comprar otro) no son dinero nuevo: no cuentan.
 const sinTraspasos = () => aportacionesReales().filter((x) => !x.p.traspaso);
 function aportacionesMes(n = 12, soloLargo = false) {
   const keys = mesesHasta(hoyCal, n);
   const largos = soloLargo ? new Set(activos().filter((a) => a.largo).map((a) => a.nombre)) : null;
   const APr = sinTraspasos().filter((x) => !largos || largos.has(x.activo));
-  return keys.map((k) => ({ key: k, compras: sum(APr.filter((x) => keyCal(x.fecha) === k && x.importe > 0).map((x) => x.importe)),
-    ventas: -sum(APr.filter((x) => keyCal(x.fecha) === k && x.importe < 0).map((x) => x.importe)) }));
+  return keys.map((k) => ({ key: k, compras: sum(APr.filter((x) => keyCal(cargoDe(x)) === k && x.importe > 0).map((x) => x.importe)),
+    ventas: -sum(APr.filter((x) => keyCal(cargoDe(x)) === k && x.importe < 0).map((x) => x.importe)) }));
 }
 // Meses seguidos con alguna compra, contando hacia atrás desde este mes (o el anterior, si este aún no toca).
 function constancia() {
   const APr = sinTraspasos().filter((x) => x.importe > 0);
-  const con = new Set(APr.map((x) => keyCal(x.fecha)));
+  const con = new Set(APr.map((x) => keyCal(cargoDe(x))));
   let k = con.has(hoyCal) ? hoyCal : mesAnterior(hoyCal), n = 0;
   while (con.has(k)) { n++; k = mesAnterior(k); }
   return n;

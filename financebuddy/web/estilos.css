@@ -38,7 +38,7 @@ body.theme-dark{color-scheme:dark;
 a{color:var(--brand)}
 button{font:inherit}
 /* Títulos y cifras con la DIN */
-.fin .fin-head h2,.fb-saludo h2,.fb-bienvenida h2,.fb-hecho b,#cabecera .nombre,
+.fin .fin-head h1,.fb-saludo h1,.fb-bienvenida h1,.fb-hecho b,#cabecera .nombre,
 .fb-hero .v,.fb-total .v,.fin-tile .v,.fb-stat .v,.fin-big .v,.fin-hero .v,.fb-resumen .n,.fb-hitos .v{font-family:var(--num);font-variant-numeric:lining-nums tabular-nums}
 
 /* ── armazón: barra de arriba + contenido ── */
@@ -100,7 +100,7 @@ body.discreto input[type=number]{filter:blur(6px)} body.discreto input[type=numb
 .fin a.internal-link:hover{color:var(--brand)}
 .fin .pos{color:var(--fin-up)} .fin .neg{color:var(--fin-down)}
 .fin-head{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px 18px;margin:0 0 22px}
-.fin .fin-head h2{margin:0;font-size:1.9em;font-weight:650;letter-spacing:-.005em;line-height:1.1}
+.fin .fin-head h1{margin:0;font-size:1.9em;font-weight:650;letter-spacing:-.005em;line-height:1.1}
 .fin-head .sub{color:var(--ink-2);font-size:.92em;margin-top:6px}
 .fin-mes{display:flex;align-items:center;gap:2px;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:3px}
 .fin .fin-mes button{all:unset;cursor:pointer;padding:4px 11px;border-radius:6px;font-size:.92em;color:var(--ink-2);line-height:1.4}

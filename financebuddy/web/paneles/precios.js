@@ -75,7 +75,7 @@ function panelPrecios(padre) {
   p.createDiv({ cls: "fin-note", text: `${con.length} de ${A.length} activos con precio${C.viejo ? " · hace más de 6 horas de la última actualización" : ""}.` });
   resultadoPrecios(p);
   if (sin.length) plegable(p, `Activos sin precio por internet (${sin.length})`, (cc) => {
-    cc.createDiv({ cls: "fin-note", text: "Abre cada uno y usa «Buscar precio» (por ISIN, ticker o nombre). Los que no tienen fuente se siguen anotando a mano en Inversión → Actualizar valores." });
+    cc.createDiv({ cls: "fin-note", text: "Abre cada uno y usa «Buscar precio» (por ISIN, ticker o nombre). Los que no tienen fuente se siguen anotando en Inversión → Anotar valores a mano." });
     for (const a of sin) enlace(cc.createDiv({ cls: "fin-note" }), a.nombre, `#editar/activo/${a.id}`);
   });
 }

@@ -36,6 +36,60 @@ class TestFlujo(unittest.TestCase):
         # Repetir la vista previa con lo ya importado: todo «ya estaba»
         self.assertEqual(self.api("/api/importar/descartar", {"archivo": r["archivo"]})["ok"], False)  # ya está en Procesados
 
+    def importar_ejemplo(self, nombre="movimientos.xlsx", filas=FILAS):
+        self.api("/api/bienvenida", {"cuentas": [{"nombre": "Nómina", "tipo": "corriente", "saldo": 1000}]}) if not self.app.alm.todos("cuenta") else None
+        ruta = os.path.join(self.dir, "x.xlsx"); excel_santander(ruta, filas)
+        with open(ruta, "rb") as fh: b64 = base64.b64encode(fh.read()).decode()
+        r = self.api("/api/importar/subir", {"nombre": nombre, "tipo": "banco", "contenido": b64})
+        if r.get("necesita") == "cuenta": r = self.api("/api/importar/reintentar", {"archivo": r["archivo"], "tipo": "banco", "cuenta": "Nómina", "perfil": r["perfil"]})
+        return r
+
+    def test_quitar_una_importacion_se_puede_deshacer_y_la_pagina_la_recibe(self):
+        r = self.importar_ejemplo()
+        self.assertTrue(r["ok"] and r["lote"], r)
+        (e,) = self.app.datos()["config"]["importaciones"]
+        n, p = len(self.app.alm.todos("movimiento")), len(self.app.alm.todos("pendiente"))
+        self.assertEqual((e["id"], e["archivo"], e["registros"]), (r["lote"], "movimientos.xlsx", {"movimiento": n, "pendiente": p}))
+        antes = sorted(m["ext_texto"] for m in self.app.alm.todos("movimiento"))
+        q = self.api("/api/importar/deshacer", {"lote": r["lote"]})
+        self.assertTrue(q["ok"] and q["quitados"] == n + p, q)
+        self.assertIn("Quitada la importación de «movimientos.xlsx»", q["mensaje"])
+        self.assertEqual((self.app.alm.todos("movimiento"), self.app.alm.todos("pendiente"), self.app.datos()["config"]["importaciones"]), ([], [], []))
+        self.assertEqual(self.app.datos()["info"]["deshacer"], q["mensaje"])
+        # «Deshacer» de siempre repone el lote entero, con su lote, y vuelve a poder quitarse
+        self.assertEqual(self.api("/api/deshacer")["mensaje"], "Deshecho")
+        self.assertEqual(sorted(m["ext_texto"] for m in self.app.alm.todos("movimiento")), antes)
+        self.assertEqual(self.app.datos()["config"]["importaciones"][0]["id"], r["lote"])
+        self.assertEqual(self.api("/api/importar/deshacer", {"lote": r["lote"]})["quitados"], n + p)
+
+    def test_quitar_una_importacion_que_ya_no_existe_es_amable(self):
+        r = self.importar_ejemplo()
+        self.api("/api/importar/deshacer", {"lote": r["lote"]})
+        otra = self.api("/api/importar/deshacer", {"lote": r["lote"]})
+        self.assertTrue(otra["ok"] and otra["quitados"] == 0, otra)
+        self.assertIn("ya no tiene nada", otra["mensaje"])
+        self.assertTrue(self.api("/api/importar/deshacer", {"lote": "no-existe"})["ok"])
+        self.assertTrue(self.api("/api/importar/deshacer", {})["ok"])
+
+    def test_la_vista_previa_no_deja_importacion_que_quitar(self):
+        self.api("/api/bienvenida", {"cuentas": [{"nombre": "Nómina", "tipo": "corriente", "saldo": 1000}]})
+        ruta = os.path.join(self.dir, "x.xlsx"); excel_santander(ruta, FILAS)
+        with open(ruta, "rb") as fh: b64 = base64.b64encode(fh.read()).decode()
+        r = self.api("/api/importar/subir", {"nombre": "m.xlsx", "tipo": "banco", "contenido": b64, "previa": True})
+        v = self.api("/api/importar/reintentar", {"archivo": r["archivo"], "tipo": "banco", "cuenta": "Nómina", "perfil": r["perfil"], "previa": True, "subido": True})
+        self.assertTrue(v["ok"] and "lote" not in v, v)
+        self.assertEqual(self.app.datos()["config"]["importaciones"], [])
+
+    def test_quitar_una_importacion_no_toca_el_saldo_inicial_ni_lo_de_otra(self):
+        a = self.importar_ejemplo("a.xlsx")
+        b = self.importar_ejemplo("b.xlsx", [("2026-10-01", "Compra Lidl, Madrid", -7.0)])
+        self.assertTrue(a["lote"] and b["lote"] and a["lote"] != b["lote"])
+        patrimonio = self.app.alm.todos("patrimonio")
+        self.api("/api/importar/deshacer", {"lote": a["lote"]})
+        self.assertEqual({m["lote"] for m in self.app.alm.todos("movimiento")}, {b["lote"]})
+        self.assertEqual(self.app.alm.todos("patrimonio"), patrimonio)
+        self.assertEqual([e["id"] for e in self.app.datos()["config"]["importaciones"]], [b["lote"]])
+
     def test_arrancar_con_windows_solo_se_ofrece_en_la_app_instalada(self):
         e = self.app.datos()["info"]["arranque"]
         self.assertEqual((e["disponible"], e["activo"]), (False, False))  # estas pruebas no son el .exe
@@ -64,6 +118,31 @@ class TestFlujo(unittest.TestCase):
         self.assertTrue(self.api("/api/cierre", {"fecha": "2026-12-02", "mes": "2026-11", "saldos": {"Nómina": 700}})["cerrado"])
         self.assertFalse(self.api("/api/cierre", {"fecha": "2026-10-20", "mes": "2026-10", "saldos": {"Nómina": 850}})["cerrado"])
         self.assertEqual(sorted((c["mes"], c["fecha"]) for c in self.app.alm.todos("cierre")), [("2026-10", "2026-10-31"), ("2026-11", "2026-12-02")])
+
+    def test_el_cierre_guarda_una_foto_que_no_cambia_al_editar_movimientos(self):
+        self.api("/api/bienvenida", {"cuentas": [{"nombre": "Nómina", "tipo": "corriente", "saldo": 1000}]})
+        mov = self.api("/api/guardar", {"tipo": "movimiento", "datos": {"fecha": "2026-10-05", "clase": "gasto", "categoria": "Ocio", "importe": 40, "cuenta": "Nómina", "concepto": "Cine"}})
+        foto = {"hecha": "2026-11-01", "ingresos": "1850,5", "gastos": 40, "ahorro": 1810.5, "patrimonio": 960, "invertido": 0, "metido": 100,
+                "categorias": {"Ocio": 40, "Raro": "x"}, "inventado": 1}
+        self.assertTrue(self.api("/api/cierre", {"fecha": "2026-10-31", "mes": "2026-10", "saldos": {"Nómina": 960}, "foto": foto})["cerrado"])
+        c = self.app.alm.todos("cierre")[0]
+        # Se valida: números redondeados, solo las claves conocidas, y lo que no es número no entra
+        self.assertEqual(c["foto"], {"hecha": "2026-11-01", "ingresos": 1850.5, "gastos": 40, "ahorro": 1810.5, "patrimonio": 960, "invertido": 0, "metido": 100, "categorias": {"Ocio": 40}})
+        # Editar el movimiento no toca la foto; ni editar la nota del cierre desde Ajustes
+        self.api("/api/guardar", {"tipo": "movimiento", "id": mov["id"], "datos": {"fecha": "2026-10-05", "clase": "gasto", "categoria": "Ocio", "importe": 99, "cuenta": "Nómina", "concepto": "Cine"}})
+        self.api("/api/guardar", {"tipo": "cierre", "id": c["id"], "datos": {**c, "notas": "con nota"}})
+        c2 = self.app.alm.todos("cierre")[0]
+        self.assertEqual((c2["foto"]["gastos"], c2["notas"]), (40, "con nota"))
+        # Cerrar otra vez sin foto (un cliente antiguo) conserva la que había; con foto nueva, la sustituye
+        self.api("/api/cierre", {"fecha": "2026-10-31", "mes": "2026-10", "saldos": {"Nómina": 950}})
+        self.assertEqual(self.app.alm.todos("cierre")[0]["foto"]["gastos"], 40)
+        self.api("/api/cierre", {"fecha": "2026-10-31", "mes": "2026-10", "saldos": {"Nómina": 950}, "foto": {**foto, "gastos": 99}})
+        self.assertEqual(self.app.alm.todos("cierre")[0]["foto"]["gastos"], 99)
+        # Un mes cerrado sin foto (cierres de antes) sigue funcionando; y a mitad de mes no hay cierre ni foto
+        self.assertTrue(self.api("/api/cierre", {"fecha": "2026-11-30", "mes": "2026-11", "saldos": {"Nómina": 900}})["cerrado"])
+        self.assertNotIn("foto", [c for c in self.app.alm.todos("cierre") if c["mes"] == "2026-11"][0])
+        self.assertFalse(self.api("/api/cierre", {"fecha": "2026-12-10", "mes": "2026-12", "saldos": {"Nómina": 900}, "foto": foto})["cerrado"])
+        self.assertEqual([c["mes"] for c in self.app.alm.todos("cierre")], ["2026-10", "2026-11"])
 
     def test_primer_extracto_da_el_saldo_inicial_y_se_puede_deshacer(self):
         self.api("/api/guardar", {"tipo": "cuenta", "datos": {"nombre": "Nómina", "tipo": "corriente", "extracto": True}})

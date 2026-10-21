@@ -86,7 +86,7 @@ const fmtPct = (v) => nf(v, 0, 0) + " %";
 function generarResumen(ocultar) {
   const E = estimacion(), P = patrimonio(), I = resumenInversion();
   const sec = [];
-  const eurO = (v, d = 0) => (ocultar ? null : eur(v, d));  // con ocultar, nada en euros: ni se calcula el texto
+  const eurO = (v, d = 2) => (ocultar ? null : eur(v, d));  // con ocultar, nada en euros: ni se calcula el texto
   if (!E) sec.push(tarjetaHtml("Patrimonio", "<p>Aún no hay saldos anotados.</p>"));
   else {
     // Patrimonio: lo que tienes hoy (estimado) y cómo ha evolucionado
@@ -98,8 +98,8 @@ function generarResumen(ocultar) {
     if (E && P.length) { ev.push(hoy); evValores.push(ocultar ? indice(E.neto, base) : E.neto); }
     const crec = base > 0 ? E.neto / base - 1 : NaN;
     sec.push(tarjetaHtml("Patrimonio",
-      tilesHtml([ocultar ? { l: "Desde el primer registro", v: isFinite(crec) ? pct(crec, true) : "—", t: tone(crec), s: `${P.length} registros de saldos` } : { l: "Patrimonio hoy", v: eur(E.neto, 0), s: "estimado hoy" },
-        !ocultar && isFinite(crec) ? { l: "Desde el primer registro", v: pct(crec, true), t: tone(crec) } : null, E.deudas > 0 ? { l: ocultar ? "Deudas / activos" : "Deudas", v: ocultar ? pct(E.activos > 0 ? E.deudas / E.activos : NaN) : eur(E.deudas, 0) } : null])
+      tilesHtml([ocultar ? { l: "Desde el primer registro", v: isFinite(crec) ? pct(crec, true) : "—", t: tone(crec), s: `${P.length} registros de saldos` } : { l: "Patrimonio hoy", v: eur(E.neto, 2), s: "estimado hoy" },
+        !ocultar && isFinite(crec) ? { l: "Desde el primer registro", v: pct(crec, true), t: tone(crec) } : null, E.deudas > 0 ? { l: ocultar ? "Deudas / activos" : "Deudas", v: ocultar ? pct(E.activos > 0 ? E.deudas / E.activos : NaN) : eur(E.deudas, 2) } : null])
       + barraReparto(partes)
       + svgLinea(ev.map((d) => d.toFormat("MM/yy")), [{ nombre: ocultar ? "Índice" : "Patrimonio", color: COLORES_RESUMEN[0], valores: evValores }], { fmt: ocultar ? fmtIndice : (v) => compact(v).replace("+", "") }),
       ocultar ? "Índice: 100 es lo que había en el primer registro. No se muestran cantidades." : ""));
@@ -109,7 +109,7 @@ function generarResumen(ocultar) {
   if (meses.length >= 2) {
     const t = tasa12(hoyKey);
     sec.push(tarjetaHtml("Ahorro",
-      tilesHtml([{ l: "Tasa de ahorro (12 meses)", v: isFinite(t.tasa) ? pct(t.tasa) : "—", s: "lo que sobra de lo que entra" }, ocultar ? null : { l: "Ingresos / gastos (12 meses)", v: `${eur(t.ing, 0)} / ${eur(t.gas, 0)}` }])
+      tilesHtml([{ l: "Tasa de ahorro (12 meses)", v: isFinite(t.tasa) ? pct(t.tasa) : "—", s: "lo que sobra de lo que entra" }, ocultar ? null : { l: "Ingresos / gastos (12 meses)", v: `${eur(t.ing, 2)} / ${eur(t.gas, 2)}` }])
       + svgBarras(meses.map((m) => MES_CORTO(m.k)), meses.map((m) => (isFinite(m.f.tasa) ? m.f.tasa * 100 : 0)), { fmt: fmtPct }),
       "Porcentaje de los ingresos de cada mes que no se gasta."));
   }
@@ -123,13 +123,13 @@ function generarResumen(ocultar) {
   // Inversión
   if (I.filas.length) {
     const pct0 = I.aportado > 0 ? I.gan / I.aportado : NaN, ev = evolucionInversion(false);
-    const tabla = I.filas.filter((f) => f.valor > 0.5).sort((a, b) => b.valor - a.valor).map((f) => ({ nombre: f.nombre, frac: I.total > 0 ? f.valor / I.total : 0, extra: ocultar ? (isFinite(f.gan) && f.aportado > 0 ? pct(f.gan / f.aportado, true) : "") : eur(f.valor, 0) }));
+    const tabla = I.filas.filter((f) => f.valor > 0.5).sort((a, b) => b.valor - a.valor).map((f) => ({ nombre: f.nombre, frac: I.total > 0 ? f.valor / I.total : 0, extra: ocultar ? (isFinite(f.gan) && f.aportado > 0 ? pct(f.gan / f.aportado, true) : "") : eur(f.valor, 2) }));
     const idx0 = ev ? (ev.aportado.find((v) => v > 0) || 0) : 0;
     const graf = ev && ev.keys.length >= 2 ? svgLinea(ev.keys.map(MES_CORTO), [
       { nombre: ocultar ? "Valor (índice)" : "Valor", color: COLORES_RESUMEN[0], valores: ev.valor.map((v) => (ocultar ? indice(v, idx0) : v)) },
       { nombre: ocultar ? "Metido (índice)" : "Metido", color: "#7A6F63", rayas: true, valores: ev.aportado.map((v) => (ocultar ? indice(v, idx0) : v)) }], { fmt: ocultar ? fmtIndice : (v) => compact(v).replace("+", "") }) : "";
-    sec.push(tarjetaHtml("Inversión", tilesHtml([ocultar ? null : { l: "Vale hoy", v: eur(I.total, 0) }, ocultar ? null : { l: "Has metido", v: eur(I.aportadoTodo, 0) },
-      isFinite(pct0) ? { l: "Ganancia sobre lo metido", v: pct(pct0, true), t: tone(pct0), s: ocultar ? "" : eurS(I.gan, 0) } : null,
+    sec.push(tarjetaHtml("Inversión", tilesHtml([ocultar ? null : { l: "Vale hoy", v: eur(I.total, 2) }, ocultar ? null : { l: "Has metido", v: eur(I.aportadoTodo, 2) },
+      isFinite(pct0) ? { l: "Ganancia sobre lo metido", v: pct(pct0, true), t: tone(pct0), s: ocultar ? "" : eurS(I.gan, 2) } : null,
       isFinite(I.tir) ? { l: "Rentabilidad anual", v: pct(I.tir, true), t: tone(I.tir), s: I.tirCorta ? "menos de un año: orientativa" : "" } : null])
       + barraReparto(tabla) + graf,
       ocultar ? "Índice: 100 es lo metido al empezar. Entre paréntesis, lo que ha ganado o perdido cada activo sobre lo que metiste en él." : ""));

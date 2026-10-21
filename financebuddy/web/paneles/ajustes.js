@@ -46,14 +46,14 @@ function vistaAjustes() {
     const L = limitePorMeta(meta, datosMeta());
     if (!(L.ingresos > 0)) pL.createDiv({ cls: "fin-note", text: "Para calcular tu límite hace falta saber lo que te entra al mes: detecta tus ingresos fijos en Fijos o importa algún mes completo." });
     else {
-      const resta = [[L.fijos, "de fijos"], [L.suelto, "de otros gastos fijos que no tienes dados de alta"], [L.aportaciones, "que inviertes"]].filter(([v]) => v >= 0.5).map(([v, t]) => ` − ${eur(v, 0)} ${t}`).join("");
-      pL.createDiv({ cls: "fin-note", text: `Te entran ${eur(L.ingresos, 0)} al mes (${L.deFijos ? "tus ingresos fijos" : `tu media de ${L.nMeses === 1 ? "el último mes" : `los últimos ${L.nMeses} meses`}`})${resta} − ${eur(meta, 0)} de tu meta = ${eur(L.sobra, 0)} para gasto variable.` });
-      if (!L.llega) mensaje(pL, `Con lo que te entra no llega para ahorrar ${eur(meta, 0)} al mes: te faltarían ${eur(-L.sobra, 0)} aunque no gastaras nada en gasto variable.`, "err");
-      else if (Math.abs(L.limite - limiteVar) < 1) pL.createDiv({ cls: "fin-note", text: `Tu límite de ${eur(limiteVar, 0)} ya es el de tu meta.` });
+      const resta = [[L.fijos, "de fijos"], [L.suelto, "de otros gastos fijos que no tienes dados de alta"], [L.aportaciones, "que inviertes"]].filter(([v]) => v >= 0.5).map(([v, t]) => ` − ${eur(v, 2)} ${t}`).join("");
+      pL.createDiv({ cls: "fin-note", text: `Te entran ${eur(L.ingresos, 2)} al mes (${L.deFijos ? "tus ingresos fijos" : `tu media de ${L.nMeses === 1 ? "el último mes" : `los últimos ${L.nMeses} meses`}`})${resta} − ${eur(meta, 2)} de tu meta = ${eur(L.sobra, 2)} para gasto variable.` });
+      if (!L.llega) mensaje(pL, `Con lo que te entra no llega para ahorrar ${eur(meta, 2)} al mes: te faltarían ${eur(-L.sobra, 2)} aunque no gastaras nada en gasto variable.`, "err");
+      else if (Math.abs(L.limite - limiteVar) < 1) pL.createDiv({ cls: "fin-note", text: `Tu límite de ${eur(limiteVar, 2)} ya es el de tu meta.` });
       else {
         const fU = pL.createDiv({ cls: "fb-fila" });
-        fU.createSpan({ text: `Con tu meta, tu límite sería ${eur(L.limite, 0)} al mes (${limiteVar > 0 ? `ahora es ${eur(limiteVar, 0)}` : "ahora no tienes"}).` });
-        const bU = fU.createEl("button", { cls: "fb-btn sec", text: `Usar ${eur(L.limite, 0)}`, attr: { type: "button", "aria-label": `Usar ${eur(L.limite, 0)} al mes como límite de gasto variable` } });
+        fU.createSpan({ text: `Con tu meta, tu límite sería ${eur(L.limite, 2)} al mes (${limiteVar > 0 ? `ahora es ${eur(limiteVar, 2)}` : "ahora no tienes"}).` });
+        const bU = fU.createEl("button", { cls: "fb-btn sec", text: `Usar ${eur(L.limite, 2)}`, attr: { type: "button", "aria-label": `Usar ${eur(L.limite, 2)} al mes como límite de gasto variable` } });
         bU.onclick = () => guardarAjuste("/api/config", { limite_variable: L.limite });
       }
     }
@@ -71,12 +71,12 @@ function vistaAjustes() {
   const iC = fC.createEl("input", { cls: "corto", attr: { type: "number", min: "0", step: "50", placeholder: "automático", "aria-label": "Colchón en la cuenta corriente, en euros" } }); iC.value = num(cfg.colchon) || "";
   alCambiar(iC, "colchon", () => ({ colchon: iC.value || 0 }));
   const RP = planReparto();
-  pM.createDiv({ cls: "fin-note", text: `Lo que quieres dejar siempre en la cuenta antes de mover lo que sobra. Vacío o 0 = lo calcula la app${RP ? ` (ahora ${eur(RP.colchonAuto, 0)}: un mes de fijos y de gasto variable, más los meses que se prevén en negativo)` : ""}.` });
+  pM.createDiv({ cls: "fin-note", text: `Lo que quieres dejar siempre en la cuenta antes de mover lo que sobra. Vacío o 0 = lo calcula la app${RP ? ` (ahora ${eur(RP.colchonAuto, 2)}: un mes de fijos y de gasto variable, más los meses que se prevén en negativo)` : ""}.` });
   const fP = pM.createDiv({ cls: "fb-fila" });
   fP.createSpan({ cls: "fb-et", text: "Registros por página" });
   const iP = fP.createEl("input", { cls: "mini", attr: { type: "number", min: "10", max: "200", step: "5", "aria-label": "Registros por página en las listas largas (de 10 a 200)" } }); iP.value = porPagina();
   alCambiar(iP, "pagina", () => ({ por_pagina: iP.value || 40 }));
-  pM.createDiv({ cls: "fin-note", text: "Cuántas filas se ven de una vez en Movimientos, Gestionar, Renta y las operaciones de cada activo (de 10 a 200). Las listas de «Por revisar» llevan su propio tamaño porque cada fila es una ficha." });
+  pM.createDiv({ cls: "fin-note", text: "Cuántas filas se ven de una vez en Movimientos, en las listas de Ajustes, en Para la renta y en las operaciones de cada activo (de 10 a 200). Las listas de «Por revisar» llevan su propio tamaño porque cada fila es una ficha." });
 
   const pS = panel(g, "Importar", null, "Cuando un movimiento no está claro pero tu historial sugiere una categoría con confianza (mismo comercio u otro muy parecido), se guarda ya con esa categoría y cuenta en tu mes; queda marcado «por confirmar» en Por revisar. Apagado, todo lo dudoso espera en Por revisar hasta que lo decidas.");
   const lS = pS.createEl("label", { cls: "fb-fila" });

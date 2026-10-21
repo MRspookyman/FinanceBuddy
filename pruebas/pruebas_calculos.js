@@ -217,8 +217,8 @@ const E = F.estimacion();
 caso("Patrimonio neto = componentes − deudas", cerca(E.neto, suma(Object.values(E.c)) - E.deudas), E.neto);
 caso("Liquidez = corriente + ahorro", cerca(E.c.Liquidez, E.cuentas.corriente + E.cuentas.ahorro), E.c.Liquidez);
 caso("El ahorro (sin extracto) sube con los traspasos: 4.200 €", cerca(E.cuentas.saldos["Ahorro"], 4200), E.cuentas.saldos["Ahorro"]);
-// Bróker: 400 + 200/mes − 200/mes de aportaciones = 400
-caso("Efectivo del bróker = 400 €", cerca(E.cuentas.saldos["Bróker"], 400), E.cuentas.saldos["Bróker"]);
+// Bróker: 400 + 200/mes − 200/mes de aportaciones − 98,50 de las compras de ISHARES (B-107) = 301,50
+caso("Efectivo del bróker = 301,50 € (400 menos las compras de ISHARES, B-107)", cerca(E.cuentas.saldos["Bróker"], 301.5), E.cuentas.saldos["Bróker"]);
 
 // 6. Inversión
 const apo = (a) => suma(F.aportaciones().filter((x) => x.activo === a && !x.previsto).map((x) => x.importe));
@@ -233,7 +233,7 @@ caso("Previsión: el gasto variable es tu media real de los meses cerrados, no e
 caso("Previsión: mínimo en un mes futuro", PV.minimo.key !== F.hoyKey, PV.minimo.key);
 const mar = PV.filas.find((f) => f.key === "2027-03");
 caso("Previsión: en marzo se paga el seguro (310 €)", mar && cerca(mar.fijos, 700 + 35 + 48 + 29.9 + 310), mar && mar.fijos);
-caso("Previsión: el efectivo del bróker se acaba en diciembre", PV.agota && PV.agota.key === "2026-12", PV.agota && PV.agota.key);
+caso("Previsión: el efectivo del bróker se acaba en noviembre (con las compras de ISHARES, B-107)", PV.agota && PV.agota.key === "2026-11", PV.agota && PV.agota.key);
 
 // 8. Cuánto puedo gastar y plan de reparto
 const PS = F.presupuestoSemana();
@@ -261,7 +261,7 @@ const RI = F.resumenInversion(), EVI = F.evolucionInversion();
 caso("Evolución: el último valor es el de hoy", EVI && cerca(EVI.valor[EVI.valor.length - 1], RI.total), EVI && [EVI.valor[EVI.valor.length - 1], RI.total]);
 caso("Evolución: lo metido crece mes a mes", EVI && EVI.aportado.every((v, i) => !i || v >= EVI.aportado[i - 1] - 1e-9), EVI && EVI.aportado);
 const AM = F.aportacionesMes(12);
-caso("Aportaciones de septiembre: 150 + 50 €", cerca(AM[AM.length - 1].compras, 200), AM[AM.length - 1]);
+caso("Aportaciones de septiembre: 150 + 50 € + 98,50 € de ISHARES (B-107)", cerca(AM[AM.length - 1].compras, 298.5), AM[AM.length - 1]);
 caso("Constancia: 5 meses seguidos aportando", F.constancia() === 5, F.constancia());
 const SA = F.saludInversion();
 caso("Revisa tu inversión: sin errores con los datos de ejemplo", !SA.some((x) => x.nivel === "error"), SA.map((x) => x.texto));
@@ -326,7 +326,7 @@ caso("Dividendos: sin cobros en los datos de ejemplo, la ganancia no cambia", F.
   CO.splice(-2);
   caso("Dividendo de 50 €: la ganancia total sube 50 €, el cambio de valor y lo aportado no se mueven y el patrimonio sube 50 €",
     cerca(R1.gan - R0.gan, 50) && cerca(R1.ganValor, R0.ganValor) && cerca(R1.aportado, R0.aportado) && cerca(n1 - n0, 50), [R1.gan - R0.gan, R1.ganValor - R0.ganValor, n1 - n0]);
-  caso("Con y sin dividendo, «Invertido» de Inicio (valor − cambio de valor) es lo aportado; la comisión de 5 € baja el patrimonio y no toca el cambio de valor",
+  caso("Con y sin dividendo, la inversión menos su cambio de valor es lo aportado (lo que Inicio llama «aportados»); la comisión de 5 € baja el patrimonio y no toca el cambio de valor",
     cerca(R0.total - R0.ganValor, R0.aportado) && cerca(R1.total - R1.ganValor, R1.aportado) && cerca(R2.ganValor, R0.ganValor) && cerca(n2 - n1, -5), [R0.total - R0.ganValor, R0.aportado, n2 - n1]);
 }
 
@@ -549,7 +549,7 @@ caso("Donut de Mi año: las 5 mayores y «Otras 2» con el resto (sin negativos 
   && cerca(suma(RD8.partes.map((p) => p.frac)), 1, 1e-9) && RD6.partes.length === 6 && !RD6.partes.some((p) => p.otras) && F.repartoDonut([]).partes.length === 0,
   JSON.stringify([RD8, RD6.partes.length]));
 caso("Mi año: si el año anterior no tiene ingresos, «sin datos de 2025» y no «0 € (+2.159.034,6 %)»",
-  F.frenteAño(10795, 0.3, 2025, true) === "sin datos de 2025" && F.frenteAño(10795, 0, 2025, true) === "sin datos de 2025" && F.frenteAño(1100, 1000, 2025, true) === "2025: 1.000 € (+10,0 %)"
+  F.frenteAño(10795, 0.3, 2025, true) === "sin datos de 2025" && F.frenteAño(10795, 0, 2025, true) === "sin datos de 2025" && /^2025:\s1\.000(,00)?\s€\s\(\+10,0\s%\)$/.test(F.frenteAño(1100, 1000, 2025, true))
   && F.frenteAño(1100, 0, 2025, false) === "", [F.frenteAño(10795, 0.3, 2025, true), F.frenteAño(1100, 1000, 2025, true)]);
 caso("Mi año: un año con solo 0,30 € de intereses dice «sin ingresos ni gastos este año», no «100,0 % de lo que entró»",
   F.tasaAñoTexto({ ingresos: 0.3, gastos: 0, ahorro: 0.3, tasa: 1 }) === "sin ingresos ni gastos este año"
@@ -591,8 +591,8 @@ caso("Aportación que no llega: con el extracto del bróker importado hasta el 1
   && refBr(["2026-09-05", "2026-11-01"]).toISODate() === "2026-09-05", JSON.stringify([conExtracto.map((x) => x.mes), sinImportar.length, llegada.length]));
 caso("Aportaciones del ejemplo: todas han llegado, ningún aviso", !F.avisos().some((a) => /^inicio:aporta:/.test(a.clave)) && F.aportacionesSinLlegar(F.recurrentes(), F.aportaciones(), F.hoy).length === 0,
   JSON.stringify(F.avisos().map((a) => a.clave)));
-const A8 = (extra) => F.aportacionesSinLlegar([rA(1, "Plan A", 5, "2026-01-05")], [...meses8("Plan A", "05"), apA(extra, "Plan A")], d0("2026-09-30"));
-caso("Aportación llegada el 29/08 para la del 05/09: sigue avisando (el enlace es por mes natural y septiembre mantiene su automática)", A8("2026-08-29").length === 1 && A8("2026-08-20").length === 1, null);
+const A8 = (extra, cargo) => F.aportacionesSinLlegar([rA(1, "Plan A", 5, "2026-01-05")], [...meses8("Plan A", "05"), { ...apA(extra, "Plan A"), ...(cargo ? { cargo: d0(cargo) } : {}) }], d0("2026-09-30"));
+caso("Aportación del 29/08 con cargo el 05/09: no avisa (B-106); la del 20/08 sin cargo sí", A8("2026-08-29", "2026-09-05").length === 0 && A8("2026-08-20").length === 1, null);
 
 // Regla de los dos meses en «Para la renta»: se marca la venta con pérdidas, sin cambiar su resultado.
 const CL = { F: "fondo", E: "etf", A: "accion", B: "accion", C: "cripto", G: "accion" };
@@ -744,6 +744,35 @@ caso("Meta de ahorro: si no llega (faltan 112,90 €), no propone límite", !LM2
     && F.filtrosMasActivos({ sinRevisar: true, cuenta: "Cuenta B", desde: "1", hasta: "2" }) === 3 && F.filtrosMasActivos({ desde: "1", hasta: "2" }) === 1, n({ sinRevisar: true }));
 }
 
+// Filtros guardados de Movimientos: lo que se guarda es lo que se aplica, con los importes a 2 decimales.
+{
+  const ms = [
+    { concepto: "a", cuenta: "Cuenta A", importe: 10, clase: "gasto" }, { concepto: "b", cuenta: "Cuenta A", importe: 250.5, clase: "ingreso" },
+    { concepto: "c", cuenta: "Cuenta B", importe: 1200, clase: "gasto", pendiente: true }, { concepto: "d", cuenta: "Cuenta B", importe: 99.99, clase: "gasto", pendiente: true }];
+  const vista = { busqueda: "  super ", categoria: "Ocio", hist: "año", orden: "importe", mf: { cuenta: "Cuenta B", desde: " 50 ", hasta: "1.000,5", sinRevisar: true } };
+  const f = F.filtroDeVista(vista), v = F.vistaDeFiltro(f);
+  caso("Filtro guardado: lo guardado y lo vuelto a aplicar dan la misma vista y el mismo resultado",
+    f.busqueda === "super" && f.categoria === "Ocio" && f.periodo === "año" && f.orden === "importe" && v.busqueda === "super" && v.categoria === "Ocio" && v.hist === "año" && v.orden === "importe"
+    && F.filtrarMas(ms, v.mf).map((m) => m.concepto).join("") === F.filtrarMas(ms, vista.mf).map((m) => m.concepto).join("") && F.filtrarMas(ms, v.mf).map((m) => m.concepto).join("") === "d",
+    [f, v]);
+  const g = F.filtroDeVista({ busqueda: "", categoria: null, hist: false, orden: "fecha", mf: { cuenta: "", desde: "abc", hasta: "", sinRevisar: false } });
+  caso("Filtro guardado: un tope que no es importe no se guarda y sin nada puesto el resumen está vacío; el periodo y el orden por defecto no cuentan",
+    g.desde === "" && g.periodo === "mes" && g.orden === "fecha" && F.resumenFiltro(g) === "" && F.vistaDeFiltro(g).hist === false && F.vistaDeFiltro(g).categoria === null, g);
+  const r = F.resumenFiltro(f), r2 = F.resumenFiltro(F.filtroDeVista({ ...vista, mf: { desde: "5" } })), r3 = F.resumenFiltro(F.filtroDeVista({ ...vista, mf: { hasta: "7,5" } }));
+  caso("Filtro guardado: el resumen cuenta lo que filtra y los importes salen con 2 decimales",
+    r.includes("«super»") && r.includes("Ocio") && r.includes("Cuenta B") && r.includes("50,00") && r.includes("1.000,50") && r.includes("solo sin revisar") && r.includes("todo el año") && r.includes("mayor importe")
+    && r2.includes("desde") && r2.includes("5,00") && r3.includes("hasta") && r3.includes("7,50"), [r, r2, r3]);
+  const A = F.filtrosConGuardado([], "  Mis  gastos ", f), B = F.filtrosConGuardado(A.lista, "mis gastos", { ...f, busqueda: "otro" });
+  const llena = Array.from({ length: 20 }, (_, i) => ({ nombre: "f" + i }));
+  caso("Filtro guardado: alta, sustitución por nombre (sin distinguir mayúsculas), tope de 20 y no toca la lista original",
+    A.lista.length === 1 && A.lista[0].nombre === "Mis gastos" && !A.sustituye && B.sustituye && B.lista.length === 1 && B.lista[0].busqueda === "otro" && A.lista[0].busqueda === "super"
+    && !!F.filtrosConGuardado(llena, "nuevo", f).error && !F.filtrosConGuardado(llena, "f3", f).error && !!F.filtrosConGuardado([], "   ", f).error && llena.length === 20, [A, B]);
+  const C = F.filtrosConGuardado(A.lista, "Otro", g).lista;
+  caso("Filtro guardado: renombrar (no se repite un nombre) y borrar",
+    F.filtrosConNombre(C, 1, "Nuevo").lista[1].nombre === "Nuevo" && !!F.filtrosConNombre(C, 1, "mis GASTOS").error && !F.filtrosConNombre(C, 0, "mis gastos").error && !!F.filtrosConNombre(C, 0, " ").error
+    && F.filtrosSin(C, 0).map((x) => x.nombre).join() === "Otro" && C.length === 2, C);
+}
+
 // «¿Me puedo permitir un gasto?»: el importe como se escribe en España y las tres cifras con el gasto restado.
 caso("Importe escrito: «300», «300,50», «1.200», «1.200,50 €» y «300.50» se leen bien; «abc», «1.2.3», «-5» y vacío, no",
   F.leerImporte("300") === 300 && F.leerImporte("300,50") === 300.5 && F.leerImporte("1.200") === 1200 && F.leerImporte(" 1.200,50 € ") === 1200.5 && F.leerImporte("300.50") === 300.5
@@ -753,22 +782,22 @@ caso("Importe escrito: «300», «300,50», «1.200», «1.200,50 €» y «300.
   const pp = (imp, d) => { const r = F.puedoPermitirme(imp, d); return { ...r, texto: r.texto.replace(/ /g, " ") }; };  // el espacio duro de «300 €»
   const P = pp(300, D), P2 = pp(650, D), P3 = pp(900, D), P4 = pp(2600, D);
   caso("Permitir: 300 € con 500 € de límite libre → te quedan 200 €, fin de mes 2.700 € y el mes más bajo 2.200 € en enero; cabe",
-    P.nivel === "bien" && cerca(P.limite, 200) && cerca(P.finMes, 2700) && cerca(P.minimo.saldo, 2200) && P.minimo.key === "2027-01" && P.bajoColchon === null && /^Sí, te cabe: te quedarían 200 €/.test(P.texto), JSON.stringify(P));
-  caso("Permitir: 650 € se pasa 150 € del límite pero las cuentas lo aguantan", P2.nivel === "ojo" && cerca(P2.limite, -150) && /^Tus cuentas lo aguantan, pero te pasarías 150 € del límite de este mes\.$/.test(P2.texto), JSON.stringify(P2));
+    P.nivel === "bien" && cerca(P.limite, 200) && cerca(P.finMes, 2700) && cerca(P.minimo.saldo, 2200) && P.minimo.key === "2027-01" && P.bajoColchon === null && /^Sí, te cabe: te quedarían [\d.,]+\s€/.test(P.texto), JSON.stringify(P));
+  caso("Permitir: 650 € se pasa 150 € del límite pero las cuentas lo aguantan", P2.nivel === "ojo" && cerca(P2.limite, -150) && /^Tus cuentas lo aguantan, pero te pasarías [\d.,]+\s€ del límite de este mes\.$/.test(P2.texto), JSON.stringify(P2));
   caso("Permitir: 900 € se pasa 400 € del límite y deja la cuenta del día a día 100 € bajo el colchón",
-    P3.nivel === "ojo" && cerca(P3.bajoColchon, 100) && P3.texto === "Te pasarías 400 € del límite de este mes y dejaría tu cuenta del día a día 100 € por debajo de tu colchón.", JSON.stringify(P3));
-  caso("Permitir: 2.600 € dejaría las cuentas en −100 € en enero de 2027: no llega", P4.nivel === "mal" && cerca(P4.minimo.saldo, -100) && P4.texto === "No te llega: tus cuentas se quedarían en −100 € en enero 2027.", JSON.stringify(P4));
+    P3.nivel === "ojo" && cerca(P3.limite, -400) && cerca(P3.bajoColchon, 100) && /^Te pasarías [\d.,]+\s€ del límite de este mes y dejaría tu cuenta del día a día [\d.,]+\s€ por debajo de tu colchón\.$/.test(P3.texto), JSON.stringify(P3));
+  caso("Permitir: 2.600 € dejaría las cuentas en −100 € en enero de 2027: no llega", P4.nivel === "mal" && cerca(P4.minimo.saldo, -100) && /^No te llega: tus cuentas se quedarían en −[\d.,]+\s€ en enero 2027\.$/.test(P4.texto), JSON.stringify(P4));
   const S = pp(300, { ...D, limite: 0, disponible: 0 }), N = pp(300, { limite: 0, disponible: 0, finMes: null, minimo: null, colchon: null }),
     L = pp(300, { limite: 600, disponible: 500, finMes: null, minimo: null, colchon: null });
   caso("Permitir: sin límite puesto no da cifra de límite (ni «te pasas»), y sin límite ni saldos dice lo que falta",
-    S.limite === null && S.nivel === "bien" && /^Tus cuentas lo aguantan: acabarías el mes con 2\.700 €/.test(S.texto) && N.nivel === "falta" && N.limite === null && N.finMes === null && N.minimo === null
-    && L.nivel === "bien" && L.finMes === null && /^Te cabe en tu límite de este mes: te quedarían 200 €/.test(L.texto), JSON.stringify([S, N, L]));
+    S.limite === null && S.nivel === "bien" && cerca(S.finMes, 2700) && /^Tus cuentas lo aguantan: acabarías el mes con [\d.,]+\s€/.test(S.texto) && N.nivel === "falta" && N.limite === null && N.finMes === null && N.minimo === null
+    && L.nivel === "bien" && cerca(L.limite, 200) && L.finMes === null && /^Te cabe en tu límite de este mes: te quedarían [\d.,]+\s€/.test(L.texto), JSON.stringify([S, N, L]));
   // Con el ejemplo: lo mismo que ya dicen la portada y «Tus próximos meses», con 300 € menos.
   const DE = F.datosPermitir(), PE = pp(300, DE), FE = F.prevision();
   caso("Permitir (ejemplo): 300 € → el límite, el fin de mes y el mes más bajo de prevision(), cada uno con 300 € menos",
     cerca(PE.limite, F.presupuestoSemana().disponible - 300) && cerca(PE.finMes, FE.filas[0].saldo - 300) && cerca(PE.minimo.saldo, FE.minimo.saldo - 300) && PE.minimo.key === FE.minimo.key,
     JSON.stringify([PE, FE.filas[0].saldo, FE.minimo]));
-  caso("Permitir (ejemplo): con 72 € ya pasados del límite, 300 € más son 372 € de más", cerca(PE.limite, -372, 0.5) && PE.texto.startsWith("Te pasarías 372 € del límite de este mes"), JSON.stringify(PE));
+  caso("Permitir (ejemplo): con 72 € ya pasados del límite, 300 € más son 372 € de más", cerca(PE.limite, -372, 0.5) && /^Te pasarías [\d.,]+\s€ del límite de este mes/.test(PE.texto), JSON.stringify(PE));
 }
 
 // Datos atrasados: hoy es 30/09 pero los movimientos llegan hasta el 15/09. El mes en curso de la previsión reserva gasto para
@@ -779,12 +808,12 @@ caso("Importe escrito: «300», «300,50», «1.200», «1.200,50 €» y «300.
   tapados.forEach((m) => (m.previsto = true));
   M.real = real0.filter((m) => m.fecha <= corte);
   const fd = F.fechaDatos(), PV = F.prevision(), f0 = PV.filas[0], vari = F.gastoVariable(M), suelto = F.gastoFijoSuelto(M);
-  const dia = fd ? fd.day : 30, esperado = (est, llevas) => Math.min(Math.max(0, est - llevas), (est * (30 - dia)) / 30);
+  const dia = fd ? fd.day : 30, esperado = (est, llevas) => Math.max(Math.max(0, est - llevas), (est * (30 - dia)) / 30);
   const extra = Math.max(0, 400 - vari);  // gasto inventado del 10/09 para llevar al menos 400 €: a ese ritmo (×2) se pasa de 600 €
   M.real = [...M.real, { fecha: F.DateTime.fromISO("2026-09-10"), importe: extra, clase: "gasto", categoria: "Ocio", concepto: "Prueba", gasto: extra, auto: false, previsto: false }];
   const variR = F.gastoVariable(M), ritmo = F.avisos().find((a) => a.clave === `inicio:ritmo:${F.hoyKey}`);
   M.real = real0; tapados.forEach((m) => (m.previsto = false));
-  const proy = ritmo && Number((ritmo.texto.match(/con ([\d.]+)\s€/) || [, ""])[1].replace(/\./g, ""));
+  const proy = ritmo && Number((ritmo.texto.match(/con ([\d.,]+)\s€/) || [, ""])[1].replace(/\./g, "").replace(",", "."));
   caso("Datos hasta el 15/09 con hoy 30/09: el mes en curso de la previsión cuenta los días sin datos, no los 0 que quedan desde hoy",
     fd && fd.toISODate() <= "2026-09-15" && fd.toISODate() >= "2026-09-10" && esperado(PV.varEst, vari) > 0 && cerca(f0.variable, esperado(PV.varEst, vari)) && cerca(f0.suelto, esperado(PV.sueltoEst, suelto)),
     [fd && fd.toISODate(), f0.variable, esperado(PV.varEst, vari), f0.suelto, esperado(PV.sueltoEst, suelto)]);
@@ -792,4 +821,317 @@ caso("Importe escrito: «300», «300,50», «1.200», «1.200,50 €» y «300.
     variR <= 600 && !!ritmo && cerca(proy, (variR / dia) * 30, 0.5), [dia, variR, ritmo && ritmo.texto]);
 }
 
+// B-110: el resto del mes no baja de su parte proporcional (la media × días que quedan / días del mes) y los escenarios van ordenados.
+{
+  const EP = F.escenariosPrevision(), dm = F.hoy.daysInMonth, dc = F.diasConDatos();
+  const piso = (e) => (e.F.varEst * (1 + e.gasto / 100) * (dm - dc)) / dm;
+  const [P, N, O] = EP;
+  caso("Escenarios: el resto del mes no baja de su parte proporcional, aunque ya lleves más gasto que la media (B-110)",
+    EP.every((e) => e.F.filas[0].variable >= piso(e) - 0.01), EP.map((e) => [e.id, e.F.filas[0].variable, piso(e)]));
+  caso("Escenarios ordenados: Prudente gasta ≥ Normal ≥ Optimista, y su saldo final va al revés (B-110)",
+    P.F.filas[0].variable >= N.F.filas[0].variable - 0.01 && N.F.filas[0].variable >= O.F.filas[0].variable - 0.01
+    && O.final.saldo >= N.final.saldo - 0.01 && N.final.saldo >= P.final.saldo - 0.01, EP.map((e) => [e.id, e.F.filas[0].variable, e.final.saldo]));
+}
+
+// B-109: con los últimos datos del 31/08 y hoy 30/09, el hero cuenta los días desde hoy: quedan 1 (no 30).
+{
+  const corte = F.DateTime.fromISO("2026-08-31").endOf("day");
+  const tapados = F.movimientos().filter((m) => !m.auto && !m.previsto && m.fecha > corte && m.fecha <= F.hoy.endOf("day"));
+  tapados.forEach((m) => (m.previsto = true));
+  try {
+    const PS8 = F.presupuestoSemana(), fd8 = F.fechaDatos();
+    caso("Hero con datos del 31/08: cuenta desde hoy y quedan 1 día (B-109)", PS8.restantes === 1 && !!fd8 && fd8.month === 8, [PS8.restantes, fd8 && fd8.toISODate()]);
+  } finally {
+    tapados.forEach((m) => (m.previsto = false));
+  }
+}
+
+// B-107: las compras de ISHARES pendientes restan del efectivo del bróker, suman a la inversión y no cambian el total.
+{
+  const PEN = FB.DB.pendientes;
+  const con = (base) => {
+    FB.DB.pendientes = base;
+    F.reiniciarCachesCalculo();
+    return { E: F.estimacion(), AV: F.avisos(), compras: F.aportaciones().filter((a) => a.pendiente) };
+  };
+  try {
+    const A = con(PEN.filter((q) => q.tipo_import !== "inversion")), B = con(PEN);
+    caso("Compras de ISHARES: el efectivo del bróker baja 98,50 € y la inversión sube lo mismo; el total no cambia (B-107)",
+      cerca(B.E.c["Efectivo bróker"] - A.E.c["Efectivo bróker"], -98.5) && cerca(B.E.cuentas.saldos["Bróker"], 301.5)
+      && cerca(B.E.c["Inversión"] - A.E.c["Inversión"], 98.5) && cerca(B.E.neto, A.E.neto),
+      [B.E.c["Efectivo bróker"], A.E.c["Efectivo bróker"], B.E.c["Inversión"], A.E.c["Inversión"]]);
+    caso("Compras de ISHARES: son compras del mes, no dudas de «Por revisar» (B-107)",
+      B.compras.length === 2 && B.compras.every((c) => /ISHARES/i.test(c.activo)), B.compras.map((c) => c.activo));
+    caso("«Por revisar»: el aviso cuenta 4 movimientos, como la nota de Inicio (B-107)", B.AV.some((a) => /^4 movimientos por revisar/.test(a.texto)), B.AV.map((a) => a.texto));
+    caso("Compra de un activo sin dar de alta: el aviso lo dice y pide darlo de alta (B-107)",
+      B.AV.some((a) => /^inicio:compra-sin-alta:/.test(a.clave) && /Dalo de alta/.test(a.texto)), B.AV.map((a) => a.clave));
+  } finally {
+    FB.DB.pendientes = PEN;
+    F.reiniciarCachesCalculo();
+  }
+}
+
+// B-107 (restos): una compra pendiente de un activo con plan fijo ES esa aportación: no se suma además la automática del mes ni avisa de que no ha llegado.
+{
+  const RECS = FB.DB.registros.recurrente;
+  const medir = () => {
+    F.reiniciarCachesCalculo();
+    return { compras: F.aportacionesMes(12).find((x) => x.key === "2026-09").compras, broker: F.estimacion().c["Efectivo bróker"],
+      virtual: F.aportaciones().some((a) => a.auto && a.recurrente === "Plan prueba compras" && a.fecha.toFormat("yyyy-MM") === "2026-09"),
+      sinLlegar: F.aportacionesSinLlegar(F.recurrentes(), F.aportaciones().filter((a) => !a.auto), F.hoy).some((x) => x.nombre === "Plan prueba compras" && x.mes === "2026-09") };
+  };
+  try {
+    F.reiniciarCachesCalculo();
+    const c = F.aportaciones().find((a) => a.pendiente);
+    const sin = medir();
+    FB.DB.registros.recurrente = [...RECS, { id: "prueba-plan-compras", nombre: "Plan prueba compras", clase: "aportacion", importe: Math.round(c.importe), dia: Math.min(28, c.fecha.day + 1),
+      desde: "2026-09-01", hasta: null, meses: null, activo_inversion: c.activo, cuenta: "Bróker" }];
+    const con = medir();
+    caso("Compra pendiente con plan fijo del mismo activo: es esa aportación (sin automática de más, sin aviso de «no ha llegado», sin restar dos veces del bróker)",
+      !con.virtual && !con.sinLlegar && cerca(con.compras, sin.compras) && cerca(con.broker, sin.broker), [sin, con]);
+  } finally {
+    FB.DB.registros.recurrente = RECS;
+    F.reiniciarCachesCalculo();
+  }
+}
+
+// B-107 (restos): las compras sin dar de alta anteriores al último saldo anotado siguen en el total y en la inversión, por lo pagado.
+{
+  const PAT = FB.DB.registros.patrimonio;
+  try {
+    F.reiniciarCachesCalculo();
+    const A = F.estimacion(), u = A.base;
+    // El saldo que anotarías el 30/09: el efectivo del bróker ya sin lo pagado, y el valor de los activos que sí existen
+    FB.DB.registros.patrimonio = [...PAT, { id: 99001, fecha: "2026-09-30", saldos: A.cuentas.saldos, otros: u.otros, deudas: u.deudas,
+      valores: Object.fromEntries(F.activos().map((a) => [a.nombre, F.valorInfo(a).valor])) }];
+    F.reiniciarCachesCalculo();
+    const B = F.estimacion();
+    caso("Compras sin dar de alta anteriores al último saldo anotado: siguen sumando en el total y en la inversión (B-107)",
+      cerca(B.neto, A.neto) && cerca(B.c["Inversión"], A.c["Inversión"]) && cerca(B.c["Efectivo bróker"], A.c["Efectivo bróker"]), [A.neto, B.neto, A.c["Inversión"], B.c["Inversión"]]);
+  } finally {
+    FB.DB.registros.patrimonio = PAT;
+    F.reiniciarCachesCalculo();
+  }
+}
+
+// B-067: un gasto o un ingreso puntual con fecha futura (un viaje, una devolución) entra en la previsión de su mes y en el saldo de los siguientes; antes, no cambia nada.
+{
+  const MOVS = FB.DB.registros.movimiento;
+  try {
+    F.reiniciarCachesCalculo();
+    const sin = F.prevision(), mes = sin.filas[2].key, cuenta = F.cuentas().find((c) => c.tipo === "corriente").nombre;
+    FB.DB.registros.movimiento = [...MOVS,
+      { id: 99002, fecha: `${mes}-15`, clase: "gasto", categoria: "Ocio", importe: 300, concepto: "Viaje de prueba", cuenta },
+      { id: 99003, fecha: `${mes}-20`, clase: "ingreso", categoria: "Otros ingresos", importe: 120, concepto: "Devolución de prueba", cuenta }];
+    F.reiniciarCachesCalculo();
+    const con = F.prevision(), dif = (i) => con.filas[i].saldo - sin.filas[i].saldo;
+    caso("Previsión: un gasto (300 €) y un ingreso (120 €) puntuales con fecha futura bajan 180 € el saldo de su mes y de los siguientes; los meses anteriores no cambian (B-067)",
+      cerca(dif(0), 0) && cerca(dif(1), 0) && cerca(dif(2), -180) && cerca(dif(3), -180) && cerca(dif(sin.filas.length - 1), -180), [0, 1, 2, 3].map(dif));
+  } finally {
+    FB.DB.registros.movimiento = MOVS;
+    F.reiniciarCachesCalculo();
+  }
+}
+
+// B-106: la aportación fija se enlaza con la real que llega hasta 7 días antes o después, aunque caiga en otro mes natural.
+{
+  const RECS = FB.DB.registros.recurrente, APOS = FB.DB.registros.aportacion;
+  const fijo = { id: "prueba-b106", nombre: "Prueba B-106", clase: "aportacion", importe: 150, dia: 5, desde: "2026-07-01", hasta: null, meses: null, activo_inversion: "Fondo prueba B-106", cuenta: "Bróker" };
+  const real = (id, fecha) => ({ id, fecha, activo: "Fondo prueba B-106", importe: 150, recurrente: "Prueba B-106", cuenta: "Bróker" });
+  const conReales = (extra) => {
+    FB.DB.registros.recurrente = [...RECS, fijo];
+    FB.DB.registros.aportacion = [...APOS, real(9001, "2026-07-05"), real(9002, "2026-08-05"), ...(extra ? [real(9003, extra)] : [])];
+    F.reiniciarCachesCalculo();
+    return {
+      agosto: F.repartoAhorro("2026-08").compras,
+      virtual: F.aportaciones().some((a) => a.auto && a.recurrente === "Prueba B-106" && a.fecha.toISODate() === "2026-09-05"),
+      sinLlegar: F.aportacionesSinLlegar(F.recurrentes(), F.aportaciones().filter((a) => !a.auto), F.hoy).some((x) => x.nombre === "Prueba B-106" && x.mes === "2026-09"),
+    };
+  };
+  try {
+    const sin = conReales(null), dentro = conReales("2026-08-29"), fuera = conReales("2026-08-28");
+    caso("Aportación fija: la real del 29/08 cuenta para la del 05/09 (7 días): ni automática ni aviso (B-106)",
+      !dentro.virtual && !dentro.sinLlegar && cerca(dentro.agosto, sin.agosto), [dentro.virtual, dentro.sinLlegar, dentro.agosto, sin.agosto]);
+    caso("Aportación fija: la real del 28/08 queda a 8 días y no cuenta para la del 05/09: sale automática y avisa (B-106)",
+      fuera.virtual && fuera.sinLlegar && cerca(fuera.agosto - sin.agosto, 150), [fuera.virtual, fuera.sinLlegar, fuera.agosto, sin.agosto]);
+  } finally {
+    FB.DB.registros.recurrente = RECS;
+    FB.DB.registros.aportacion = APOS;
+    F.reiniciarCachesCalculo();
+  }
+}
+
+// B-106 (restos): «Aportaciones por mes» y la racha de constancia cuentan la aportación en el mes de su cargo (la fija a la que se
+// enlazó), no en el de su fecha: la del 29/08 para el 05/09 es de septiembre, igual que en el reparto del ahorro y en el aviso.
+{
+  const RECS = FB.DB.registros.recurrente, APOS = FB.DB.registros.aportacion, PEN = FB.DB.pendientes;
+  const fijo = { id: "prueba-b106b", nombre: "Prueba B-106 b", clase: "aportacion", importe: 150, dia: 5, desde: "2026-07-01", hasta: null, meses: null, activo_inversion: "Fondo prueba B-106 b", cuenta: "Bróker" };
+  const real = (id, fecha) => ({ id, fecha, activo: "Fondo prueba B-106 b", importe: 150, recurrente: "Prueba B-106 b", cuenta: "Bróker" });
+  const mes = (k) => F.aportacionesMes(12).find((x) => x.key === k).compras;
+  try {
+    // 1. Con las aportaciones del ejemplo: la del 29/08 (7 días antes del 05/09) pasa de agosto a septiembre, que ya contaba la fija
+    const medir = (extra) => {
+      FB.DB.registros.recurrente = [...RECS, fijo];
+      FB.DB.registros.aportacion = [...APOS, real(9001, "2026-07-05"), real(9002, "2026-08-05"), ...(extra ? [real(9003, extra)] : [])];
+      F.reiniciarCachesCalculo();
+      return { ago: mes("2026-08"), sep: mes("2026-09") };
+    };
+    const sin = medir(null), dentro = medir("2026-08-29"), fuera = medir("2026-08-28");
+    caso("Aportaciones por mes: la real del 29/08 para el 05/09 cuenta en septiembre, no en agosto (B-106)",
+      cerca(dentro.ago, sin.ago) && cerca(dentro.sep, sin.sep), [dentro, sin]);
+    caso("Aportaciones por mes: la real del 28/08 (8 días) no es la del 05/09: cuenta en agosto y septiembre sigue con la automática (B-106)",
+      cerca(fuera.ago - sin.ago, 150) && cerca(fuera.sep, sin.sep), [fuera, sin]);
+    // 2. Sin más aportaciones que las de esta fija (desde julio), con la primera llegada el 29/06 para el 05/07: julio no queda vacío
+    FB.DB.registros.recurrente = [fijo];
+    FB.DB.registros.aportacion = [real(9004, "2026-06-29")];
+    FB.DB.pendientes = PEN.filter((q) => q.tipo_import !== "inversion");
+    F.reiniciarCachesCalculo();
+    caso("Aportaciones por mes: la real del 29/06 para el 05/07 es de julio, y junio queda sin compras (B-106)", cerca(mes("2026-06"), 0) && cerca(mes("2026-07"), 150), [mes("2026-06"), mes("2026-07")]);
+    caso("Constancia: julio, agosto y septiembre seguidos aunque la de julio llegara el 29/06 (B-106)", F.constancia() === 3, F.constancia());
+  } finally {
+    FB.DB.registros.recurrente = RECS;
+    FB.DB.registros.aportacion = APOS;
+    FB.DB.pendientes = PEN;
+    F.reiniciarCachesCalculo();
+  }
+}
+
+// B-110 (orden): el suelo proporcional vale para los tres escenarios, con el gasto variable del mes alto (por encima de unos 686 €:
+// los tres quedan en su suelo) y bajo (por debajo de unos 534 €: ninguno lo toca). Prudente ≥ Normal ≥ Optimista en los dos.
+{
+  const MOVS = FB.DB.registros.movimiento;
+  const gasto = (id, importe) => ({ id, fecha: "2026-09-29", cuenta: "Cuenta nómina", clase: "gasto", categoria: "Supermercado", concepto: "Prueba B-110", importe });
+  const sinVariable = MOVS.filter((m) => !((m.clase === "gasto" || m.clase === "reembolso") && !m.recurrente && m.fecha >= "2026-09-01"));
+  const caja = (movs) => {
+    FB.DB.registros.movimiento = movs;
+    F.reiniciarCachesCalculo();
+    const EP = F.escenariosPrevision(), dm = F.hoy.daysInMonth, dc = F.diasConDatos();
+    return { EP, vari: F.gastoVariable(F.finMes(F.hoyKey)), piso: (e) => (e.F.varEst * (1 + e.gasto / 100) * (dm - dc)) / dm, queda: dm > dc };
+  };
+  try {
+    for (const [nombre, movs, cond] of [["alto", [...MOVS, gasto(9301, 300)], (v) => v > 686], ["bajo", [...sinVariable, gasto(9302, 100)], (v) => v < 534]]) {
+      const { EP, vari, piso, queda } = caja(movs), [P, N, O] = EP, f0 = (e) => e.F.filas[0];
+      caso(`Escenarios con el gasto variable del mes ${nombre} (${Math.round(vari)} €): quedan días sin datos y ninguno baja de su suelo (B-110)`,
+        cond(vari) && queda && EP.every((e) => f0(e).variable >= piso(e) - 0.01), [vari, EP.map((e) => [e.id, f0(e).variable, piso(e)])]);
+      caso(`Escenarios con el gasto variable del mes ${nombre}: Prudente ≥ Normal ≥ Optimista en lo variable, lo suelto y el saldo final al revés (B-110)`,
+        f0(P).variable >= f0(N).variable - 0.01 && f0(N).variable >= f0(O).variable - 0.01 && f0(P).suelto >= f0(N).suelto - 0.01 && f0(N).suelto >= f0(O).suelto - 0.01
+        && O.final.saldo >= N.final.saldo - 0.01 && N.final.saldo >= P.final.saldo - 0.01, EP.map((e) => [e.id, f0(e).variable, f0(e).suelto, e.final.saldo]));
+      if (nombre === "alto") caso("Con el gasto variable alto, el resto del mes de cada escenario es exactamente su suelo (B-110)", EP.every((e) => cerca(f0(e).variable, piso(e))), EP.map((e) => [e.id, f0(e).variable, piso(e)]));
+      else caso("Con el gasto variable bajo, el resto del mes es la estimación menos lo gastado (el suelo no actúa) (B-110)", EP.every((e) => cerca(f0(e).variable, e.F.varEst * (1 + e.gasto / 100) - vari) && f0(e).variable > piso(e)), EP.map((e) => [e.id, f0(e).variable, piso(e)]));
+    }
+  } finally {
+    FB.DB.registros.movimiento = MOVS;
+    F.reiniciarCachesCalculo();
+  }
+}
+
+// Independencia financiera: capital = gasto / tasa; la pensión pública lo rebaja (con números sencillos, rentabilidad 0 %)
+{
+  const base = { gasto: 12000, tasa: 0.04, rent: 0, apo: 1000, patrimonio: 0, edad: 40 };
+  const A = F.independencia(base);
+  caso("Independencia sin pensión: 12.000 €/año al 4 % = 300.000 €, y a 1.000 € al mes 300 meses (a los 65 años)", A.ok && A.capitalSin === 300000 && A.capitalCon === 300000 && A.mesesSin === 300 && A.mesesCon === 300 && A.edadSin === 65 && A.ahorro === 0 && !A.conPension, A);
+  const B = F.independencia({ ...base, pension: 500, edadPension: 67 });
+  caso("Independencia con pensión de 500 €/mes desde los 67: hacen falta 237.000 € (7,25 años de gasto + 150.000 €), 237 meses y 63.000 € menos", B.ok && B.conPension && B.mesesSin === 300 && B.mesesCon === 237 && cerca(B.capitalCon, 237000, 0.5) && cerca(B.ahorro, 63000, 0.5) && cerca(B.edadCon, 40 + 237 / 12), B);
+  const C = F.independencia({ ...base, patrimonio: 400000 });
+  caso("Independencia ya alcanzada: con 400.000 € no hay que esperar nada (0 meses, a los 40)", C.ok && C.mesesSin === 0 && C.mesesCon === 0 && C.edadSin === 40, C);
+  const D = F.independencia({ ...base, apo: 0, patrimonio: 1000, rent: 0.03 });
+  caso("Independencia que no se alcanza en 50 años: meses y edad son null, sin NaN", D.ok && D.mesesSin === null && D.edadSin === null && isFinite(D.capitalSin) && isFinite(D.capitalCon), D);
+  const E = F.independencia({ ...base, edad: 60, pension: 1500, edadPension: 60 });
+  caso("Independencia con una pensión que cubre todo el gasto: no hace falta capital y se alcanza ya", E.ok && E.capitalCon === 0 && E.mesesCon === 0 && E.ahorro === 300000, E);
+  const G = F.independencia({ ...base, edad: 30, pension: 100, edadPension: 99 });
+  caso("Independencia con una pensión que llega demasiado tarde: no rebaja el capital (ahorro 0)", G.ok && G.ahorro === 0 && G.capitalCon === 300000 && G.mesesCon === G.mesesSin, G);
+  const H = F.independencia({ ...base, edad: null, pension: 500, edadPension: 67 });
+  caso("Independencia sin edad: no cuenta la pensión y no da edades", H.ok && !H.conPension && H.mesesCon === 300 && H.edadSin === null && H.edadCon === null, H);
+  const malas = [{ ...base, gasto: "" }, { ...base, gasto: NaN }, { ...base, gasto: -5 }, { ...base, tasa: 0 }, { ...base, tasa: 5 }, { ...base, rent: -0.5 }, { ...base, rent: 2 },
+    { ...base, edad: 300 }, { ...base, pension: 500, edadPension: null }, { ...base, pension: 500, edadPension: 10 }, {}];
+  caso("Independencia con entradas vacías o absurdas: ok = false con un motivo, nunca un error", malas.every((m) => { const r = F.independencia(m); return r.ok === false && typeof r.motivo === "string" && r.motivo.length > 5; }), malas.map((m) => F.independencia(m).ok));
+  const I = F.independencia({ ...base, apo: "", patrimonio: undefined, pension: -300, edad: "" });
+  caso("Independencia con aportación y patrimonio vacíos, pensión negativa y edad vacía: sin NaN", I.ok && !I.conPension && I.mesesSin === null && I.edadSin === null && isFinite(I.capitalSin), I);
+}
+
+// B-062 · Foto del cierre: lo que se congela y lo que cambia desde entonces (movimientos de mentira sobre agosto, que el ejemplo ya cierra).
+{
+  const MOVS = FB.DB.registros.movimiento, PATS = FB.DB.registros.patrimonio;
+  try {
+    F.reiniciarCachesCalculo();
+    const p31 = F.patrimonio().find((x) => x.fecha.toISODate() === "2026-08-31"), M = F.finMes("2026-08");
+    const foto = F.fotoCierre("2026-08", p31.cuentas.saldos, p31.valores, p31.otros, p31.deudas, "2026-09-01");
+    caso("Foto: entró, salió y ahorraste son los del mes, con dos decimales y la fecha en que se hizo",
+      cerca(foto.ingresos, M.ingresos) && cerca(foto.gastos, M.gastos) && cerca(foto.ahorro, foto.ingresos - foto.gastos) && foto.hecha === "2026-09-01", foto);
+    caso("Foto: el gasto por categoría suma el gasto del mes", cerca(suma(Object.values(foto.categorias)), foto.gastos, 0.02) && Object.keys(foto.categorias).length > 1, foto.categorias);
+    caso("Foto: el patrimonio es el neto del registro de saldos del 31/08 y lo invertido, el valor de sus activos",
+      cerca(foto.patrimonio, p31.neto) && cerca(foto.invertido, p31.c["Inversión"] + p31.c.Cripto) && foto.invertido > 0, [foto.patrimonio, p31.neto, foto.invertido]);
+    const nombre = F.activos()[0].nombre;
+    const manual = F.fotoCierre("2026-08", { "Cuenta nómina": "1.000,50", Ahorro: "4000", Bróker: "" }, { [nombre]: "500" }, "", "100", "2026-09-01");
+    caso("Foto con lo que se escribe en el formulario (cadenas con coma, vacíos y deudas): 5.000,50 + 500 − 100 de deudas, 500 invertidos",
+      cerca(manual.patrimonio, 5400.5) && cerca(manual.invertido, 500), [manual.patrimonio, manual.invertido]);
+    const c = { mes: "2026-08", fecha: "2026-08-31", foto };
+    caso("Sin tocar nada, hoy dice lo mismo que la foto: nada ha cambiado", (() => { const r = F.cambiosFoto(foto, F.fotoHoy(c)); return r.cifras.length === 0 && r.categorias.length === 0; })());
+    // Se añade un gasto de 100 € en agosto: la foto guardada no se mueve, lo que dicen hoy los datos sí
+    const antes = JSON.stringify(foto);
+    FB.DB.registros.movimiento = [...MOVS, { id: 99401, fecha: "2026-08-15", cuenta: "Cuenta nómina", clase: "gasto", categoria: "Ocio", concepto: "Prueba B-062", importe: 100 }];
+    F.reiniciarCachesCalculo();
+    const ch = F.cambiosFoto(foto, F.fotoHoy(c)), ocio = ch.categorias.find((x) => x.nombre === "Ocio");
+    caso("Un gasto de 100 € añadido después: la foto no cambia; hoy sale 100 € más de gasto, 100 € menos de ahorro y 100 € más en su categoría",
+      JSON.stringify(foto) === antes && ch.cifras.map((x) => x.k).join() === "gastos,ahorro" && cerca(ch.cifras[0].ahora - ch.cifras[0].antes, 100) && cerca(ch.cifras[1].ahora - ch.cifras[1].antes, -100)
+      && ch.categorias.length === 1 && ocio && cerca(ocio.ahora - ocio.antes, 100), JSON.stringify(ch));
+    FB.DB.registros.movimiento = MOVS;
+    // El patrimonio de hoy sale del registro de saldos de la fecha del cierre: si se corrige (500 € más en «otros»), también se ve
+    FB.DB.registros.patrimonio = PATS.map((r) => (r.fecha === "2026-08-31" ? { ...r, otros: (r.otros || 0) + 500 } : r));
+    F.reiniciarCachesCalculo();
+    const cp = F.cambiosFoto(foto, F.fotoHoy(c)).cifras.find((x) => x.k === "patrimonio");
+    caso("Si se corrigen los saldos de ese día, «Tu dinero total» cambia 500 €", cp && cerca(cp.ahora - cp.antes, 500), cp);
+    // Diferencias de menos de 50 céntimos no se enseñan
+    const r0 = F.cambiosFoto({ gastos: 100, categorias: { A: 10 } }, { gastos: 100.4, categorias: { A: 10.3, B: 0.2 } });
+    caso("Cambios de menos de 0,50 € no cuentan", r0.cifras.length === 0 && r0.categorias.length === 0, r0);
+  } finally {
+    FB.DB.registros.movimiento = MOVS;
+    FB.DB.registros.patrimonio = PATS;
+    F.reiniciarCachesCalculo();
+  }
+}
+
+// B-063 · Gasto neto con y sin «a medias» (un gasto de 100 € en septiembre; con tu parte de 40 €, te deben 60 €) y B-064 · etiquetas y filtros.
+{
+  const MOVS = FB.DB.registros.movimiento, REC = FB.DB.registros.recurrente, PEND = FB.DB.pendientes;
+  const mov = (id, clase, importe, mas = {}) => ({ id, fecha: clase === "reembolso" ? "2026-09-12" : "2026-09-10", cuenta: "Cuenta nómina", clase, categoria: "Ocio", concepto: "Restaurante Sol", importe, ...mas });
+  // Aísla los fijos automáticos y los pendientes de tus datos: si no, suman a septiembre y los importes salen mal.
+  const con = (movs) => { FB.DB.registros.movimiento = movs; FB.DB.registros.recurrente = []; FB.DB.pendientes = []; F.reiniciarCachesCalculo(); return { gastos: F.finMes("2026-09").gastos, M: F.cobrosMedias(movs).por.get(9501), ms: F.movimientos() }; };
+  const medias = { a_medias: true, mi_parte: 40 };
+  try {
+    caso("Gasto neto sin «a medias»: 100 € de gasto cuentan 100 €; con un Bizum de 30 € enlazado, 70 € (como siempre)",
+      cerca(con([mov(9501, "gasto", 100)]).gastos, 100) && cerca(con([mov(9501, "gasto", 100), mov(9502, "reembolso", 30, { reembolsa: 9501 })]).gastos, 70));
+    const A = con([mov(9501, "gasto", 100, medias)]);
+    caso("A medias: 100 € pagados con tu parte de 40 € cuentan 40 € de gasto; el movimiento sigue siendo de 100 € (el saldo no cambia) y te deben 60 €",
+      cerca(A.gastos, 40) && A.ms.find((m) => m.p.id === 9501).importe === 100 && cerca(A.M.deben, 60) && cerca(A.M.pendiente, 60), [A.gastos, A.M]);
+    const B = con([mov(9501, "gasto", 100, medias), mov(9502, "reembolso", 60, { reembolsa: 9501 })]);
+    caso("A medias con un Bizum de 60 € enlazado: cubre lo que te debían, no resta otra vez (sigue 40 €) y ya no te deben nada", cerca(B.gastos, 40) && cerca(B.M.pendiente, 0) && cerca(B.M.cobrado, 60), [B.gastos, B.M]);
+    const C = con([mov(9501, "gasto", 100, medias), mov(9502, "reembolso", 70, { reembolsa: 9501 })]);
+    caso("A medias con un Bizum de 70 €: 60 € cubren la deuda y los 10 € de más restan de tu parte (30 €)", cerca(C.gastos, 30) && cerca(C.M.pendiente, 0), [C.gastos, C.M]);
+    const D = con([mov(9501, "gasto", 100, medias), mov(9502, "reembolso", 20, { reembolsa: 9501 })]);
+    caso("A medias con un Bizum de solo 20 €: tu parte sigue en 40 € y te faltan 40 € por cobrar", cerca(D.gastos, 40) && cerca(D.M.pendiente, 40), [D.gastos, D.M]);
+    const E = con([mov(9501, "gasto", 100, { ...medias, cobrado: true })]);
+    caso("A medias marcado como cobrado: no te deben nada y el gasto sigue siendo tu parte (40 €)", cerca(E.gastos, 40) && cerca(E.M.pendiente, 0), [E.gastos, E.M]);
+    const G = con([mov(9501, "gasto", 100, { a_medias: true })]);
+    caso("«A medias» sin tu parte (datos incompletos): cuenta el gasto entero, sin romper nada", cerca(G.gastos, 100) && !G.M, [G.gastos, G.M]);
+    const H = con([mov(9501, "gasto", 100, medias), mov(9503, "gasto", 50, { a_medias: true, mi_parte: 80 })]);
+    caso("Tu parte mayor que el importe no sale de más: un gasto de 50 € con parte de 80 € cuenta 50 €", cerca(H.gastos, 90), H.gastos);
+    // por comercio: el gasto a medias cuenta tu parte y el reembolso solo lo que pasa de la deuda
+    const dentro = (m) => m.fecha.year === 2026;
+    const PC = (movs) => F.porComercio(con(movs).ms, dentro).lista.map((c) => [c.nombre, Math.round(c.total * 100) / 100]);
+    caso("Por comercio: el gasto a medias suma tu parte (40 €); con un Bizum de 70 € enlazado, 30 €",
+      JSON.stringify(PC([mov(9501, "gasto", 100, medias)])) === '[["Restaurante Sol",40]]' && JSON.stringify(PC([mov(9501, "gasto", 100, medias), mov(9502, "reembolso", 70, { reembolsa: 9501 })])) === '[["Restaurante Sol",30]]');
+    // etiquetas y filtros de Movimientos
+    const T = con([mov(9501, "gasto", 100, { ...medias, etiquetas: ["Viaje", "comida"] }), mov(9504, "gasto", 20, { etiquetas: ["viaje"] }), mov(9505, "gasto", 5), mov(9506, "gasto", 40, { a_medias: true, mi_parte: 10, cobrado: true })]);
+    const ids = (f) => F.filtrarMas(T.ms, f).map((m) => m.p.id).sort().join();
+    caso("Etiquetas: la lista sale sin repetir y por orden; filtrar por una da igual mayúsculas", F.etiquetasUsadas().join() === "comida,Viaje" && ids({ etiqueta: "VIAJE" }) === "9501,9504" && ids({ etiqueta: "comida" }) === "9501" && ids({ etiqueta: "" }) === "9501,9504,9505,9506", F.etiquetasUsadas());
+    caso("Filtro «lo que te deben»: solo los gastos a medias con algo por cobrar (no el ya cobrado)", ids({ deben: true }) === "9501" && ids({ deben: true, etiqueta: "viaje" }) === "9501", ids({ deben: true }));
+    caso("Cada filtro nuevo cuenta en «Más filtros»", F.filtrosMasActivos({ etiqueta: "viaje", deben: true }) === 2 && F.filtrosMasActivos({ etiqueta: " " }) === 0);
+  } finally {
+    FB.DB.registros.movimiento = MOVS;
+    FB.DB.registros.recurrente = REC;
+    FB.DB.pendientes = PEND;
+    F.reiniciarCachesCalculo();
+  }
+}
 return casos;

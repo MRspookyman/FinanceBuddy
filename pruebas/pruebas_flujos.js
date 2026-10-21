@@ -29,6 +29,12 @@ return (async () => {
     return await hasta(() => app().dataset.vista === ruta.replace(/^#/, "").split("/")[0] && app().querySelector(".fin-page > *"));
   };
   const regs = (t) => (FB.DB.registros[t] || []);
+  // B-111: guardar saldos que son la estimación de los movimientos pide confirmar; si sale ese aviso, se confirma
+  const confirmaEstimados = async () => {
+    const d = await hasta(() => document.querySelector("dialog.fb-dialogo[open]"), 1500);
+    if (d) porTexto("button", "Guardarlos igualmente", d).click();
+    return !!d;
+  };
   const caso = async (nombre, fn) => {
     try { const d = await fn(); casos.push({ nombre, ok: !d, detalle: d || "" }); }
     catch (e) { casos.push({ nombre, ok: false, detalle: String((e && e.stack) || e) }); }
@@ -341,7 +347,7 @@ return (async () => {
     const r = await FB.api("/api/guardar", { tipo: "movimiento", datos: { fecha: "2026-08-18", clase: "gasto", categoria: "Vivienda", importe: 480, concepto: "Derrama de la comunidad", cuenta: "Cuenta nómina" } });
     if (!r.ok) return "no se guarda el gasto: " + r.mensaje;
     await FB.refrescar();
-    const frase = "120 € al mes de otros gastos fijos que no tienes dados de alta (tu media de los últimos 4 meses)";
+    const frase = "120,00 € al mes de otros gastos fijos que no tienes dados de alta (tu media de los últimos 4 meses)";
     if (!(await hasta(() => tarjeta() && plano(tarjeta()).includes(frase)))) return "la tarjeta no cuenta el gasto fijo suelto: " + plano(tarjeta() || app()).slice(-260);
     // el mes en curso ya acaba hoy: son 11 meses por delante a 120 €
     if (Math.abs(antes - total() - 11 * 120) > 2) return `dentro de un año debería haber 1.320 € menos y hay ${antes - total()} menos (${antes} → ${total()})`;
@@ -358,12 +364,76 @@ return (async () => {
     if (!(await hasta(() => plano(boton()) === "Guardar los saldos"))) return "con fecha del día 15 no debería ofrecer cerrar el mes: " + plano(boton());
     if (campo("Lo destacable del mes")) return "sin cierre no se pide la nota del mes";
     boton().click();
+    await confirmaEstimados();
     if (!(await hasta(() => regs("patrimonio").some((x) => x.fecha === "2026-09-15")))) return "no se guardan los saldos del día 15";
     if (regs("cierre").some((x) => x.mes === "2026-09")) return "septiembre ha quedado cerrado con saldos del día 15";
     if (!(await ir("#cerrar"))) return "no se vuelve a abrir Actualizar saldos";
     if (!(await hasta(() => boton() && plano(boton()).startsWith("Cerrar septiembre")))) return "no ofrece cerrar septiembre";
     boton().click();
+    await confirmaEstimados();
     if (!(await hasta(() => regs("cierre").some((x) => x.mes === "2026-09" && x.fecha === "2026-09-30")))) return "con los saldos del día 30 no se cierra septiembre";
+  });
+
+  // 17 ter. B-062: al cerrar el mes se guarda su foto; editar movimientos no la cambia y en «Meses cerrados» se ve qué ha cambiado desde entonces.
+  await caso("Cerrar el mes guarda su foto; después se ve lo que ha cambiado desde entonces", async () => {
+    const c = regs("cierre").find((x) => x.mes === "2026-09");
+    if (!c) return "septiembre no está cerrado (lo cierra el flujo anterior)";
+    if (!c.foto || !(c.foto.gastos > 0) || !c.foto.categorias || c.foto.patrimonio == null) return "el cierre no trae su foto: " + JSON.stringify(c.foto);
+    const ini = JSON.stringify(c.foto);
+    const r = await FB.api("/api/guardar", { tipo: "movimiento", datos: { fecha: "2026-09-12", clase: "gasto", categoria: "Ocio", importe: 55, cuenta: "Cuenta nómina", concepto: "Prueba de la foto" } });
+    if (!r.ok) return "no se guarda el movimiento de prueba: " + r.mensaje;
+    try {
+      await FB.recargar();
+      if (JSON.stringify(regs("cierre").find((x) => x.mes === "2026-09").foto) !== ini) return "la foto del cierre ha cambiado al añadir un movimiento";
+      if (!(await ir("#cerrar"))) return "no se abre Actualizar saldos";
+      const lista = await hasta(() => todos("details summary").find((s) => /Meses cerrados/.test(s.textContent)));
+      if (!lista) return "no está «Meses cerrados»";
+      lista.parentElement.open = true;
+      const foto = await hasta(() => todos("details summary").find((s) => /Foto de septiembre/.test(s.textContent)));
+      if (!foto) return "no sale la foto de septiembre";
+      foto.parentElement.open = true;
+      if (!(await hasta(() => /Desde entonces ha cambiado: salió/.test(plano(foto.parentElement))))) return "no dice lo que ha cambiado: " + plano(foto.parentElement).slice(0, 500);
+      if (!/Ocio/.test(plano(foto.parentElement)) && !(await hasta(() => porTexto("summary", "Gasto por categoría que ha cambiado", foto.parentElement)))) return "no enseña la categoría que ha cambiado";
+    } finally {
+      await FB.api("/api/borrar", { tipo: "movimiento", id: r.id });
+      await FB.recargar();
+    }
+  });
+
+  // 17 bis. B-111: un saldo que es la estimación de tus movimientos (no lo que dice el banco) pide confirmar antes de guardarse.
+  // «Revisarlos» no guarda nada; «Guardarlos igualmente» sí. Se usa el 22/09, que no tiene saldos: lo que se crea se borra después.
+  await caso("Actualizar saldos: un saldo estimado pide confirmar antes de guardarse", async () => {
+    const F = "2026-09-22";
+    const dlg = () => document.querySelector("dialog.fb-dialogo[open]");
+    const boton = () => todos("button.fb-btn").find((b) => /^(Cerrar |Guardar los saldos)/.test(plano(b)));
+    const hayReg = () => regs("patrimonio").some((x) => x.fecha === F);
+    const pieNomina = () => { const el = campo("Cuenta nómina"); return el && el.nextElementSibling ? plano(el.nextElementSibling) : ""; };
+    if (hayReg()) return `ya hay saldos del ${F}: el flujo no puede comprobar nada`;
+    try {
+      if (!(await ir("#cerrar"))) return "no se abre Actualizar saldos";
+      if (!(await hasta(boton))) return "no está el botón de guardar";
+      escribir(campo("Fecha"), F);
+      if (!(await hasta(() => boton() && plano(boton()) === "Guardar los saldos"))) return "con fecha del día 22 no debería ofrecer cerrar el mes: " + (boton() ? plano(boton()) : "");
+      if (!(await hasta(() => pieNomina().startsWith("según los movimientos: ")))) return "«Cuenta nómina» no trae su estimación: " + pieNomina();
+      boton().click();
+      const aviso = await hasta(dlg);
+      if (!aviso) return "con saldos estimados no pide confirmar antes de guardar";
+      if (!/estimad/i.test(plano(aviso))) return "el aviso no dice que son estimaciones: " + plano(aviso);
+      porTexto("button", "Revisarlos", aviso).click();
+      if (!(await hasta(() => !dlg()))) return "«Revisarlos» no cierra el aviso";
+      await dormir(300);
+      if (hayReg()) return "«Revisarlos» guardó igualmente los saldos";
+      if (!boton() || boton().disabled) return "tras «Revisarlos» el botón no vuelve a estar activo";
+      boton().click();
+      const otro = await hasta(dlg);
+      if (!otro) return "al volver a guardar no pide confirmar";
+      porTexto("button", "Guardarlos igualmente", otro).click();
+      if (!(await hasta(hayReg))) return "«Guardarlos igualmente» no guarda los saldos";
+    } finally {  // el 22/09 no tenía saldos al empezar: se borra lo que este caso ha guardado
+      await FB.recargar();
+      for (const r of regs("patrimonio").filter((x) => x.fecha === F)) await FB.api("/api/borrar", { tipo: "patrimonio", id: r.id });
+      await FB.recargar();
+    }
   });
 
   // 18. Importar: lo que no se sabe leer no se pierde en silencio. La plantilla de la app rellenada a mano, con un importe mal
@@ -445,14 +515,14 @@ return (async () => {
     l.click();
     if (!(await hasta(() => app().dataset.vista === "anual" && app().querySelector(".fb-stats")))) return "no se abre Mi año";
     const sale = porTexto(".fb-stat", "Salió");
-    if (!sale || !plano(sale).includes("2025: 300 €")) return "«Salió» no se compara con 2025: " + (sale ? plano(sale) : "no está");
+    if (!sale || !/2025: 300(,00)?\s€/.test(plano(sale))) return "«Salió» no se compara con 2025: " + (sale ? plano(sale) : "no está");
     const fila = todos(".fin-table tr").find((tr) => plano(tr).startsWith("Viajes"));
-    if (!fila || !plano(fila).includes("300 €")) return "la categoría Viajes no trae lo de 2025: " + (fila ? plano(fila) : "no está");
+    if (!fila || !/300(,00)?\s€/.test(plano(fila))) return "la categoría Viajes no trae lo de 2025: " + (fila ? plano(fila) : "no está");
     if (!porTexto(".fin-panel", "Tu patrimonio en 2026")) return "falta el patrimonio del año";
     const b = porTexto(".fb-chips button", "2025");
     if (!b) return "no se puede elegir 2025";
     b.click();
-    if (!(await hasta(() => { const s = porTexto(".fb-stat", "Salió"); return s && plano(s).includes("300 €") && !plano(s).includes("2024:"); }))) return "al elegir 2025 no sale lo de ese año";
+    if (!(await hasta(() => { const s = porTexto(".fb-stat", "Salió"); return s && /300(,00)?\s€/.test(plano(s)) && !plano(s).includes("2024:"); }))) return "al elegir 2025 no sale lo de ese año";
     if (!porTexto(".fin-note", "De 2024 no hay movimientos")) return "no dice que no hay año anterior con el que comparar";
   });
 
@@ -581,7 +651,7 @@ return (async () => {
     const cambiadas = () => regs("categoria").filter((c) => (c.presupuesto || 0) !== (antes.get(c.nombre) || 0));
     if (!(await hasta(() => cambiadas().length === 1))) return `deberían cambiar 1 categoría y cambian ${cambiadas().length}`;
     const c = cambiadas()[0];
-    if (!etiqueta.includes(c.nombre) || !etiqueta.includes(`${c.presupuesto.toLocaleString("es-ES")} €`) || c.presupuesto % 10) return `se ha guardado ${c.nombre}: ${c.presupuesto} y la propuesta decía «${etiqueta}»`;
+    if (!etiqueta.includes(c.nombre) || !etiqueta.includes(`${c.presupuesto.toLocaleString("es-ES", { minimumFractionDigits: 2 })} €`) || c.presupuesto % 10) return `se ha guardado ${c.nombre}: ${c.presupuesto} y la propuesta decía «${etiqueta}»`;
     const { id, ...datos } = c;
     await FB.api("/api/guardar", { tipo: "categoria", id, datos: { ...datos, presupuesto: antes.get(c.nombre) || 0 } });  // dejarlo como estaba
     await FB.recargar();
@@ -642,7 +712,7 @@ return (async () => {
     if (!(await hasta(() => Number(FB.DB.config.meta_ahorro) === 300))) return "la meta no se guarda";
     const frase = await hasta(() => todos(".fb-fila span").find((e) => /^Con tu meta, tu límite sería/.test(plano(e))));
     if (!frase) return "no dice qué límite te deja la meta: " + plano(porTexto(".fin-panel", "Tu límite de gasto variable") || app()).slice(0, 300);
-    if (!plano(porTexto(".fin-panel", "Tu límite de gasto variable")).includes("− 300 € de tu meta =")) return "no enseña la cuenta que hace";
+    if (!/− 300(,00)?\s€ de tu meta =/.test(plano(porTexto(".fin-panel", "Tu límite de gasto variable")))) return "no enseña la cuenta que hace";
     const propuesto = parseFloat(plano(frase).match(/sería ([\d.]+)/)[1].replace(/\./g, ""));
     if (Number(FB.DB.config.limite_variable) !== limiteAntes) return "el límite no debería cambiar solo";
     porTexto("button", "Usar", frase.parentElement).click();
@@ -705,6 +775,7 @@ return (async () => {
       for (const n of ["Cuenta nómina", "Bróker"]) if (!pie(n).startsWith("según los movimientos: ")) return `${n} no trae su propuesta: ${pie(n)}`;
       const propuesta = ["Cuenta nómina", "Bróker"].map((n) => `${n} ${campo(n).value}`).join(", ");
       boton().click();
+      await confirmaEstimados();
       if (!(await hasta(() => app().dataset.vista === "inicio" && app().querySelector(".fin-page > *")))) return "tras guardar no vuelve al Inicio";
       const aviso = /No cuadra[^·]*/.exec(plano(app()));
       if (aviso) return `aceptando la propuesta (${propuesta}) el Inicio dice: ${aviso[0]}`;
@@ -788,15 +859,15 @@ return (async () => {
       const v = await hasta(() => caja().querySelector(".veredicto"));
       if (!v) return "al escribir 300 no sale el veredicto";
       // Las mismas cifras que ya enseña el Inicio (la portada y la fila «Normal» de los escenarios), con 300 € menos; ±1 € por el redondeo
-      const euros = (t) => { const x = /(−?)([\d.]+) €/.exec(t); return x ? (x[1] ? -1 : 1) * Number(x[2].replace(/\./g, "")) : NaN; };
+      const euros = (t) => { const x = /(−?)([\d.]+)(?:,(\d+))? €/.exec(t); return x ? (x[1] ? -1 : 1) * Number(x[2].replace(/\./g, "") + (x[3] ? "." + x[3] : "")) : NaN; };
       const hero = app().querySelector(".fb-hero"), pasado = hero.classList.contains("pasado"), libre = (pasado ? -1 : 1) * euros(plano(hero.querySelector(".iz > .v")));
       const normal = todos("tbody tr", app().querySelector('[role="region"][aria-label="Tres escenarios de la previsión"]')).find((f) => plano(f).startsWith("Normal"));
       const bajo = euros(plano(todos("td.num", normal)[1])), mesBajo = plano(todos("td.num", normal)[1].querySelector("small")).trim();
       const filas = todos(".r", caja()).map(plano), casi = (a, b) => Math.abs(a - b) <= 1;
       if (libre - 300 >= 0) return `el ejemplo ya no se pasa del límite (quedarían ${libre - 300}): revisa este flujo`;
-      if (!/te pasarías [\d.]+ € del límite de este mes/i.test(plano(v)) || !casi(euros(plano(v)), 300 - libre)) return `el veredicto debería decir que te pasas ${300 - libre} €: ${plano(v)}`;
+      if (!/te pasarías [\d.,]+ € del límite de este mes/i.test(plano(v)) || !casi(euros(plano(v)), 300 - libre)) return `el veredicto debería decir que te pasas ${300 - libre} €: ${plano(v)}`;
       if (filas.length !== 3 || !filas[0].includes("te pasarías") || !casi(euros(filas[0]), 300 - libre)) return `la línea del límite debería dar ${300 - libre} €: ${filas.join(" | ")}`;
-      if (!/tendrías −?[\d.]+ € en tus cuentas/.test(filas[1])) return "falta lo que tendrías al acabar el mes: " + filas[1];
+      if (!/tendrías −?[\d.,]+ € en tus cuentas/.test(filas[1])) return "falta lo que tendrías al acabar el mes: " + filas[1];
       if (!casi(euros(filas[2]), bajo - 300) || !filas[2].endsWith(mesBajo)) return `el mes más justo debería ser ${bajo - 300} € ${mesBajo}: ${filas[2]}`;
       if (!/movimientos hasta el \d+ de septiembre/.test(plano(caja()))) return "no dice hasta qué día hay movimientos";
       escribir(inp, "1.200,50");
@@ -813,6 +884,254 @@ return (async () => {
     if (!des.ok) return "«Deshacer» ya no funciona: " + des.mensaje;
     await FB.recargar();
     if ((regs("movimiento").find((x) => x.id === m.id) || {}).categoria !== m.categoria) return "deshacer no devuelve la categoría";
+  });
+
+  // Accesibilidad y nombres: B-115, B-116, B-117 (Ajustes), B-119 y B-122.
+  await caso("Por revisar: cada campo, desplegable y casilla tiene nombre accesible", async () => {
+    if (!(await ir("#revisar"))) return "no se abre la pantalla Por revisar";
+    if (!(await hasta(() => todos(".fb-grupo").length))) return "no hay nada por revisar en los datos de ejemplo";
+    if (!todos("details").length) return "ningún grupo trae «Opciones» en los datos de ejemplo";
+    todos("details").forEach((d) => (d.open = true));  // «Opciones» pinta sus campos la primera vez que se abre
+    await dormir(200);
+    const nombre = (el) => (el.getAttribute("aria-label") || (el.id && (document.querySelector(`label[for="${el.id}"]`) || {}).textContent) || (el.closest("label") || {}).textContent || "").trim();
+    const sin = todos("input:not([type=hidden]), select, textarea").filter((el) => !nombre(el));
+    if (sin.length) return `${sin.length} campos sin nombre: ` + sin.map((el) => el.outerHTML.slice(0, 90)).join(" | ");
+  });
+
+  // B-107: el menú y el título de la pantalla cuentan las mismas dudas (el aviso del Inicio, en pruebas_calculos.js). Las compras del bróker que la app ya
+  // reconoce (en el ejemplo, las dos de ISHARES) cuentan en la inversión: no son dudas, pero siguen a mano en su propia sección.
+  await caso("Por revisar: la insignia del menú y el título cuentan las mismas dudas; las compras del bróker van aparte", async () => {
+    const dudas = (FB.DB.pendientes || []).filter((q) => q.tipo_import !== "inversion").length, deBroker = (FB.DB.pendientes || []).length - dudas;
+    if (!dudas || !deBroker) return `el ejemplo debería traer dudas del banco y compras del bróker (hay ${dudas} y ${deBroker})`;
+    const insignia = () => ((document.querySelector('#menu a[href="#revisar"] .num') || {}).textContent || "").trim();
+    if (!(await ir("#inicio"))) return "no se abre el Inicio";
+    if (insignia() !== String(dudas)) return `en el Inicio la insignia del menú dice «${insignia()}» y hay ${dudas} dudas`;
+    if (!(await ir("#revisar"))) return "no se abre la pantalla Por revisar";
+    if (insignia() !== String(dudas)) return `en Por revisar la insignia del menú dice «${insignia()}» y hay ${dudas} dudas`;
+    const sub = await hasta(() => (document.querySelector(".fin-head .sub") || {}).textContent);
+    const m = /(\d+) grupos? · (\d+) movimientos?/.exec(sub || "");
+    if (!m) return `el título de Por revisar no dice grupos y movimientos: «${sub}»`;
+    if (Number(m[2]) !== dudas) return `el título cuenta ${m[2]} movimientos y hay ${dudas} dudas`;
+    if (todos(".fb-grupo").length !== Number(m[1]) + 1) return `el título cuenta ${m[1]} grupos y en pantalla hay ${todos(".fb-grupo").length} fichas (debería haber una más: las compras del bróker)`;
+  });
+
+  await caso("Cada pantalla tiene un único título h1, con texto", async () => {
+    const h1s = () => [...document.querySelectorAll("h1")];
+    for (const ruta of ["#inicio", "#movimientos", "#inversion", "#revisar", "#importar", "#ajustes", "#cerrar"]) {
+      if (!(await ir(ruta))) return `no se abre ${ruta}`;
+      await hasta(() => h1s().length);
+      if (h1s().length !== 1 || !h1s()[0].textContent.trim()) return `${ruta}: ${h1s().length} títulos h1 (debe haber uno, con texto)`;
+    }
+  });
+
+  await caso("El menú marca la sección en la que estás con aria-current", async () => {
+    for (const ruta of ["#movimientos", "#ajustes"]) {
+      if (!(await ir(ruta))) return `no se abre ${ruta}`;
+      const marcados = () => [...document.querySelectorAll("#menu a[aria-current]")];
+      if (!(await hasta(() => marcados().length === 1 && marcados()[0].getAttribute("aria-current") === "page" && marcados()[0].getAttribute("href") === ruta))) return `en ${ruta} el menú marca: ${marcados().map((a) => a.getAttribute("href") + "=" + a.getAttribute("aria-current")).join(", ") || "nada"}`;
+    }
+  });
+
+  await caso("La pestaña del navegador dice lo mismo que el título de la pantalla", async () => {
+    const tituloH1 = () => ((document.querySelector("h1") || {}).textContent || "").trim();
+    for (const ruta of ["#cerrar", "#valores"]) {
+      if (!(await ir(ruta))) return `no se abre ${ruta}`;
+      if (!(await hasta(() => tituloH1() && document.title === "FinanceBuddy · " + tituloH1()))) return `${ruta}: la pestaña dice «${document.title}» y el título «${tituloH1()}»`;
+    }
+  });
+
+  await caso("El buscador de una lista de Ajustes tiene nombre accesible", async () => {
+    if (!(await ir("#gestionar/cuenta"))) return "no se abre la lista de cuentas desde Ajustes";
+    const inp = await hasta(() => app().querySelector("input.fin-search"));
+    if (!inp) return "no hay buscador en la lista de cuentas";
+    if (!/^Buscar en /.test(inp.getAttribute("aria-label") || "")) return "el buscador no tiene nombre accesible: «" + (inp.getAttribute("aria-label") || "") + "»";
+  });
+
+  await caso("La ayuda de «Registros por página» no usa nombres internos de la app", async () => {
+    if (!(await ir("#ajustes"))) return "no se abre Ajustes";
+    todos("details").forEach((d) => (d.open = true));  // por si la ayuda va dentro de un desplegable
+    const ayuda = await hasta(() => todos(".fin-note").find((n) => /Cuántas filas se ven/.test(n.textContent)));
+    if (!ayuda) return "no está la ayuda de «Registros por página»";
+    const t = ayuda.textContent;
+    if (/Gestionar|Renta/.test(t) || !/las listas de Ajustes/.test(t) || !/Para la renta/.test(t)) return "la ayuda dice: " + t;
+  });
+
+  await caso("Importar: los tipos de extracto llevan el nombre de su carpeta", async () => {
+    if (!(await ir("#importar"))) return "no se abre Importar";
+    const tipos = await hasta(() => todos('input[name="tipoimp"]').length && todos('input[name="tipoimp"]').map((r) => r.parentElement.textContent.trim()));
+    if (!tipos) return "no salen los tipos de extracto";
+    if (JSON.stringify(tipos) !== JSON.stringify(["Que lo detecte la app", "Banco", "Inversión"])) return "los tipos se llaman: " + tipos.join(" / ");
+  });
+
+  // 36. Tu dinero total (B-108): las partes suman la cifra y la inversión va a valor de mercado, sin decir «Invertido»
+  await caso("Tu dinero total: las partes suman la cifra y la inversión va a valor de mercado", async () => {
+    if (!(await ir("#inicio"))) return "no se abre el Inicio";
+    const tarjeta = await hasta(() => porTexto(".fin-panel", "Tu dinero total"));
+    if (!tarjeta) return "no sale «Tu dinero total»";
+    const num = (el) => parseFloat(plano(el).replace(/[^\d,−-]/g, "").replace("−", "-").replace(",", "."));
+    const cifra = num(tarjeta.querySelector(".fb-total .v"));
+    const suma = todos(".fin-rows .r .v", tarjeta).reduce((s, el) => s + num(el), 0);
+    if (!(Math.abs(suma - cifra) <= 0.03)) return `las partes suman ${suma.toFixed(2)} y la cifra es ${cifra}`;
+    if (/Invertido|de cambio de valor/.test(plano(tarjeta))) return "sigue diciendo «Invertido» o «de cambio de valor»";
+    if (!plano(tarjeta).includes("Inversión a valor de mercado")) return "falta «Inversión a valor de mercado»";
+  });
+
+  // 37. Tu dinero total de un mes pasado (B-112): a fin de ese mes, con la fecha de sus saldos; «Hoy» vuelve al mes actual
+  await caso("Tu dinero total del mes pasado: a fin de ese mes, con la fecha de sus saldos", async () => {
+    if (!(await ir("#inicio"))) return "no se abre el Inicio";
+    const atras = todos(".fin-mes button")[0];
+    if (!atras) return "no está el botón del mes anterior";
+    atras.click();
+    const t = await hasta(() => { const p = porTexto(".fin-panel", "Tu dinero total"); return p && /saldos del/.test(plano(p)) ? p : null; });
+    const dice = t ? plano(t) : "";
+    todos(".fin-mes button").slice(-1)[0].click();
+    if (!(await hasta(() => { const p = porTexto(".fin-panel", "Tu dinero total"); return p && !/saldos del/.test(plano(p)); }))) return "no se vuelve al mes actual";
+    if (!t) return "el mes pasado no muestra «a fin de … · saldos del …» en «Tu dinero total»";
+    if (!/a fin de agosto/.test(dice)) return "no dice a fin de qué mes: " + dice.slice(0, 160);
+    if (!/saldos del \d\d\/08\/2026/.test(dice)) return "no dice la fecha de sus saldos: " + dice.slice(0, 160);
+  });
+
+  // 38. La portada (B-113): el límite se dice una vez, con su importe, sin porcentaje y sin «lo normal»
+  await caso("La portada dice el límite una vez y sin porcentaje", async () => {
+    if (!(await ir("#inicio"))) return "no se abre el Inicio";
+    if (!Number(FB.DB.config.limite_variable)) return "";  // sin límite no hay barra que mirar
+    // .iz = el bloque del límite; el % del ahorro va en el resumen de abajo, fuera de él
+    const h = await hasta(() => app().querySelector(".fb-hero .iz"));
+    if (!h) return "no hay portada";
+    const t = plano(h);
+    if (/\d\s*%/.test(t)) return "la portada sigue con porcentaje: " + t.slice(0, 160);
+    if (/lo normal/.test(t)) return "la portada sigue diciendo «lo normal»";
+    if (t.split("de tu límite de").length !== 2) return "la portada no dice el límite una vez: " + t.slice(0, 160);
+  });
+
+  // 39. Por categoría (B-120): la nota ofrece el presupuesto y no compara con la media
+  await caso("Por categoría: la nota no compara con la media y ofrece el presupuesto", async () => {
+    // Desde la lista: el clic en «Por categoría» cambia de vista aunque antes hubiera una categoría elegida
+    if (!(await ir("#movimientos/lista"))) return "no se abre Movimientos";
+    const porCat = await hasta(() => todos(".fb-seg a").find((a) => plano(a).trim() === "Por categoría"));
+    if (!porCat) return "no está el botón «Por categoría»";
+    porCat.click();
+    const nota = await hasta(() => todos(".fin-note").find((n) => /¿Quieres un tope para una categoría\?/.test(n.textContent)));
+    if (!nota) return "no está la nota del presupuesto";
+    if (/comparado con la media|▲▼/.test(nota.textContent)) return "la nota sigue comparando con la media: " + plano(nota).slice(0, 160);
+  });
+
+  // 40. Inversión (B-114): «Tu dinero sin invertir» dice si el efectivo del bróker cubre las próximas aportaciones
+  await caso("Inversión: el dinero sin invertir dice si cubre las próximas aportaciones", async () => {
+    if (!(await ir("#inversion"))) return "no se abre Inversión";
+    const p = await hasta(() => porTexto(".fin-panel", "Tu dinero sin invertir"));
+    if (!p) return "no sale «Tu dinero sin invertir»";
+    if (!p.querySelector(".fin-rows")) return "";  // sin saldo del bróker no hay nada que comparar
+    const dice = todos(".fin-note", p).map((n) => plano(n)).join(" | ");
+    const dicePrevision = /Cubre las aportaciones hasta|Se acaba en|No cubre las aportaciones|Anota el saldo de tu bróker para saber si cubre/.test(dice);
+    const hayApo = window.__fin.prevision().filas.some((f) => f.apo > 0);
+    if (hayApo && !dicePrevision) return "hay aportaciones previstas y ninguna nota dice si el efectivo las cubre: " + dice.slice(0, 160);
+    if (!hayApo && dicePrevision) return "no hay aportaciones previstas y la nota habla de ellas: " + dice.slice(0, 160);
+  });
+
+  // 41. Inversión (B-118): anotar valores a mano tiene un solo nombre
+  await caso("Inversión: anotar valores a mano tiene un solo nombre", async () => {
+    if (!(await ir("#inversion"))) return "no se abre Inversión";
+    const t = await hasta(() => plano(app()).includes("Anotar valores a mano") && plano(app()));
+    if (!t) return "no sale «Anotar valores a mano» en Inversión";
+    if (t.includes("Actualizar valores")) return "sigue apareciendo «Actualizar valores» en Inversión";
+  });
+
+  // 42. Inversión (B-121): el «—» de la columna Anual tiene su nota
+  await caso("Inversión: el «—» de la columna Anual tiene su nota", async () => {
+    if (!(await ir("#inversion"))) return "no se abre Inversión";
+    const p = await hasta(() => porTexto(".fin-panel", "Tus activos"));
+    if (!p) return "no sale «Tus activos»";
+    const tabla = p.querySelector("table");
+    const col = tabla ? [...tabla.querySelectorAll("thead th")].findIndex((th) => plano(th).trim() === "Anual") : -1;
+    if (col < 0) return "no hay columna Anual";
+    const hayGuion = todos("tbody tr", tabla).some((tr) => tr.children[col] && plano(tr.children[col]).trim() === "—");
+    if (hayGuion && !plano(p).includes("«—» en Anual")) return "hay «—» en Anual y ninguna nota lo explica";
+  });
+
+  // 43. Movimientos (B-117): el buscador de la lista tiene nombre accesible
+  await caso("Movimientos: el buscador de la lista tiene nombre accesible", async () => {
+    if (!(await ir("#movimientos/lista"))) return "no se abre la lista de movimientos";
+    const inp = await hasta(() => app().querySelector("input.fin-search"));
+    if (!inp) return "no hay buscador en la lista de movimientos";
+    if (inp.getAttribute("aria-label") !== "Buscar movimientos") return "el buscador se llama «" + (inp.getAttribute("aria-label") || "") + "»";
+  });
+
+  // 43b. Movimientos (B-068): filtros guardados — guardar lo puesto, limpiarlo, aplicarlo (queda igual), renombrarlo y borrarlo
+  await caso("Movimientos: guardar un filtro, limpiarlo, aplicarlo, renombrarlo y borrarlo", async () => {
+    if (!(await ir("#movimientos/lista"))) return "no se abre la lista de movimientos";
+    const dlg = () => document.querySelector("dialog.fb-dialogo[open]");
+    const lista = () => FB.DB.config.filtros_movimientos || [];
+    const total = () => { const t = todos(".fin-note").find((e) => /^\d+ movimientos?/.test(plano(e))); return t ? plano(t).split("·")[0].trim() : ""; };
+    const mov = regs("movimiento").find((m) => m.clase === "gasto" && m.concepto);
+    if (!mov) return "no hay un gasto con concepto";
+    const palabra = String(mov.concepto).split(/\s+/)[0];
+    const buscador = () => app().querySelector("input.fin-search");
+    const orden = () => app().querySelector("select[aria-label='Ordenar los movimientos']");
+    const desde = () => app().querySelector("input[placeholder='Sin tope']");
+    const abrir = (txt) => { const s = porTexto("details > summary", txt); if (s && !s.parentElement.open) s.click(); return s; };
+    if (!(await hasta(() => buscador() && orden() && desde()))) return "faltan el buscador, el orden o «Más filtros»";
+    escribir(buscador(), palabra); escribir(orden(), "importe"); escribir(desde(), "0,5");
+    const nGuardado = total();
+    if (!nGuardado) return "no se ve el total con el filtro puesto";
+    abrir("Filtros guardados");
+    porTexto("button", "Guardar este filtro").click();
+    if (!(await hasta(() => dlg()))) return "no pide el nombre";
+    escribir(dlg().querySelector("input[type=text]"), "Mi filtro de prueba");
+    porTexto("button", "Guardar", dlg()).click();
+    if (!(await hasta(() => lista().length === 1 && lista()[0].nombre === "Mi filtro de prueba"))) return "no se guarda en la configuración: " + JSON.stringify(lista());
+    const g = lista()[0];
+    if (g.busqueda !== palabra || g.orden !== "importe" || g.desde !== "0,5") return "lo guardado no es lo puesto: " + JSON.stringify(g);
+    await hasta(() => buscador() && buscador().value === palabra && porTexto("button", "Quitar filtros"));
+    escribir(buscador(), ""); escribir(orden(), "fecha"); porTexto("button", "Quitar filtros").click();
+    if (!(await hasta(() => total() !== nGuardado && desde().value === ""))) return "al limpiar, la lista no cambia";
+    abrir("Filtros guardados");
+    const fila = await hasta(() => porTexto(".fb-guardado", "Mi filtro de prueba"));
+    if (!fila) return "el filtro guardado no sale en la lista";
+    if (!plano(fila).includes("0,50")) return "el resumen no enseña el importe con dos decimales: " + plano(fila);
+    fila.querySelector(".aplicar").click();
+    if (!(await hasta(() => buscador().value === palabra && orden().value === "importe" && desde().value === "0,5" && total() === nGuardado))) return `no queda como al guardarlo: «${buscador().value}», ${orden().value}, «${desde().value}», ${total()} (era ${nGuardado})`;
+    abrir("Filtros guardados");
+    porTexto("button", "Renombrar").click();
+    if (!(await hasta(() => dlg()))) return "no pide el nombre nuevo";
+    if (dlg().querySelector("input[type=text]").value !== "Mi filtro de prueba") return "el nombre actual no sale escrito";
+    escribir(dlg().querySelector("input[type=text]"), "Otro nombre");
+    porTexto("button", "Renombrar", dlg()).click();
+    if (!(await hasta(() => lista().length === 1 && lista()[0].nombre === "Otro nombre"))) return "no se renombra";
+    abrir("Filtros guardados");
+    porTexto("button", "Borrar").click();
+    if (!(await hasta(() => dlg()))) return "no pide confirmar el borrado";
+    porTexto("button", "Borrar", dlg()).click();
+    if (!(await hasta(() => lista().length === 0))) return "no se borra";
+    if (!(await hasta(() => !porTexto(".fb-guardado", "Otro nombre")))) return "sigue en la lista tras borrarlo";
+  });
+
+  // 44. Independencia (B-059): se abre desde Inversión, cambiar un supuesto se guarda y cambia el resultado; la pensión se cuenta
+  await caso("Independencia: desde Inversión, cambiar un supuesto se guarda y cambia el resultado", async () => {
+    if (!(await ir("#inversion"))) return "no se abre Inversión";
+    const enl = await hasta(() => porTexto("a", "Calculadora de independencia"));
+    if (!enl) return "Inversión no enlaza la calculadora";
+    enl.click();
+    const campoI = (inicio) => app().querySelector(`input[aria-label^='${inicio}']`);
+    if (!(await hasta(() => app().dataset.vista === "independencia" && campoI("Gasto que quieres")))) return "no se abre la calculadora";
+    if (/NaN|undefined/.test(plano(app()))) return "la pantalla enseña NaN o undefined";
+    if (!plano(app()).includes("Capital que hace falta")) return "no enseña el capital que hace falta";
+    // Cada cambio se guarda y la pantalla se redibuja: se espera a que el campo nuevo enseñe lo guardado antes de tocar otro
+    const poner = async (inicio, v, clave) => {
+      escribir(campoI(inicio), String(v));
+      if (!(await hasta(() => (FB.DB.config.independencia || {})[clave] === v))) return `no se guardó «${clave}» en la configuración`;
+      if (!(await hasta(() => campoI(inicio) && campoI(inicio).value === String(v)))) return `el campo «${clave}» no conserva lo escrito`;
+      await dormir(150);
+    };
+    let e = await poner("Gasto que quieres", 24000, "gasto"); if (e) return e;
+    if (!plano(app()).includes("600.000,00")) return "con 24.000 € al año y el 4 % tendría que salir 600.000,00 €";
+    e = await poner("Tu edad", 40, "edad"); if (e) return e;
+    e = await poner("Pensión pública", 900, "pension"); if (e) return e;
+    if (!(await hasta(() => plano(app()).includes("te ahorra")))) return "con edad y pensión no se explica cuánto ahorra la pensión";
+    if (/NaN|undefined/.test(plano(app()))) return "NaN o undefined con pensión";
+    escribir(campoI("Gasto que quieres"), "");
+    if (!(await hasta(() => (FB.DB.config.independencia || {}).gasto === undefined && campoI("Gasto que quieres").value !== "24000"))) return "vaciar el gasto no vuelve al valor de tus datos";
+    if (/NaN|undefined/.test(plano(app()))) return "NaN o undefined al volver al valor de tus datos";
   });
 
   return casos;

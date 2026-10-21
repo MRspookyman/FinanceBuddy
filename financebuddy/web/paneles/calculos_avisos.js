@@ -15,14 +15,14 @@ function subidasFijos() {
 function resumenMes(key) {
   const M = finMes(key), C = resumenCategorias(key).filter((c) => c.valor > 0.5 && c.grupo !== "fijo"), out = [];
   if (!M.real.some((m) => !m.auto)) return out;
-  out.push(`Entraron ${eur(M.ingresos, 0)} y salieron ${eur(M.gastos, 0)}: ${M.ahorro >= 0 ? "ahorraste" : "gastaste de más"} ${eur(Math.abs(M.ahorro), 0)}.`);
+  out.push(`Entraron ${eur(M.ingresos, 2)} y salieron ${eur(M.gastos, 2)}: ${M.ahorro >= 0 ? "ahorraste" : "gastaste de más"} ${eur(Math.abs(M.ahorro), 2)}.`);
   if (C.length) {
-    const top = C.slice(0, 2).map((c) => `${c.nombre} (${eur(c.valor, 0)})`).join(" y ");
+    const top = C.slice(0, 2).map((c) => `${c.nombre} (${eur(c.valor, 2)})`).join(" y ");
     const raro = C.map((c) => ({ c, d: difMedia(c) })).filter((x) => x.d != null).sort((a, b) => Math.abs(b.d) - Math.abs(a.d))[0];
-    out.push(`En gasto variable pesó sobre todo ${top}.${raro ? ` ${raro.c.nombre}: ${eur(Math.abs(raro.d), 0)} ${raro.d > 0 ? "más" : "menos"} de lo habitual.` : ""}`);
+    out.push(`En gasto variable pesó sobre todo ${top}.${raro ? ` ${raro.c.nombre}: ${eur(Math.abs(raro.d), 2)} ${raro.d > 0 ? "más" : "menos"} de lo habitual.` : ""}`);
   }
   const R = repartoAhorro(key);
-  if (R.compras > 0) out.push(`Metiste ${eur(R.compras, 0)} en tu inversión.`);
+  if (R.compras > 0) out.push(`Metiste ${eur(R.compras, 2)} en tu inversión.`);
   const sin = M.real.filter((m) => m.pendiente).length;
   if (sin) out.push(`Quedan ${sin} movimiento${sin > 1 ? "s" : ""} sin revisar que ya cuentan como «Sin clasificar».`);
   return out;
@@ -56,7 +56,7 @@ function aportacionesSinLlegar(recs, aports, ref, margen = 5) {
   for (const r of recs.filter((r) => r.clase === "aportacion" && r.activoInv && r.desde && !(r.hasta && r.hasta < ref))) {
     const suyas = aports.filter((a) => !a.auto && a.recurrente === r.nombre && a.fecha);
     if (!suyas.length) continue;
-    const primera = suyas.reduce((m, a) => (a.fecha < m ? a.fecha : m), suyas[0].fecha);
+    const primera = suyas.reduce((m, a) => (cargoDe(a) < m ? cargoDe(a) : m), cargoDe(suyas[0]));
     let toca = null;
     for (let d = ref.startOf("month"), i = 0; i < 13 && !toca; i++, d = d.minus({ months: 1 })) {
       const f = d.set({ day: Math.min(r.dia, d.daysInMonth) });
@@ -65,7 +65,7 @@ function aportacionesSinLlegar(recs, aports, ref, margen = 5) {
     }
     if (!toca || toca < primera.startOf("month")) continue;
     const mesToca = toca.toFormat("yyyy-MM");
-    if (suyas.some((a) => a.fecha.toFormat("yyyy-MM") === mesToca)) continue;
+    if (suyas.some((a) => cargoDe(a).toFormat("yyyy-MM") === mesToca)) continue;
     out.push({ id: r.p.id, nombre: r.nombre, activo: r.activoInv, fecha: toca, mes: mesToca });
   }
   return out;
@@ -186,8 +186,12 @@ function avisos() {
   // como la clave lleva el mes o el dato que lo provoca, sí avisa otra vez cuando cambia (otro mes, otra subida, otro saldo).
   const out = [], quitados = new Set((DB.config || {}).avisos_descartados || []);
   const add = (nivel, texto, ruta, clave) => { if (!clave || !quitados.has("inicio:" + clave)) out.push({ nivel, texto, ruta, clave: clave ? "inicio:" + clave : "" }); };
-  const nPend = (DB.pendientes || []).length;
+  const nPend = porRevisar().length;
   if (nPend) add("warn", `${nPend} movimiento${nPend > 1 ? "s" : ""} por revisar: la app no ha sabido clasificarlo${nPend > 1 ? "s" : ""} sola`, "#revisar");
+  // Compras del bróker de un activo que aún no has dado de alta: cuentan por lo que pagaste, hasta que lo des de alta.
+  const sinAlta = new Map();
+  for (const c of comprasPendientes()) if (!activos().some((y) => y.nombre === c.activo)) sinAlta.set(c.activo, (sinAlta.get(c.activo) || 0) + c.importe);
+  for (const [nombre, importe] of sinAlta) add("info", `Compraste «${nombre}» (${eur(importe, 2)}) y aún no está dado de alta: cuenta por lo que pagaste. Dalo de alta para ver sus participaciones y su valor.`, "#editar/activo/nuevo", `compra-sin-alta:${nombre}:${importe.toFixed(2)}`);
   for (const x of subidasFijos()) add("warn", `${x.nombre} ha subido: de ${eur(x.antes, 2)} a ${eur(x.ahora, 2)}`, "#gestionar/recurrente", `subida:${x.nombre}:${x.ahora}`);
   // Hasta donde llegan los datos del bróker: sin extracto suyo más reciente no se puede saber si falta una aportación, y no se avisa.
   for (const x of aportacionesSinLlegar(recurrentes(), aportacionesReales(), ultimoDatoBroker())) add("warn", `La aportación de ${mesLbl(x.mes).toLowerCase()} a ${x.activo} no ha llegado (${x.nombre}, la esperabas el ${x.fecha.toFormat("dd/MM")}) · mira tu bróker; si la has parado, desactívala: la previsión la sigue contando`, `#editar/recurrente/${x.id}`, `aporta:${x.id}:${x.mes}`);
@@ -229,17 +233,17 @@ function avisos() {
   if (sinIni.length) add("info", `Falta cuánto habías aportado antes a ${sinIni.map((a) => a.nombre).join(", ")} · sin rentabilidad`, "#gestionar/activo", `sinini:${sinIni.length}`);
   const F = prevision();
   if (!hayIngresosFijos() && fechaDatos() && sum(mesesHasta(hoyKey, 3).map((k) => finMes(k).ingresos)) > 0) add("info", "Tus ingresos aún no están como fijos: la previsión de los próximos meses no los cuenta · detéctalos", "#fijos", `ingfijos:${hoyCal}`);
-  else if (F.conRegistro && F.minimo && F.minimo.saldo < 0) add("warn", `Tu dinero en cuentas bajaría a ${eur(F.minimo.saldo, 0)} en ${mesLbl(F.minimo.key).toLowerCase()}`, "#inicio", `minimo:${F.minimo.key}:${hoyCal}`);
+  else if (F.conRegistro && F.minimo && F.minimo.saldo < 0) add("warn", `Tu dinero en cuentas bajaría a ${eur(F.minimo.saldo, 2)} en ${mesLbl(F.minimo.key).toLowerCase()}`, "#inicio", `minimo:${F.minimo.key}:${hoyCal}`);
   if (F.agota) {
     const meses = Math.round(mesDT(F.agota.key).diff(mesDT(hoyKey), "months").months);
-    add(meses <= 1 ? "warn" : "info", `El dinero sin invertir de ${nombresBroker()} se acaba en ${mesLbl(F.agota.key).toLowerCase()}: ese mes faltan ${eur(F.agota.apoBanco, 0)} para las aportaciones · pasa dinero desde el banco antes`, "#inicio", `agota:${F.agota.key}`);
+    add(meses <= 1 ? "warn" : "info", `El dinero sin invertir de ${nombresBroker()} se acaba en ${mesLbl(F.agota.key).toLowerCase()}: ese mes faltan ${eur(F.agota.apoBanco, 2)} para las aportaciones · pasa dinero desde el banco antes`, "#inicio", `agota:${F.agota.key}`);
   }
   // Ritmo del gasto variable del mes en curso (desde el día 7, mientras no se haya pasado ya: eso lo dice la barra). El ritmo,
   // con los días que traen tus datos: con datos atrasados, lo gastado hasta su último día no se reparte hasta hoy.
   const Mh = finMes(hoyKey), vari = gastoVariable(Mh), d = diaDeMes(hoy), dm = diasMes(hoyKey), dr = diasConDatos();
   if (limiteVar > 0 && dr >= 7 && dr < dm && vari <= limiteVar) {
     const proy = (vari / dr) * dm;
-    if (proy > limiteVar * 1.05) add("warn", `A este ritmo acabarás ${mesLbl(hoyKey).toLowerCase()} con ${eur(proy, 0)} de gasto variable (límite ${eur(limiteVar, 0)}; llevas ${eur(vari, 0)})`, "#movimientos", `ritmo:${hoyKey}`);
+    if (proy > limiteVar * 1.05) add("warn", `A este ritmo acabarás ${mesLbl(hoyKey).toLowerCase()} con ${eur(proy, 2)} de gasto variable (límite ${eur(limiteVar, 2)}; llevas ${eur(vari, 2)})`, "#movimientos", `ritmo:${hoyKey}`);
   }
   // Categorías disparadas este mes: ≥ 2× su media de los meses anteriores con datos (y al menos 50 € más).
   const previos = mesesHasta(mesAnterior(hoyKey), 3).filter(conDatos);
@@ -250,12 +254,12 @@ function avisos() {
     for (const [cat, v] of actual) {
       const med = media(antes.map((m) => m.get(cat) || 0));
       if ((med > 0 && v >= 2 * med && v - med >= 50) || (med === 0 && v >= 150))
-        add("info", `${cat}: ${eur(v, 0)} este mes, ${med > 0 ? `${nf(v / med, 1, 1)}× tu media (${eur(med, 0)})` : "sin gasto los meses anteriores"}`, "#movimientos", `cat:${cat}:${hoyKey}`);
+        add("info", `${cat}: ${eur(v, 2)} este mes, ${med > 0 ? `${nf(v / med, 1, 1)}× tu media (${eur(med, 2)})` : "sin gasto los meses anteriores"}`, "#movimientos", `cat:${cat}:${hoyKey}`);
     }
   }
   // Presupuestos por categoría del mes en curso.
   for (const c of resumenCategorias(hoyKey).filter((c) => c.presupuesto > 0)) {
-    if (c.valor > c.presupuesto) add("warn", `${c.nombre}: llevas ${eur(c.valor, 0)} de un presupuesto de ${eur(c.presupuesto, 0)}`, "#movimientos/categorias", `pres:${c.nombre}:${hoyKey}`);
+    if (c.valor > c.presupuesto) add("warn", `${c.nombre}: llevas ${eur(c.valor, 2)} de un presupuesto de ${eur(c.presupuesto, 2)}`, "#movimientos/categorias", `pres:${c.nombre}:${hoyKey}`);
     else if (c.valor >= 0.9 * c.presupuesto && d < dm - 3) add("info", `${c.nombre}: ya llevas el ${Math.round((100 * c.valor) / c.presupuesto)} % de su presupuesto`, "#movimientos/categorias", `pres90:${c.nombre}:${hoyKey}`);
   }
   // Recordatorios con fecha.
@@ -345,6 +349,44 @@ function mesesHasta50(inicial, apoMes, rentAnual, meta) {
   let v = inicial;
   for (let m = 1; m <= 600; m++) { v = v * (1 + rm) + apoMes; if (v >= meta) return m; }
   return null;
+}
+// Independencia financiera (B-059). Todo en euros y en fracciones (0,04 = 4 %). `s`: { gasto (al año), tasa (de retirada), rent (real anual),
+// apo (al mes), patrimonio (lo que tienes hoy), edad (null si no se sabe), pension (neta al mes, 0 = sin pensión), edadPension }.
+// Capital que hace falta = gasto / tasa. La pensión pública lo rebaja: lo que cobres no hay que sacarlo del capital. Si empieza más
+// tarde de lo que llegas, hasta entonces el capital paga el gasto entero (el tramo anterior), y solo cuenta si así hace falta menos.
+// No cuenta impuestos ni inflación aparte (la rentabilidad es «real»). Devuelve { ok: false, motivo } con entradas que no valen.
+function independencia(s) {
+  const n = (x) => (x == null || x === "" || !isFinite(Number(x)) ? null : Number(x));
+  const gasto = n(s.gasto), tasa = n(s.tasa), rent = n(s.rent), edad = n(s.edad), edadPension = n(s.edadPension);
+  const apo = Math.max(0, n(s.apo) || 0), patrimonio = n(s.patrimonio) || 0, pension = Math.max(0, n(s.pension) || 0);
+  if (!(gasto > 0)) return { ok: false, motivo: "Escribe cuánto quieres gastar al año." };
+  if (!(tasa >= 0.005 && tasa <= 0.2)) return { ok: false, motivo: "La tasa de retirada tiene que estar entre el 0,5 % y el 20 %." };
+  if (rent == null || rent < 0 || rent > 0.3) return { ok: false, motivo: "La rentabilidad real tiene que estar entre el 0 % y el 30 %." };
+  if (edad != null && (edad < 16 || edad > 100)) return { ok: false, motivo: "La edad tiene que estar entre 16 y 100 años." };
+  const conPension = pension > 0 && edad != null;
+  if (conPension && (edadPension == null || edadPension < 40 || edadPension > 100)) return { ok: false, motivo: "Escribe desde qué edad cobrarás la pensión (entre 40 y 100)." };
+  const pa = pension * 12, sin = gasto / tasa;
+  const necesario = (a, conP) => {  // capital que hace falta teniendo `a` años
+    if (!conP || !conPension) return sin;
+    const hueco = Math.max(0, edadPension - a), base = Math.max(0, gasto - pa) / tasa;
+    if (hueco <= 0) return base;
+    const cuota = rent > 0 ? (1 - Math.pow(1 + rent, -hueco)) / rent : hueco;
+    return Math.min(sin, gasto * cuota + base / Math.pow(1 + rent, hueco));
+  };
+  const rm = Math.pow(1 + rent, 1 / 12) - 1;
+  const cuando = (conP) => {
+    let v = patrimonio;
+    for (let m = 0; m <= 600; m++) {
+      if (v >= necesario(edad == null ? 0 : edad + m / 12, conP)) return m;
+      v = v * (1 + rm) + apo;
+    }
+    return null;
+  };
+  const mesesSin = cuando(false), mesesCon = conPension ? cuando(true) : mesesSin;
+  const aEdad = (m) => (edad == null || m == null ? null : edad + m / 12);
+  const edadCon = aEdad(mesesCon), capitalCon = necesario(edadCon == null ? edad || 0 : edadCon, true);
+  return { ok: true, capitalSin: sin, capitalCon, ahorro: Math.max(0, sin - capitalCon), conPension, mesesSin, mesesCon, edadSin: aEdad(mesesSin), edadCon,
+    pensionAnual: conPension ? pa : 0 };
 }
 // Tamaño de una compra frente a las que ya has hecho en ese activo (tercios): pequeña · habitual · grande. Con menos de 6, nada.
 function tamañoCompras(importes) {

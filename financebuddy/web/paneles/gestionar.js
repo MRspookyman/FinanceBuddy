@@ -6,14 +6,14 @@ function vistaGestionar() {
   titulo(F.plural, F.ayuda || "");
   const barra = root.createDiv({ cls: "fin-filtros" });
   enlace(barra, "← Ajustes", "#ajustes").className += " fin-link";
-  const inp = barra.createEl("input", { cls: "fin-search", attr: { type: "search", placeholder: "Buscar…" } });
+  const inp = barra.createEl("input", { cls: "fin-search", attr: { type: "search", placeholder: "Buscar…", "aria-label": `Buscar en ${F.plural.toLowerCase()}` } });
   if (!["cierre"].includes(tipo)) enlace(barra, `+ Nuevo`, `#editar/${tipo}/nuevo`).className = "fb-btn";
   if (tipo === "recurrente") enlace(barra, "Detectar en mis movimientos", "#fijos").className = "fb-btn sec";
   if (tipo === "categoria") { panelPresupuestosSugeridos(root); panelOrdenarCategorias(root); }
   if (tipo === "recurrente") {  // lo que suman tus fijos: al mes y al año
     const T = totalesFijos(DB.registros.recurrente || [], hoy.toISODate()), cada = (t) => (t.noMensual ? "al mes de media" : "al mes");
-    const partes = [T.gasto.n ? `Gastos fijos: ${eur(T.gasto.mes, 0)} ${cada(T.gasto)} · ${eur(T.gasto.año, 0)} al año` : "", T.ingreso.n ? `Ingresos fijos: ${eur(T.ingreso.mes, 0)} ${cada(T.ingreso)}` : "",
-      T.aportacion.n ? `Aportaciones: ${eur(T.aportacion.mes, 0)} ${cada(T.aportacion)} · ${eur(T.aportacion.año, 0)} al año` : ""].filter(Boolean);
+    const partes = [T.gasto.n ? `Gastos fijos: ${eur(T.gasto.mes, 2)} ${cada(T.gasto)} · ${eur(T.gasto.año, 2)} al año` : "", T.ingreso.n ? `Ingresos fijos: ${eur(T.ingreso.mes, 2)} ${cada(T.ingreso)}` : "",
+      T.aportacion.n ? `Aportaciones: ${eur(T.aportacion.mes, 2)} ${cada(T.aportacion)} · ${eur(T.aportacion.año, 2)} al año` : ""].filter(Boolean);
     if (partes.length) { const box = root.createDiv({ cls: "fb-sumas" }); for (const t of partes) box.createDiv({ text: t }); }
   }
   const cont = root.createDiv({ cls: "fin-panel" });
@@ -58,15 +58,15 @@ function panelPresupuestosSugeridos(padre) {
     for (const x of S) {
       const l = lista.createEl("label", { cls: "fb-fila" });
       const c = l.createEl("input", { attr: { type: "checkbox" } }); c.checked = !(x.actual > 0);
-      l.appendText(` ${catIcono(x.nombre)} ${x.nombre}: ${eur(x.propuesta, 0)} al mes`);
-      l.createSpan({ cls: "fin-note", text: ` · media ${eur(x.media, 0)}${x.actual > 0 ? ` · ahora tiene ${eur(x.actual, 0)}` : ""}` });
+      l.appendText(` ${catIcono(x.nombre)} ${x.nombre}: ${eur(x.propuesta, 2)} al mes`);
+      l.createSpan({ cls: "fin-note", text: ` · media ${eur(x.media, 2)}${x.actual > 0 ? ` · ahora tiene ${eur(x.actual, 2)}` : ""}` });
       marcas.push({ x, c });
     }
     const suma = b.createDiv({ cls: "fin-note", attr: { "aria-live": "polite" } });
     const bA = b.createEl("button", { cls: "fb-btn", attr: { type: "button" } });
     const repasar = () => {
       const m = marcas.filter((k) => k.c.checked), t = sum(m.map((k) => k.x.propuesta));
-      suma.textContent = m.length ? `Los marcados suman ${eur(t, 0)} al mes${limiteVar > 0 ? `; tu límite de gasto variable es ${eur(limiteVar, 0)}${t > limiteVar ? ": suman más que tu límite" : ""}` : ""}.` : "No hay ninguno marcado.";
+      suma.textContent = m.length ? `Los marcados suman ${eur(t, 2)} al mes${limiteVar > 0 ? `; tu límite de gasto variable es ${eur(limiteVar, 2)}${t > limiteVar ? ": suman más que tu límite" : ""}` : ""}.` : "No hay ninguno marcado.";
       bA.textContent = m.length ? `Poner ${m.length === 1 ? "ese presupuesto" : `esos ${m.length} presupuestos`}` : "Poner los marcados";
       bA.disabled = !m.length;
     };
@@ -118,7 +118,7 @@ function panelOrdenarCategorias(padre) {
       ul.createEl("li", { text: `${r.movimientos} movimiento${r.movimientos === 1 ? "" : "s"} pasan a «${sD.value}»` });
       if (r.fijos) ul.createEl("li", { text: `${r.fijos} fijo${r.fijos === 1 ? "" : "s"} pasan a «${sD.value}»` });
       if (r.reglas) ul.createEl("li", { text: `${r.reglas} regla${r.reglas === 1 ? "" : "s"} apuntan a «${sD.value}»` });
-      if (r.presupuesto_origen) ul.createEl("li", { text: `Presupuesto: ${eur(r.presupuesto_origen, 0)} + ${eur(r.presupuesto_destino, 0)} = ${eur(r.presupuesto, 0)} al mes` });
+      if (r.presupuesto_origen) ul.createEl("li", { text: `Presupuesto: ${eur(r.presupuesto_origen, 2)} + ${eur(r.presupuesto_destino, 2)} = ${eur(r.presupuesto, 2)} al mes` });
       if (r.grupo_cambia) ul.createEl("li", { text: "Ojo: una es gasto fijo y la otra variable; lo de «" + sO.value + "» pasará a contar como la que se queda." });
       ul.createEl("li", { text: `«${sO.value}» se borra` });
       const bF = res.createEl("button", { cls: "fb-btn", text: `Fusionar «${sO.value}» en «${sD.value}»`, attr: { type: "button" } });
@@ -162,6 +162,7 @@ function vistaEditar() {
   const volver = FB.anterior && !FB.anterior.startsWith("#editar") ? FB.anterior : `#gestionar/${tipo}`;
   if (tipo === "movimiento" && reg && ["gasto", "ingreso", "reembolso"].includes(reg.clase)) cambioCategoria(root, reg, volver);
   if (tipo === "movimiento" && reg && reg.id) panelReembolsos(root, reg);
+  if (tipo === "movimiento" && reg && reg.id) panelMedias(root, reg);
   if (tipo === "movimiento" && reg && reg.id) panelDividir(root, reg);
   // Una parte de un movimiento dividido es un trozo de un cargo del banco: lo que es del cargo entero no se cambia aquí ni se borra
   formulario(root, tipo, reg, tipo === "movimiento" && reg && reg.parte_de
@@ -268,17 +269,41 @@ function panelReembolsos(padre, reg) {
     const rs = movs.filter((m) => m.reembolsa === reg.id).sort((a, b) => String(a.fecha).localeCompare(String(b.fecha)));
     if (!rs.length) return;
     const dev = sum(rs.map((m) => num(m.importe)));
-    const p = panel(padre, "Te lo han devuelto", { text: `${rs.length} Bizum${rs.length > 1 ? "s" : ""}` }, "Dinero que te han devuelto de este gasto (sus Bizums). Resta de su categoría.");
+    const p = panel(padre, "Te lo han devuelto", { text: `${rs.length} Bizum${rs.length > 1 ? "s" : ""}` }, reg.a_medias ? "Dinero que te han devuelto de este gasto (sus Bizums). Cubre primero lo que te debían: solo lo que pase de eso resta de su categoría." : "Dinero que te han devuelto de este gasto (sus Bizums). Resta de su categoría.");
     filasDato(p, [...rs.map((m) => ({ l: `${fechaCorta(m.fecha)} · ${m.concepto}`, v: `+${eur(num(m.importe))}`, t: "pos", ruta: `#editar/movimiento/${m.id}` })),
-      { l: "Pagaste", v: eur(num(reg.importe)) }, { l: "Te han devuelto", v: eur(dev) }, { l: "Tu parte real", v: eur(Math.max(0, num(reg.importe) - dev)), t: "b" }]);
+      { l: "Pagaste", v: eur(num(reg.importe)) }, { l: "Te han devuelto", v: eur(dev) }, { l: "Tu parte real", v: eur(parteReal(reg, movs, dev)), t: "b" }]);
   } else if (reg.clase === "reembolso" && reg.reembolsa) {
     const g = movs.find((m) => m.id === reg.reembolsa);
     if (!g) return;
     const otros = movs.filter((m) => m.reembolsa === g.id), dev = sum(otros.map((m) => num(m.importe)));
     const p = panel(padre, "Devuelve parte de este gasto");
     filasDato(p, [{ l: `${fechaCorta(g.fecha)} · ${g.concepto}`, s: `${g.categoria || ""}${g.ext_texto ? " · " + g.ext_texto : ""}`, v: eur(num(g.importe)), ruta: `#editar/movimiento/${g.id}` },
-      { l: `Lo devuelven ${otros.length} Bizum${otros.length > 1 ? "s" : ""}`, v: eur(dev) }, { l: "Tu parte real", v: eur(Math.max(0, num(g.importe) - dev)), t: "b" }]);
+      { l: `Lo devuelven ${otros.length} Bizum${otros.length > 1 ? "s" : ""}`, v: eur(dev) }, { l: "Tu parte real", v: eur(parteReal(g, movs, dev)), t: "b" }]);
   }
+}
+// Lo que te costó de verdad un gasto: su importe menos lo que te han devuelto; en uno a medias, tu parte menos lo que te devolvieron de MÁS de lo que te debían.
+function parteReal(g, movs, dev) {
+  const M = cobrosMedias(movs).por.get(g.id);
+  return M ? Math.max(0, M.miParte - (dev - M.cobrado)) : Math.max(0, num(g.importe) - dev);
+}
+// En la ficha de un gasto a medias (B-063): tu parte, lo que te deben y su botón «Marcar como cobrado». Lo cobrado con un Bizum enlazado cuenta solo.
+function panelMedias(padre, reg) {
+  const M = reg.clase === "gasto" && cobrosMedias(registros("movimiento")).por.get(reg.id);
+  if (!M) return;
+  const p = panel(padre, "Gasto a medias", { text: M.pendiente > 0.005 ? `te deben ${eur(M.pendiente)}` : "cobrado" },
+    "Lo pagaste tú entero, pero en tus gastos solo cuenta tu parte. Lo que te deben no cambia el saldo de tu cuenta: entra cuando te lo devuelvan.");
+  filasDato(p, [{ l: "Pagaste", v: eur(num(reg.importe)) }, { l: "Tu parte", v: eur(M.miParte), t: "b" }, { l: "Te deben en total", v: eur(M.deben) },
+    ...(M.cobrado > 0.005 ? [{ l: "Cobrado con Bizums enlazados", v: eur(M.cobrado) }] : []),
+    ...(M.manual ? [{ l: "Marcado como cobrado", v: "sí" }] : [{ l: "Falta por cobrar", v: eur(M.pendiente), t: M.pendiente > 0.005 ? "b" : undefined }])]);
+  if (!M.manual && M.pendiente <= 0.005) return;
+  const cambiar = async (cobrado) => {
+    const { id, ...datos } = reg;
+    const r = await FB.api("/api/guardar", { tipo: "movimiento", id, datos: { ...datos, cobrado } });
+    if (!r.ok) { FB.aviso(r.mensaje || "No se ha podido guardar", true); return; }
+    await FB.refrescar();
+    FB.aviso(cobrado ? "Marcado como cobrado ✓" : "Vuelve a faltar por cobrar", false, { texto: "Deshacer", fn: async () => { await FB.api("/api/deshacer", {}); await FB.refrescar(); } });
+  };
+  accion(p, M.manual ? "Ya no está cobrado" : "Marcar como cobrado", () => cambiar(!M.manual));
 }
 function cambioCategoria(padre, reg, volver) {
   const p = panel(padre, "Cambiar la categoría");

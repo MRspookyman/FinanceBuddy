@@ -56,8 +56,8 @@ function resumenGrafico(tipo, etiquetas, series) {
     if (!pts.length) return "";
     const [vu, iu] = pts[pts.length - 1];
     const max = pts.reduce((a, b) => (b[0] >= a[0] ? b : a)), min = pts.reduce((a, b) => (b[0] < a[0] ? b : a));
-    return `${se.nombre ? se.nombre + ": " : ""}último ${eur(vu, 0)} (${etiquetas[iu]}), máximo ${eur(max[0], 0)} (${etiquetas[max[1]]})`
-      + (min[0] < max[0] ? `, mínimo ${eur(min[0], 0)} (${etiquetas[min[1]]})` : "");
+    return `${se.nombre ? se.nombre + ": " : ""}último ${eur(vu, 2)} (${etiquetas[iu]}), máximo ${eur(max[0], 2)} (${etiquetas[max[1]]})`
+      + (min[0] < max[0] ? `, mínimo ${eur(min[0], 2)} (${etiquetas[min[1]]})` : "");
   }).filter(Boolean);
   const texto = `${tipo} de ${etiquetas[0]} a ${etiquetas[etiquetas.length - 1]}. ${partes.join(". ")}.`;
   return typeof FB !== "undefined" && FB.enmascarar ? FB.enmascarar(texto) : texto;
@@ -130,7 +130,7 @@ function lineas(padre, { etiquetas, series, marcas, etiquetasX, alto = 200 }) {
     }
     const gw = (W - L - R) / Math.max(1, n - 1);
     etiquetas.forEach((et, i) => {
-      const tip = et + "\n" + series.filter((se) => se.valores[i] != null).map((se) => `${se.nombre}: ${eur(se.valores[i], 0)}`).join("\n");
+      const tip = et + "\n" + series.filter((se) => se.valores[i] != null).map((se) => `${se.nombre}: ${eur(se.valores[i], 2)}`).join("\n");
       s.push(`<g class="col" data-tip="${esc(tip)}"><rect class="band" x="${(X(i) - gw / 2).toFixed(1)}" y="${T}" width="${gw.toFixed(1)}" height="${H - T - B}"/>`
         + `<line class="xh" x1="${X(i).toFixed(1)}" x2="${X(i).toFixed(1)}" y1="${T}" y2="${H - B}"/></g>`);
     });
@@ -148,7 +148,7 @@ function donut(padre, partes, { centro } = {}) {
   const s = [`<svg width="${T}" height="${T}" viewBox="0 0 ${T} ${T}" role="group" aria-label="Reparto por categoría"><g transform="rotate(-90 ${T / 2} ${T / 2})">`];
   let ini = 0;
   for (const p of partes) {
-    const largo = Math.max(1, p.frac * C - hueco), txt = tapar(`${p.nombre}: ${eur(p.valor, 0)}, ${porc(p.frac)}`);
+    const largo = Math.max(1, p.frac * C - hueco), txt = tapar(`${p.nombre}: ${eur(p.valor, 2)}, ${porc(p.frac)}`);
     s.push(`<circle cx="${T / 2}" cy="${T / 2}" r="${r}" role="img" aria-label="${esc(txt)}" style="fill:none;stroke:${p.color};stroke-width:${grueso}" stroke-dasharray="${largo.toFixed(2)} ${(C - largo).toFixed(2)}" stroke-dashoffset="${(-ini).toFixed(2)}"><title>${esc(`${p.nombre}: ${porc(p.frac)}`)}</title></circle>`);
     ini += p.frac * C;
   }
@@ -161,7 +161,7 @@ function donut(padre, partes, { centro } = {}) {
     setVar(f.createSpan({ cls: "fin-dot" }), "--dc", p.color);
     f.createSpan({ cls: "n", text: p.nombre });
     f.createSpan({ cls: "p", text: porc(p.frac) });
-    f.createSpan({ cls: "e", text: eur(p.valor, 0) });
+    f.createSpan({ cls: "e", text: eur(p.valor, 2) });
   }
   return w;
 }
@@ -172,11 +172,11 @@ function barrasSemana(padre, dias, meta) {
   const alto = 150 - 40; // espacio para el importe y la letra del día
   for (const d of dias) {
     const c = g.createDiv({ cls: "d" + (d.futuro ? " fut" : "") + (d.hoy ? " hoy" : "") + (meta && d.valor > meta ? " alto" : "") });
-    c.createDiv({ cls: "dv", text: d.valor > 0 ? eur(d.valor, 0) : "" });
+    c.createDiv({ cls: "dv", text: d.valor > 0 ? eur(d.valor, 2) : "" });
     const b = c.createDiv({ cls: "b" }); b.style.height = `${Math.max(4, (d.valor / max) * alto)}px`;
     b.title = `${d.titulo || d.etiqueta}: ${eur(d.valor)}`;
     c.createDiv({ cls: "dl", text: d.etiqueta });
   }
-  if (meta > 0) { const m = g.createDiv({ cls: "meta" }); m.style.bottom = `${22 + (meta / max) * alto}px`; m.createSpan({ text: `${eur(meta, 0)}/día` }); }
+  if (meta > 0) { const m = g.createDiv({ cls: "meta" }); m.style.bottom = `${22 + (meta / max) * alto}px`; m.createSpan({ text: `${eur(meta, 2)}/día` }); }
   return g;
 }

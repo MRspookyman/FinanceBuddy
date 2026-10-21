@@ -1,7 +1,7 @@
 // ═════════════ pantalla de Inversión ═════════════
 // Lo que has metido y lo que vale cada activo, cómo evoluciona, cuánto aportas cada mes, cómo está repartido y lo
 // que rinde el dinero sin invertir. Los datos salen de las aportaciones (importadas del bróker), del valor de cada
-// activo (Actualizar valores) y de los registros de saldos (evolución).
+// activo (Anotar valores a mano) y de los registros de saldos (evolución).
 const TIPO_ACTIVO = { fondo: "Fondo", etf: "ETF / ETC", accion: "Acción", cripto: "Cripto", materia: "Materias primas", pension: "Plan de pensiones", bono: "Bono / renta fija", inmueble: "Inmueble", otro: "Otro" };
 const ICONO_ACTIVO = { fondo: "📊", etf: "🧺", accion: "🏢", cripto: "🪙", materia: "🥇", pension: "🏖️", bono: "📜", inmueble: "🏠", otro: "💼" };
 
@@ -48,13 +48,13 @@ function vistaInversion() {
   const pct0 = I.aportado > 0 ? I.gan / I.aportado : NaN;
   const notaValor = [I.mercado ? `${I.mercado === I.filas.length ? "todo" : I.mercado === 1 ? "uno" : I.mercado} al precio de mercado del ${I.fechaMercado.toFormat("dd/MM")}` : "", I.estimados ? `≈ ${I.estimados === 1 ? "uno" : I.estimados} con el precio de su última compra` : "", I.sinValor ? `${I.sinValor === 1 ? "uno" : I.sinValor} por lo metido` : ""].filter(Boolean).join(" · ");
   tiles(root, [
-    { l: "Vale hoy", v: eur(I.total, 0), s: notaValor || "según tus últimos valores" },
-    { l: "Has metido", v: eur(I.aportadoTodo, 0), s: `${I.filas.reduce((s, f) => s + f.operaciones, 0)} compras y ventas` },
+    { l: "Vale hoy", v: eur(I.total, 2), s: notaValor || "según tus últimos valores" },
+    { l: "Has metido", v: eur(I.aportadoTodo, 2), s: `${I.filas.reduce((s, f) => s + f.operaciones, 0)} compras y ventas` },
     ...(per === "total" ? [
-    isFinite(I.gan) && I.aportado > 0 ? { l: "Ganancia", v: (I.estimados ? "≈ " : "") + eurS(I.gan, 0), t: tone(I.gan), s: `${pct(pct0, true)} sobre lo metido${I.estimados ? " · estimada" : ""}${I.dividendos ? ` · con ${eur(I.dividendos, 0)} de dividendos` : ""}` } : null,
+    isFinite(I.gan) && I.aportado > 0 ? { l: "Ganancia", v: (I.estimados ? "≈ " : "") + eurS(I.gan, 2), t: tone(I.gan), s: `${pct(pct0, true)} sobre lo metido${I.estimados ? " · estimada" : ""}${I.dividendos ? ` · con ${eur(I.dividendos, 2)} de dividendos` : ""}` } : null,
     isFinite(I.tir) ? { l: "Rentabilidad anual", v: pct(I.tir, true), t: tone(I.tir), s: I.tirCorta ? "menos de un año: orientativa" : I.tirParcial ? "de los activos con datos" : "cuenta cuándo metiste cada euro" } : null,
     ] : tilesPeriodo(rentabilidadPeriodo(evolucionInversion(solo), Number(per)), per === "1" ? "este mes" : "1 año")),
-    efectivo != null ? { l: "Sin invertir", v: eur(efectivo, 0), s: nombresBroker() } : null,
+    efectivo != null ? { l: "Sin invertir", v: eur(efectivo, 2), s: nombresBroker() } : null,
     INT.n ? { l: `Intereses ${hoy.year}`, v: eur(INT.año, 2), s: INT.comisiones ? `comisiones ${eur(INT.comisiones, 2)}` : "del dinero sin invertir" } : null,
   ]);
   panelSalud(root, saludInversion());
@@ -72,37 +72,42 @@ function vistaInversion() {
   panelHitos(root);
 }
 
+// Lo que metes al mes de media el último año y tu rentabilidad (la TIR, con un tope prudente del 5 %): base de las metas y de la calculadora de independencia.
+function ritmoInversion(R) {
+  const m12 = aportacionesMes(12), i0 = m12.findIndex((x) => x.compras || x.ventas);
+  const apo = i0 < 0 ? 0 : sum(m12.map((x) => x.compras - x.ventas)) / (m12.length - i0);
+  const rent = isFinite(R.tir) && !R.tirCorta ? Math.min(0.05, Math.max(0, R.tir)) : 0.05;
+  return { apo, rent };
+}
 // Metas: las cifras redondas que tu patrimonio ha ido cruzando, la barra hacia la siguiente y cuánto tardarías al ritmo actual
 // (lo que metes al mes de media el último año y tu rentabilidad, con un tope prudente del 5 %).
 function panelHitos(padre) {
   const E = estimacion();
   if (!E) return;
   const R = resumenInversion(), P = patrimonio(), neto = E.neto;
-  const m12 = aportacionesMes(12), i0 = m12.findIndex((x) => x.compras || x.ventas);
-  const apo = i0 < 0 ? 0 : sum(m12.map((x) => x.compras - x.ventas)) / (m12.length - i0);
-  const rent = isFinite(R.tir) && !R.tirCorta ? Math.min(0.05, Math.max(0, R.tir)) : 0.05;
-  const p = panel(padre, "Metas de patrimonio", null, "Las cifras redondas que tu patrimonio ha ido cruzando. La fecha es la del primer registro de saldos que lo supera.");
+  const { apo, rent } = ritmoInversion(R);
+  const p = panel(padre, "Metas de patrimonio", { text: "Calculadora de independencia", ruta: "#independencia" }, "Las cifras redondas que tu patrimonio ha ido cruzando. La fecha es la del primer registro de saldos que lo supera.");
   const H = hitosPatrimonio(P.map((x) => ({ fecha: x.fecha, neto: x.neto })), neto, hoy);
   const fila = p.createDiv({ cls: "fb-hitos" });
   for (const h of H.logrados.filter((x) => !x.inicial).slice(-5)) {  // los que ya tenías al empezar no se celebran
     const c = fila.createDiv({ cls: "h ok" });
-    c.createDiv({ cls: "v", text: `✓ ${eur(h.valor, 0)}` });
+    c.createDiv({ cls: "v", text: `✓ ${eur(h.valor, 2)}` });
     c.createDiv({ cls: "s", text: h.hoy ? "ya, según tu estimación de hoy" : h.fecha.setLocale("es").toFormat("LLL yyyy").replace(".", "") });
   }
   for (const h of H.proximos) {
     const c = fila.createDiv({ cls: "h" });
-    c.createDiv({ cls: "v", text: eur(h.valor, 0) });
-    c.createDiv({ cls: "s", text: `faltan ${eur(h.falta, 0)}` });
+    c.createDiv({ cls: "v", text: eur(h.valor, 2) });
+    c.createDiv({ cls: "s", text: `faltan ${eur(h.falta, 2)}` });
   }
   if (!H.siguiente) { p.createDiv({ cls: "fin-note", text: "Has superado todas las metas de la lista. 🎉" }); return; }
   const previo = H.logrados.length ? H.logrados[H.logrados.length - 1].valor : 0;
   const frac = Math.max(0, Math.min(1, (neto - previo) / (H.siguiente - previo)));
-  p.createDiv({ cls: "fin-note", text: `Próximo: ${eur(H.siguiente, 0)} · llevas el ${nf(frac * 100, 0, 0)} % del camino desde ${eur(previo, 0)}.` });
+  p.createDiv({ cls: "fin-note", text: `Próximo: ${eur(H.siguiente, 2)} · llevas el ${nf(frac * 100, 0, 0)} % del camino desde ${eur(previo, 2)}.` });
   const b = p.createDiv({ cls: "fb-barra fina" }); b.createDiv().style.width = `${(frac * 100).toFixed(1)}%`;
   const m = mesesHasta50(neto, apo, rent, H.siguiente);
   if (m != null && m > 0) {
     const cuando = hoy.plus({ months: m }).setLocale("es").toFormat("LLLL yyyy");
-    p.createDiv({ cls: "fin-note", text: `Al ritmo de ${eur(Math.max(0, apo), 0)} al mes y un ${nf(rent * 100, 0, 1)} % anual, lo alcanzarías hacia ${cuando} (${m < 24 ? `${m} meses` : `${nf(m / 12, 0, 1)} años`}). Orientativo.` });
+    p.createDiv({ cls: "fin-note", text: `Al ritmo de ${eur(Math.max(0, apo), 2)} al mes y un ${nf(rent * 100, 0, 1)} % anual, lo alcanzarías hacia ${cuando} (${m < 24 ? `${m} meses` : `${nf(m / 12, 0, 1)} años`}). Orientativo.` });
   } else if (m == null) p.createDiv({ cls: "fin-note", text: "A este ritmo no se llega en 50 años." });
 }
 
@@ -110,7 +115,7 @@ function panelHitos(padre) {
 function tilesPeriodo(R, etq) {
   if (!R.ok) return [{ l: `Ganancia · ${etq}`, v: "—", s: R.motivo }];
   return [
-    { l: `Ganancia · ${etq}`, v: eurS(R.gan, 0), t: tone(R.gan), s: `desde el final de ${mesLbl(R.desde).toLowerCase()}: valía ${eur(R.v0, 0)}${Math.abs(R.metido) >= 1 ? ` y has ${R.metido > 0 ? "metido" : "sacado"} ${eur(Math.abs(R.metido), 0)}` : ""}` },
+    { l: `Ganancia · ${etq}`, v: eurS(R.gan, 2), t: tone(R.gan), s: `desde el final de ${mesLbl(R.desde).toLowerCase()}: valía ${eur(R.v0, 2)}${Math.abs(R.metido) >= 1 ? ` y has ${R.metido > 0 ? "metido" : "sacado"} ${eur(Math.abs(R.metido), 2)}` : ""}` },
     isFinite(R.r) ? { l: `Rentabilidad · ${etq}`, v: pct(R.r, true), t: tone(R.r), s: "sobre lo que has tenido invertido en ese tiempo, sin dividendos" } : null,
   ];
 }
@@ -126,8 +131,8 @@ function tarjetaEvolucion(p, solo) {
   ];
   const ult = EV.valor[n - 1], met = EV.aportado[n - 1];
   const t = p.createDiv({ cls: "fb-total" });
-  t.createDiv({ cls: "v", text: eur(ult, 0) });
-  t.createDiv({ cls: "s", text: `hoy · ${eur(met, 0)} metidos` });
+  t.createDiv({ cls: "v", text: eur(ult, 2) });
+  t.createDiv({ cls: "s", text: `hoy · ${eur(met, 2)} metidos` });
   lineas(p, { etiquetas: EV.keys.map(mesLbl), etiquetasX: EV.keys.map(mesCorto), series, marcas, alto: 190 });
   leyenda(p, series.map((s) => [s.nombre, s.color]));
   const conValor = EV.valor.filter((v) => v != null).length;
@@ -147,7 +152,7 @@ function tarjetaReparto(p, I) {
   p.createDiv({ cls: "fin-note fb-tipos", text: tipos.map(([t, v]) => `${TIPO_ACTIVO[t] || t} ${pct(v / total)}`).join(" · ") });
   const l = p.createDiv({ cls: "fb-lista" });
   for (const f of [...filas].sort((a, b) => b.valor - a.valor)) {
-    const el = item(l, { av: { icono: ICONO_ACTIVO[f.clase] || "💼", sm: true }, t: f.nombre, s: `${TIPO_ACTIVO[f.clase] || f.clase} · ${pct(f.valor / total)}`, v: eur(f.valor, 0), ruta: `#activo/${f.p.id}` });
+    const el = item(l, { av: { icono: ICONO_ACTIVO[f.clase] || "💼", sm: true }, t: f.nombre, s: `${TIPO_ACTIVO[f.clase] || f.clase} · ${pct(f.valor / total)}`, v: eur(f.valor, 2), ruta: `#activo/${f.p.id}` });
     const b = el.querySelector(".n").createDiv({ cls: "fb-barra fina reparto" });
     const d = b.createDiv(); d.style.width = `${((100 * f.valor) / total).toFixed(1)}%`; d.style.background = colorActivo(f.nombre);
   }
@@ -259,13 +264,14 @@ function tablaActivos(p, I) {
     { text: f.nombre, ruta: `#activo/${f.p.id}`, dot: colorActivo(f.nombre), badge: { metido: "sin valor", precio: "estimado", mercado: "mercado" }[f.fuente] || "" },
     conPart && (f.participaciones != null ? nf(f.participaciones, 0, 4) : "—"),
     conPart && (f.precioMedio != null ? eur(f.precioMedio) : "—"),
-    eur(f.aportado, 0),
-    (f.fuente === "anotado" || f.fuente === "mercado" ? "" : "≈ ") + eur(f.valor, 0),
-    isFinite(f.gan) ? { text: `${eurS(f.gan, 0)} · ${pct(f.aportado > 0 ? f.gan / f.aportado : NaN, true)}`, cls: tone(f.gan) } : "—",
+    eur(f.aportado, 2),
+    (f.fuente === "anotado" || f.fuente === "mercado" ? "" : "≈ ") + eur(f.valor, 2),
+    isFinite(f.gan) ? { text: `${eurS(f.gan, 2)} · ${pct(f.aportado > 0 ? f.gan / f.aportado : NaN, true)}`, cls: tone(f.gan) } : "—",
     isFinite(f.tir) && unAño(f) ? { text: pct(f.tir, true), cls: tone(f.tir) } : "—",
     I.total > 0 ? pct(f.valor / I.total) : "—",
   ].filter((c) => c !== false));
   tabla(p, cols.filter(Boolean), filas);
+  if (I.filas.some((f) => !(isFinite(f.tir) && unAño(f)))) p.createDiv({ cls: "fin-note", text: "«—» en Anual: aún no hay rentabilidad anual; hace falta al menos un año desde la primera operación del activo." });
   if (I.cerradas.length) {
     const n = p.createDiv({ cls: "fin-note" });
     n.appendText("Ya vendido: ");
@@ -275,7 +281,7 @@ function tablaActivos(p, I) {
   // Los que marcaste como vendidos no se cuentan ni se enseñan: una línea para saber que están y poder volver atrás
   const nVend = registros("activo").filter((r) => txt(r.estado).toLowerCase() === "vendido").length;
   if (nVend) { const n = p.createDiv({ cls: "fin-note" }); n.appendText(`${nVend} activo${nVend > 1 ? "s" : ""} marcado${nVend > 1 ? "s" : ""} como vendido${nVend > 1 ? "s" : ""} no se muestra${nVend > 1 ? "n" : ""} · `); enlace(n, "verlos →", "#gestionar/activo"); }
-  if (I.estimados) p.createDiv({ cls: "fin-note", text: "≈ estimado: participaciones × el precio de tu última compra o venta. Para el valor exacto, anota lo que vale en tu bróker (Actualizar valores)." });
+  if (I.estimados) p.createDiv({ cls: "fin-note", text: "≈ estimado: participaciones × el precio de tu última compra o venta. Para el valor exacto, anota lo que vale en tu bróker con «Anotar valores a mano»." });
   if (I.mercado) notaPrecios(p);
   if (I.sinAport) p.createDiv({ cls: "fin-note", text: "Sin «aportado antes de usar la app», la ganancia de ese activo no se puede calcular: edítalo y pon lo que habías metido (0 si empezaste con la app)." });
   plegablesCartera(p, I);
@@ -287,7 +293,7 @@ function plegablesCartera(p, I) {
   if (C.filas.length) plegable(p, "Lo que pagas en comisiones", (c) => {
     c.createDiv({ cls: "fin-note", text: `Estimado: lo que vale hoy cada fondo × sus gastos anuales (TER). Ya va descontado del precio: no lo pagas aparte.${C.sinTer ? ` ${C.sinTer} activo${C.sinTer > 1 ? "s" : ""} sin TER no se cuenta${C.sinTer > 1 ? "n" : ""}.` : ""}` });
     filasDato(c, [...C.filas].sort((a, b) => b.coste - a.coste).map((f) => ({ l: f.nombre, s: `TER ${nf(f.ter, 0, 2)} %`, v: `≈ ${eur(f.coste, 2)} al año` })));
-  }, { extra: `≈ ${eur(C.total, 0)} al año` });
+  }, { extra: `≈ ${eur(C.total, 2)} al año` });
   const intereses = movimientos().filter((m) => !m.auto && !m.previsto && esDelBroker(m) && m.clase === "ingreso");
   const G = ingresosPasivos(cobros(), intereses, I.filas, hoy);
   if (G.hay) plegable(p, "Dividendos e intereses cobrados", (c) => {
@@ -311,7 +317,7 @@ function tarjetaAportaciones(p, solo) {
   const racha = constancia();
   const meses = A.filter((x) => x.compras > 0);
   const t = p.createDiv({ cls: "fb-total" });
-  t.createDiv({ cls: "v", text: eur(media(meses.map((x) => x.compras)), 0) });
+  t.createDiv({ cls: "v", text: eur(media(meses.map((x) => x.compras)), 2) });
   t.createDiv({ cls: "s", text: `de media los meses que compras · ${racha ? `${racha} mes${racha > 1 ? "es" : ""} seguido${racha > 1 ? "s" : ""} 🔥` : "este mes aún nada"}` });
   const series = [{ nombre: "Compras", color: "var(--brand)", valores: A.map((x) => x.compras) }];
   if (A.some((x) => x.ventas)) series.push({ nombre: "Ventas", color: "var(--coral)", valores: A.map((x) => x.ventas) });
@@ -326,11 +332,21 @@ function tarjetaSinInvertir(p, efectivo, INT) {
     INT.n ? { l: `Intereses cobrados en ${hoy.year}`, v: eur(INT.año, 2), s: INT.total > INT.año ? `${eur(INT.total, 2)} desde el principio` : "" } : null,
     INT.comisiones ? { l: `Comisiones en ${hoy.year}`, v: eur(-INT.comisiones, 2) } : null,
   ]);
+  // Lo mismo que el aviso de Inicio («se acaba en»): prevision() dice si el efectivo del bróker alcanza para las aportaciones.
+  const F = prevision(), apos = F.filas.filter((f) => f.apo > 0);
+  if (apos.length && cuentasTipo("broker").length) {  // sin cuenta de bróker las aportaciones salen del banco: no hay efectivo que las cubra
+    const ult = apos[apos.length - 1];
+    const texto = efectivo == null ? "Anota el saldo de tu bróker para saber si cubre estas aportaciones"
+      : F.agota ? `Se acaba en ${mesLbl(F.agota.key).toLowerCase()}: ese mes faltan ${eur(F.agota.apoBanco, 2)} para las aportaciones`
+      : F.brokerIni > 0 ? `Cubre las aportaciones hasta ${mesLbl(ult.key).toLowerCase()}`
+      : "No cubre las aportaciones: no hay dinero sin invertir en el bróker";
+    p.createDiv({ cls: "fin-note", text: texto });
+  }
   const prox = aportaciones().filter((a) => a.previsto && a.auto && a.fecha <= hoy.plus({ days: 40 })).slice(0, 4);
   if (prox.length) {
     p.createDiv({ cls: "sep fb-sep", text: "Próximas aportaciones" });
     const l = p.createDiv({ cls: "fb-lista" });
-    for (const a of prox) item(l, { fecha: a.fecha, t: a.activo, s: a.recurrente, v: eur(a.importe, 0) });
+    for (const a of prox) item(l, { fecha: a.fecha, t: a.activo, s: a.recurrente, v: eur(a.importe, 2) });
   }
 }
 
@@ -381,10 +397,10 @@ function vistaActivo() {
   tiles(root, [
     { l: "Participaciones", v: P.part != null ? nf(P.part, 0, 4) : "—", s: P.part != null ? (P.ajustes ? "con tus ajustes" : "según tus operaciones") : `faltan en ${P.faltan} operaci${P.faltan === 1 ? "ón" : "ones"}` },
     { l: "Precio medio", v: P.precioMedio != null ? eur(P.precioMedio) : "—", s: P.precioMedio != null ? "de tus compras" : "necesita las participaciones" },
-    { l: "Has metido", v: eur(aportado, 0), s: `${normales.length} operaci${normales.length === 1 ? "ón" : "ones"}` },
-    { l: "Vale hoy", v: (V.fuente === "anotado" || V.fuente === "mercado" ? "" : "≈ ") + eur(V.valor, 0),
+    { l: "Has metido", v: eur(aportado, 2), s: `${normales.length} operaci${normales.length === 1 ? "ón" : "ones"}` },
+    { l: "Vale hoy", v: (V.fuente === "anotado" || V.fuente === "mercado" ? "" : "≈ ") + eur(V.valor, 2),
       s: V.fuente === "mercado" ? `precio de mercado del ${V.precio.fecha.toFormat("dd/MM/yy")}: ${eur(V.precio.precio, 4)} · ${FUENTES_PRECIO[V.precio.fuente] || V.precio.fuente}` : V.fuente === "anotado" ? (a.fechaValor ? `anotado el ${a.fechaValor.toFormat("dd/MM/yy")}` : "anotado, sin fecha") : V.fuente === "precio" ? `precio del ${V.precio.fecha.toFormat("dd/MM/yy")}: ${eur(V.precio.precio, 4)}` : V.fuente === "vendido" ? "vendido del todo" : "sin valor: lo metido" },
-    isFinite(gan) ? { l: "Ganancia", v: eurS(gan, 0), t: tone(gan), s: `${pct(gan / aportado, true)} sobre lo metido` } : null,
+    isFinite(gan) ? { l: "Ganancia", v: eurS(gan, 2), t: tone(gan), s: `${pct(gan / aportado, true)} sobre lo metido` } : null,
   ]);
   panelSalud(root, saludInversion(a.nombre), { titulo: "Revisa este activo", max: 10 });
   const comi = comisionesFondos([{ nombre: a.nombre, valor: V.valor, ter: a.ter }]).filas[0];
@@ -433,7 +449,7 @@ function vistaActivo() {
         const pa = hasNum(x.p.participaciones) ? num(x.p.participaciones) : null;
         const marcas = [x.p.supuesta ? "¿compra?" : "", pa == null && !x.p.ajuste ? "sin particip." : "", dudosas.has(x.p.id) ? "¿duplicada?" : ""].filter(Boolean);
         return [
-          { text: x.fecha.toFormat("dd/MM/yy"), ruta: `#editar/aportacion/${x.p.id}` },
+          x.pendiente ? x.fecha.toFormat("dd/MM/yy") : { text: x.fecha.toFormat("dd/MM/yy"), ruta: `#editar/aportacion/${x.p.id}` },
           { text: tipoOp(x), badge: marcas.join(" · ") },
           x.p.ajuste ? "—" : { text: eurS(x.importe), cls: x.importe < 0 ? "neg" : "" },
           ...(TC ? [x.importe > 0 && !x.p.ajuste && !x.p.traspaso ? { text: TC.de(x.importe), cls: TC.de(x.importe) === "grande" ? "pos" : "" } : ""] : []),
@@ -444,7 +460,7 @@ function vistaActivo() {
       }));
     pgOps.pie(po);
     po.createDiv({ cls: "fin-note", text: "Pulsa la fecha para cambiar o borrar una operación. «¿compra?»: la orden no decía si era compra o venta." });
-    if (TC) po.createDiv({ cls: "fin-note", text: `Tamaño: lo que has comprado de este activo, en tres partes iguales: pequeña (menos de ${eur(TC.p33, 0)}), habitual y grande (más de ${eur(TC.p67, 0)}).` });
+    if (TC) po.createDiv({ cls: "fin-note", text: `Tamaño: lo que has comprado de este activo, en tres partes iguales: pequeña (menos de ${eur(TC.p33, 2)}), habitual y grande (más de ${eur(TC.p67, 2)}).` });
   }
 
   // Dividendos y comisiones del activo
@@ -456,7 +472,7 @@ function vistaActivo() {
   // ¿Qué pasa si vendo hoy? Solo calcula con una copia de las operaciones: no guarda nada.
   if (real && P.conPart && P.part > 0 && !P.vendido) plegable(root, "¿Qué pasa si vendo hoy?", (c) => {
     const precio = V.valor / P.part, OPS = opsParaRenta();
-    c.createDiv({ cls: "fin-note", text: `Calcula lo que ganarías o perderías vendiendo hoy, por FIFO (primero se venden las compras más antiguas), con lo que vale hoy (${eur(V.valor, 0)}). No guarda nada ni apunta ninguna venta. Es orientativo, no asesoramiento fiscal.` });
+    c.createDiv({ cls: "fin-note", text: `Calcula lo que ganarías o perderías vendiendo hoy, por FIFO (primero se venden las compras más antiguas), con lo que vale hoy (${eur(V.valor, 2)}). No guarda nada ni apunta ninguna venta. Es orientativo, no asesoramiento fiscal.` });
     const f = c.createDiv({ cls: "fb-fila" });
     const iS = f.createEl("input", { attr: { type: "number", step: "any", min: "0", placeholder: "Participaciones a vender", "aria-label": "Participaciones que venderías" } });
     const bT = f.createEl("button", { cls: "fb-btn sec", text: `Todas (${nf(P.part, 0, 4)})`, attr: { type: "button" } });

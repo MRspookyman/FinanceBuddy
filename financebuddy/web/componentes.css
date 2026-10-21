@@ -175,7 +175,7 @@ a.fb-btn,.fin a.fb-btn.internal-link,.fin a.fb-btn.internal-link:hover{color:var
 .fb-acceso .t{font-weight:700;font-size:.93em} .fb-acceso .s{font-size:.87em;color:var(--ink-2)}
 /* bienvenida */
 .fb-bienvenida{padding:32px;border-radius:16px;margin-bottom:var(--g)}
-.fb-bienvenida h2{margin:0 0 8px;font-size:2.2em;font-weight:650}
+.fb-bienvenida h1{margin:0 0 8px;font-size:2.2em;font-weight:650}
 .fb-bienvenida p{margin:0 0 12px;max-width:620px;color:var(--ink-2)}
 .fb-bienvenida a{color:#fff;border-bottom-color:rgba(255,255,255,.6)}
 .fb-var{display:inline-block;margin-right:6px;padding:0 6px;border-radius:5px;font-size:max(13px,.92em);font-weight:700;background:var(--surface-2)}

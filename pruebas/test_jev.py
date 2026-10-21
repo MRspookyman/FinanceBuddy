@@ -1,6 +1,6 @@
 # Pruebas del asistente Jev (jev.py) contra un servidor Jev falso en local: mismo formato que la API documentada
 # (POST /v1/systemone). No hace falta red ni clave real. Uso: python -m unittest pruebas.test_jev -v
-import http.server, json, os, shutil, sys, tempfile, threading, time, unittest
+import base64, http.client, http.server, json, os, shutil, sys, tempfile, threading, time, unittest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from financebuddy import jev, servidor
 from pruebas.test_importar import excel_santander
@@ -10,10 +10,12 @@ RECIBIDO = []  # cuerpos de las peticiones que ha recibido el servidor falso
 
 class JevFalso(http.server.BaseHTTPRequestHandler):
     estado_http = 200
+    bloqueo = None  # B-019: si hay un Event, Jev espera en él antes de contestar
     def log_message(self, *a): pass
     def do_POST(self):
         cuerpo = json.loads(self.rfile.read(int(self.headers["Content-Length"])).decode("utf-8"))
         RECIBIDO.append(cuerpo)
+        if JevFalso.bloqueo is not None: JevFalso.bloqueo.wait(20)  # B-019: Jev tarda; la app debe seguir atendiendo
         if self.path != "/v1/systemone" or self.headers.get("Authorization") != f"Bearer {CLAVE}" or JevFalso.estado_http != 200:
             code = 401 if JevFalso.estado_http == 200 else JevFalso.estado_http
             self.send_response(code); self.send_header("Content-Type", "application/json"); self.end_headers()
@@ -57,6 +59,13 @@ FILAS = [
     ("2026-09-04", "Compra Mercadona, Madrid", -40.00),
 ]
 
+def esperar_repaso(limite=30):
+    """Espera a que acabe el repaso de Jev en segundo plano (B-019) y devuelve su estado."""
+    t = time.time()
+    while jev.estado_repaso()["en_marcha"] and time.time() - t < limite:
+        time.sleep(0.02)
+    return jev.estado_repaso()
+
 class TestJev(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -72,7 +81,7 @@ class TestJev(unittest.TestCase):
         self.app = servidor.App(self.dir, hoy="2026-09-30")
         self.app.manejar("/api/bienvenida", {"cuentas": [{"nombre": "Nómina", "tipo": "corriente", "saldo": 1000}]})
     def tearDown(self):
-        self.app.alm.cerrar(); shutil.rmtree(self.dir, ignore_errors=True)
+        esperar_repaso(); self.app.alm.cerrar(); shutil.rmtree(self.dir, ignore_errors=True)
     def importar(self):
         ruta = os.path.join(self.app.carpeta.banco, "x.xlsx"); excel_santander(ruta, FILAS)
         return self.app._importar(ruta, "banco", "Nómina")
@@ -158,7 +167,8 @@ class TestJev(unittest.TestCase):
     def test_por_revisar_al_importar(self):
         self.app.manejar("/api/jev/config", {"clave": CLAVE, "activo": True})
         r = self.importar()
-        self.assertIn("Jev propone categoría", r["mensaje"], r["mensaje"])
+        self.assertIn("segundo plano", r["mensaje"], r["mensaje"]); self.assertTrue(r["jev_en_marcha"], r)
+        esperar_repaso()  # B-019: Jev repasa aparte; lo que sigue es lo que ya ha propuesto
         enviado = json.dumps(RECIBIDO, ensure_ascii=False)
         self.assertNotIn("Ruiz", enviado); self.assertNotIn("123456", enviado)  # ni nombres de Bizum ni tarjetas
         P = {p["fila"]["texto"]: p for p in self.app.datos()["pendientes"]}
@@ -185,6 +195,17 @@ class TestJev(unittest.TestCase):
         self.assertFalse(any(p.get("jev") for p in self.app.alm.todos("pendiente")))
         JevFalso.estado_http = 200
         self.assertTrue(self.app.manejar("/api/jev/revisar", {})["ok"])  # la próxima vez, sí
+
+    def test_error_del_repaso_de_fondo_queda_para_verlo(self):
+        # B-019: si Jev rechaza la clave mientras repasa lo importado, el error queda para verlo en Revisar
+        self.app.manejar("/api/jev/config", {"clave": CLAVE, "activo": True})
+        JevFalso.estado_http = 401
+        try:
+            self.importar()
+            estado = esperar_repaso()
+        finally:
+            JevFalso.estado_http = 200
+        self.assertFalse(estado["en_marcha"]); self.assertIn("clave", estado["error"], estado)
 
     def test_sin_conexion_no_se_queda_esperando(self):
         self.app.manejar("/api/jev/config", {"clave": CLAVE, "activo": True, "al_importar": False})
@@ -214,7 +235,7 @@ class TestJev(unittest.TestCase):
         ruta = os.path.join(self.app.carpeta.banco, "raro.csv")
         with open(ruta, "w", encoding="utf-8") as fh:
             fh.write("F.Operación;F.Valor;Concepto del movimiento;Importe EUR;Saldo EUR\n01/09/2026;01/09/2026;Compra Lidl;-12,30;500,00\n02/09/2026;02/09/2026;Nomina;1500,00;2000,00\n")
-        r = self.app._importar(ruta, "banco")
+        r = self.app.proponer_con_jev(self.app._importar(ruta, "banco"))  # lo que añade Jev va después de importar, sin el cerrojo
         self.assertEqual(r["necesita"], "perfil")
         # Las columnas las reconoce ya la propia app (lectura.columnas_probables, sin internet); de Jev solo se coge lo que
         # falte, como si el archivo es del banco o del bróker (`_tipo`).
@@ -249,6 +270,7 @@ class TestJev(unittest.TestCase):
                      "15/09/2026;15/09/2026;CUOTA CUSTODIA TRIMESTRAL;-3,00\n")
         r = self.app._importar(ruta, "inversion", "Bróker")
         self.assertIn("Jev", r["mensaje"], r)
+        esperar_repaso()  # B-019: lo que la app no reconoce lo mira Jev en segundo plano
         P = {p["fila"]["texto"]: p for p in self.app.datos()["pendientes"]}
         s = P["COMPRA APPLE INC"]["sugerencia"]
         self.assertEqual((s["accion"], s["clase"], s["fuente"]), ("activo", "accion", "jev"))
@@ -365,10 +387,142 @@ class TestJev(unittest.TestCase):
         self.app.manejar("/api/jev/config", {"clave": CLAVE, "activo": True})
         self.assertEqual(self.app.manejar("/api/jev/enviado", {})["enviado"], [])
         self.importar()
+        esperar_repaso()  # B-019: lo enviado lo registra el repaso de fondo
         e = self.app.manejar("/api/jev/enviado", {})["enviado"]
         self.assertTrue(e and all({"cuando", "estado", "preguntas"} <= set(x) for x in e))
         self.assertNotIn("Ruiz", json.dumps(e, ensure_ascii=False))
         self.assertEqual(len(e), len(RECIBIDO))  # lo registrado es lo enviado, ni más ni menos
+
+class TestJevNoBloquea(unittest.TestCase):
+    """B-019: Jev no puede dejar colgado el servidor. Importar y pedir a Jev no retienen el cerrojo de la app."""
+    def setUp(self):
+        RECIBIDO.clear(); JevFalso.estado_http = 200; JevFalso.bloqueo = None
+        self.jev_srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), JevFalso)
+        threading.Thread(target=self.jev_srv.serve_forever, daemon=True).start()
+        self.url_antes = os.environ.get("FB_JEV_URL")
+        os.environ["FB_JEV_URL"] = f"http://127.0.0.1:{self.jev_srv.server_address[1]}/v1/systemone"
+        self.dir = tempfile.mkdtemp()
+        self.app = servidor.App(self.dir, hoy="2026-09-30")
+        self.app.manejar("/api/bienvenida", {"cuentas": [{"nombre": "Nómina", "tipo": "corriente", "saldo": 1000}]})
+        self.web = servidor.crear(self.app, 0)
+        threading.Thread(target=self.web.serve_forever, daemon=True).start()
+        self.puerto = self.web.server_address[1]
+    def tearDown(self):
+        if JevFalso.bloqueo is not None: JevFalso.bloqueo.set()
+        esperar_repaso()
+        JevFalso.bloqueo = None
+        self.web.shutdown(); self.web.server_close()
+        self.jev_srv.shutdown(); self.jev_srv.server_close()
+        if self.url_antes is None: os.environ.pop("FB_JEV_URL", None)
+        else: os.environ["FB_JEV_URL"] = self.url_antes
+        self.app.alm.cerrar(); shutil.rmtree(self.dir, ignore_errors=True)
+    def pedir(self, metodo, ruta, cuerpo=None):
+        c = http.client.HTTPConnection("127.0.0.1", self.puerto, timeout=30)
+        try:
+            c.request(metodo, ruta, body=json.dumps(cuerpo or {}).encode("utf-8") if metodo == "POST" else None,
+                      headers={"X-FB-Token": self.app.token, "Content-Type": "application/json"})
+            return json.loads(c.getresponse().read().decode("utf-8"))
+        finally:
+            c.close()
+    def importar(self):
+        excel_santander(os.path.join(self.app.carpeta.banco, "x.xlsx"), FILAS)
+        return self.pedir("POST", "/api/importar/reintentar", {"archivo": "x.xlsx", "tipo": "banco", "cuenta": "Nómina"})
+    def mov(self, fecha, concepto, importe, categoria):
+        r = self.app.manejar("/api/guardar", {"tipo": "movimiento", "datos": {"fecha": fecha, "clase": "gasto", "importe": importe, "concepto": concepto,
+                                                                             "categoria": categoria, "cuenta": "Nómina"}})
+        self.assertTrue(r["ok"], r)
+    def esperar_llamada(self, n0):
+        t = time.time()
+        while len(RECIBIDO) == n0 and time.time() - t < 10: time.sleep(0.02)
+        self.assertGreater(len(RECIBIDO), n0, "Jev no ha recibido la petición")
+    def test_la_importacion_vuelve_aunque_jev_no_responda(self):
+        self.app.manejar("/api/jev/config", {"clave": CLAVE, "activo": True})
+        JevFalso.bloqueo = threading.Event()  # Jev no contesta hasta que lo soltemos
+        t = time.time()
+        r = self.importar()
+        self.assertLess(time.time() - t, 5, "la importación se ha quedado esperando a Jev")
+        self.assertTrue(r["ok"], r); self.assertTrue(r.get("jev_en_marcha"), r); self.assertIn("segundo plano", r["mensaje"], r["mensaje"])
+        self.assertTrue(jev.estado_repaso()["en_marcha"])
+        self.assertTrue(self.pedir("GET", "/api/datos")["pendientes"])  # la app sigue atendiendo mientras Jev repasa
+        JevFalso.bloqueo.set()
+        self.assertEqual(esperar_repaso()["error"], "")
+        self.assertTrue(any(p.get("jev") for p in self.app.alm.todos("pendiente")))
+    def test_mientras_jev_repasa_no_se_le_pide_lo_mismo_otra_vez(self):
+        # Revisar y auditar no esperan al cerrojo: sin la comprobación, «Pedir a Jev» durante el repaso de fondo repetiría y pagaría las mismas preguntas
+        self.app.manejar("/api/jev/config", {"clave": CLAVE, "activo": True})
+        JevFalso.bloqueo = threading.Event()
+        self.assertTrue(self.importar()["jev_en_marcha"])
+        self.esperar_llamada(0)
+        t = time.time()
+        for ruta in ("/api/jev/revisar", "/api/jev/auditar"):
+            r = self.pedir("POST", ruta)
+            self.assertFalse(r["ok"], r); self.assertIn("repasando", r["mensaje"])
+        self.assertLess(time.time() - t, 5, "se le ha vuelto a preguntar a Jev mientras repasaba")
+        JevFalso.bloqueo.set()
+        self.assertEqual(esperar_repaso()["error"], "")
+        self.assertTrue(self.pedir("POST", "/api/jev/revisar")["ok"])  # al acabar el repaso, ya se puede
+    def test_una_peticion_a_jev_no_deja_colgada_la_pagina(self):
+        self.app.manejar("/api/jev/config", {"clave": CLAVE, "activo": True, "al_importar": False})
+        self.importar()
+        JevFalso.bloqueo = threading.Event()
+        resultado = {}
+        hilo = threading.Thread(target=lambda: resultado.update(self.pedir("POST", "/api/jev/revisar")), daemon=True)
+        n0 = len(RECIBIDO); hilo.start(); self.esperar_llamada(n0)
+        t = time.time()
+        self.pedir("GET", "/api/datos")
+        self.assertLess(time.time() - t, 5, "la página se ha quedado esperando a Jev")
+        JevFalso.bloqueo.set(); hilo.join(20)
+        self.assertTrue(resultado.get("ok"), resultado)
+    def test_un_formato_nuevo_no_deja_colgada_la_pagina_mientras_jev_propone_las_columnas(self):
+        # B-019 (resto): un archivo cuyo formato no se conoce le pregunta a Jev qué columna es cada cosa. Esa pregunta no puede
+        # hacerse con el cerrojo de la app cogido: mientras Jev no contesta, el resto de peticiones tienen que seguir saliendo.
+        self.app.manejar("/api/jev/config", {"clave": CLAVE, "activo": True})
+        csv = ("F.Operación;F.Valor;Concepto del movimiento;Importe EUR;Saldo EUR\n"
+               "01/09/2026;01/09/2026;Compra Lidl;-12,30;500,00\n02/09/2026;02/09/2026;Nomina;1500,00;2000,00\n")
+        ruta = os.path.join(self.app.carpeta.banco, "raro.csv")
+        subir = {"nombre": "raro.csv", "tipo": "banco", "contenido": base64.b64encode(csv.encode("utf-8")).decode()}
+        for que, url, cuerpo in (("subir", "/api/importar/subir", subir), ("reintentar", "/api/importar/reintentar", {"archivo": "raro.csv", "tipo": "banco"}),
+                                 ("carpeta", "/api/importar/carpeta", {})):
+            with self.subTest(que):
+                with open(ruta, "w", encoding="utf-8") as fh: fh.write(csv)
+                JevFalso.bloqueo = threading.Event()
+                resultado = {}
+                hilo = threading.Thread(target=lambda: resultado.update(self.pedir("POST", url, cuerpo)), daemon=True)
+                n0 = len(RECIBIDO); hilo.start(); self.esperar_llamada(n0)
+                t = time.time()
+                self.pedir("GET", "/api/datos")
+                espera = time.time() - t
+                JevFalso.bloqueo.set(); hilo.join(20)
+                self.assertLess(espera, 5, f"con Jev sin contestar, otra petición ha esperado {espera:.1f} s a la importación")
+                r = resultado.get("resultados", [resultado])[0]  # la carpeta devuelve una lista; subir y reintentar, el archivo
+                self.assertEqual(r["necesita"], "perfil", r)
+                # y la propuesta de Jev sigue llegando a la pantalla cuando contesta
+                self.assertEqual(r["propuesta"], {"_tipo": "banco", "fecha": "F.Operación", "fecha_valor": "F.Valor",
+                                                  "concepto": "Concepto del movimiento", "importe": "Importe EUR", "saldo": "Saldo EUR"}, r)
+    def test_descartar_mientras_jev_repasa_no_lo_devuelve(self):
+        # Lo que descartas mientras Jev repasa no vuelve a salir cuando el repaso acaba (B-019)
+        self.app.manejar("/api/jev/config", {"clave": CLAVE, "activo": True, "al_importar": False})
+        self.mov("2026-09-05", "Clases academia de inglés", 40, "Otros")
+        self.assertTrue(self.pedir("POST", "/api/jev/auditar")["ok"])
+        A = next(h["clave"] for h in self.app.datos()["config"]["jev"]["revision"]["hallazgos"] if h["actual"] == "Otros")
+        self.mov("2026-09-06", "Desayuno cafetería centro", 4, "Ocio")
+        JevFalso.bloqueo = threading.Event()
+        resultado = {}
+        hilo = threading.Thread(target=lambda: resultado.update(self.pedir("POST", "/api/jev/auditar")), daemon=True)
+        n0 = len(RECIBIDO); hilo.start(); self.esperar_llamada(n0)
+        t = time.time()
+        r = self.pedir("POST", "/api/jev/hallazgo", {"clave": A, "accion": "descartar"})
+        self.assertLess(time.time() - t, 5, "descartar se ha quedado esperando a Jev")
+        self.assertTrue(r["ok"], r)
+        JevFalso.bloqueo.set(); hilo.join(20)
+        self.assertTrue(resultado.get("ok"), resultado)
+        self.assertNotIn(A, [h["clave"] for h in self.app.datos()["config"]["jev"]["revision"]["hallazgos"]])
+    def test_con_jev_apagado_la_importacion_no_llama_a_jev(self):
+        self.app.manejar("/api/jev/config", {"clave": CLAVE, "activo": False})
+        r = self.importar()
+        self.assertTrue(r["ok"], r); self.assertFalse(r.get("jev_en_marcha"), r)
+        self.assertEqual(RECIBIDO, [])
+
 
 if __name__ == "__main__":
     unittest.main()

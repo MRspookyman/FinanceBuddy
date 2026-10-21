@@ -41,7 +41,10 @@ def filas_crudas(ruta):
                 fila.append(xlrd.xldate_as_datetime(c.value, 0) if c.ctype == xlrd.XL_CELL_DATE else c.value)
             out.append(fila)
         return out
-    if ext not in (".csv", ".txt", ".xls", ".xlsx", ".xlsm"): raise ValueError(f"Formato no admitido ({ext}): usa Excel (.xlsx, .xls) o CSV.")
+    if ext not in (".csv", ".txt", ".xls", ".xlsx", ".xlsm"):
+        if ext in (".n43", ".ofx", ".qfx", ".qif"):  # la app los admite, pero el contenido de este no es el de un extracto que sepa leer
+            raise ValueError(f"Este archivo {ext} no es un extracto de Norma 43, OFX o QIF de una sola cuenta que la app sepa leer. Si tu banco lo ofrece en Excel o CSV, descárgalo así.")
+        raise ValueError(f"Formato no admitido ({ext}): usa Excel (.xlsx, .xls), CSV, Norma 43, OFX o QIF.")
     if not datos.strip(b"\xef\xbb\xbf\xff\xfe\x00 \t\r\n"): raise ValueError("El archivo está vacío.")
     if datos[:600].lstrip(b"\xef\xbb\xbf\xff\xfe\x00 \t\r\n")[:1] == b"<":
         raise ValueError("Este archivo no es un Excel de verdad: es una página web (o un XML) guardada con otro nombre; algunos bancos lo descargan así. "

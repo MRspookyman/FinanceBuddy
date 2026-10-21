@@ -209,16 +209,47 @@ function fijosAutomaticos(reales) {
   }
   return virtuales;
 }
+// «A medias» (B-063): un gasto que pagaste tú entero pero del que solo `mi_parte` es tuyo; el resto (importe − mi_parte) te lo deben.
+// El gasto cuenta solo tu parte (`gasto`), pero `importe` sigue siendo lo que salió de tu cuenta: el saldo no cambia. Lo que te deben
+// se da por cobrado cuando lo marcas (`cobrado`) o cuando un reembolso enlazado (`reembolsa`, un Bizum) lo cubre: esa parte del reembolso
+// NO resta otra vez del gasto (ya no contaba en él); solo lo que pase de lo que te debían. regs: registros de movimiento.
+// → { por: Map id del gasto → { miParte, deben, cobrado (por Bizums), pendiente }, absorbe: Map id del reembolso → lo que cubre de la deuda }
+function cobrosMedias(regs) {
+  const por = new Map(), absorbe = new Map();
+  for (const r of regs) {
+    if (txt(r.clase).toLowerCase() === "gasto" && r.a_medias === true && hasNum(r.mi_parte)) {
+      const importe = Math.abs(num(r.importe)), miParte = Math.min(importe, Math.max(0, num(r.mi_parte)));
+      por.set(r.id, { miParte, deben: importe - miParte, cobrado: 0, pendiente: 0, manual: r.cobrado === true });
+    }
+  }
+  if (por.size) {
+    const devs = regs.filter((r) => txt(r.clase).toLowerCase() === "reembolso" && por.has(r.reembolsa)).sort((a, b) => txt(a.fecha).localeCompare(txt(b.fecha)) || a.id - b.id);
+    for (const r of devs) {
+      const g = por.get(r.reembolsa), cubre = Math.min(Math.abs(num(r.importe)), g.deben - g.cobrado);
+      g.cobrado += cubre; absorbe.set(r.id, cubre);
+    }
+    for (const g of por.values()) g.pendiente = g.manual ? 0 : Math.max(0, g.deben - g.cobrado);
+  }
+  return { por, absorbe };
+}
+// Las etiquetas que ya has puesto a algún movimiento (sin repetir, da igual mayúsculas), por orden alfabético: para elegirlas en vez de reescribirlas.
+function etiquetasUsadas() {
+  const vistas = new Map();
+  for (const r of registros("movimiento")) for (const e of Array.isArray(r.etiquetas) ? r.etiquetas : []) { const k = String(e).toLowerCase(); if (!vistas.has(k)) vistas.set(k, String(e)); }
+  return [...vistas.values()].sort((a, b) => a.localeCompare(b, "es"));
+}
 // Los recurrentes generan un movimiento automático cada mes salvo que exista uno real con `recurrente: <nombre>` para ese mes.
 // `previsto`: fecha posterior a hoy → no cuenta como cobrado/pagado, solo como pendiente.
-// `gasto`: lo que suma al gasto de su categoría. `reembolso` (p. ej. un Bizum de un amigo por su parte de una cena) resta.
+// `gasto`: lo que suma al gasto de su categoría (en un gasto a medias, tu parte). `reembolso` (p. ej. un Bizum de un amigo por su parte
+// de una cena) resta, menos lo que cubre de lo que te debían en un gasto a medias. `medias`: el detalle de cobrosMedias de ese gasto.
 const movimientos = () => {
   if (_movs) return _movs;
-  const reales = registros("movimiento").map((p) => ({
+  const regsMov = registros("movimiento"), { por: mediasDe, absorbe } = cobrosMedias(regsMov);
+  const reales = regsMov.map((p) => ({
     p, fecha: toDate(p.fecha), importe: Math.abs(num(p.importe)),
     clase: txt(p.clase).toLowerCase() || "gasto", categoria: txt(p.categoria) || (p.clase === "transferencia" ? "" : "Otros"),
     concepto: txt(p.concepto) || "Movimiento", recurrente: txt(p.recurrente), destino: txt(p.destino), origen: txt(p.origen),
-    cuenta: txt(p.cuenta) || principal(), auto: false,
+    cuenta: txt(p.cuenta) || principal(), auto: false, medias: mediasDe.get(p.id) || null, cubre: absorbe.get(p.id) || 0,
   })).filter((m) => m.fecha);
   // Lo que está «por revisar» (banco) cuenta desde el primer momento, como «Sin clasificar»: gasto si sale, ingreso si entra.
   // Al clasificarlo deja de ser pendiente y pasa a ser un movimiento de verdad (no se cuenta dos veces).
@@ -229,7 +260,8 @@ const movimientos = () => {
       concepto: txt(f.concepto) || txt(f.texto) || "Sin clasificar", recurrente: "", destino: "", origen: "", cuenta: txt(q.cuenta) || principal(), auto: false, pendiente: true });
   }
   return (_movs = [...reales, ...fijosAutomaticos(reales)].map((m) => ({
-    ...m, previsto: m.fecha > finHoy, gasto: m.clase === "gasto" ? m.importe : m.clase === "reembolso" ? -m.importe : 0,
+    ...m, previsto: m.fecha > finHoy,
+    gasto: m.clase === "gasto" ? (m.medias ? m.medias.miParte : m.importe) : m.clase === "reembolso" ? -(m.importe - (m.cubre || 0)) : 0,
   })));
 };
 // Los traspasos «por revisar» del banco no son gasto ni ingreso, pero el dinero ya ha salido (o entrado) de su cuenta: solo
@@ -237,6 +269,26 @@ const movimientos = () => {
 const traspasosPorRevisar = () => ((typeof DB !== "undefined" && DB.pendientes) || []).filter((q) => q.tipo_import !== "inversion"
   && (q.fila || {}).clase === "transferencia" && toDate(q.fila.op) && isFinite(Number(q.fila.importe)))
   .map((q) => ({ p: q, fecha: toDate(q.fila.op), importe: Number(q.fila.importe), cuenta: txt(q.cuenta) || principal() }));
+// Compra de participaciones que el banco trae como pendiente («ISHARES … @ 1» = 1 participación): cuenta como aportación (sale
+// del efectivo del bróker y entra en el activo), no como duda de «Por revisar».
+const participacionesDe = (texto) => { const m = /@\s*(\d+(?:[.,]\d+)?)\s*$/.exec(String(texto || "")); return m ? Number(m[1].replace(",", ".")) : 0; };
+const compraBroker = (q) => {
+  const f = q.fila || {}, s = q.sugerencia || {};
+  return q.tipo_import === "inversion" && tipoCuenta(txt(q.cuenta)) === "broker" && num(f.importe) < 0 && !!toDate(f.op)
+    && participacionesDe(f.texto) > 0 && s.accion === "activo" && !!(s.activo || s.nuevo);
+};
+const porRevisar = () => ((typeof DB !== "undefined" && DB.pendientes) || []).filter((q) => !compraBroker(q));
+// Su plan fijo, como al importarla (`importar.plan_de`): el del mismo activo, ya en marcha y de un importe parecido (±10 € o ±5 %). Así la
+// compra paga esa aportación (`enlazarFijas`) y no sale además la automática del mismo mes. Con `ext_fecha` cuenta como lo que es: del extracto.
+const comprasPendientes = () => {
+  const planes = recurrentes().filter((r) => r.clase === "aportacion" && r.activoInv);
+  return ((typeof DB !== "undefined" && DB.pendientes) || []).filter(compraBroker).map((q) => {
+    const activo = q.sugerencia.activo || q.sugerencia.nuevo, fecha = toDate(q.fila.op), importe = Math.abs(num(q.fila.importe));
+    const plan = planes.find((r) => r.activoInv === activo && (!r.desde || r.desde <= fecha) && Math.abs(importe - r.importe) <= Math.max(10, 0.05 * r.importe));
+    return { p: { id: `pendiente-${q.id}`, participaciones: participacionesDe(q.fila.texto), ext_fecha: q.fila.op, pendiente: true }, pendiente: true, fecha, activo, importe,
+      recurrente: plan ? plan.nombre : "", cuenta: txt(q.cuenta), auto: false };
+  });
+};
 // Movimientos agrupados por mes (AAAA-MM), calculado una vez por render: los paneles piden muchos meses.
 let _movsMes;
 const movsDelMes = (key) => {
@@ -247,6 +299,8 @@ const movsDelMes = (key) => {
   }
   return _movsMes.get(key) || [];
 };
+// Olvida los cálculos guardados: tras cambiar los datos en memoria (lo hacen las pruebas), todo se vuelve a calcular.
+function reiniciarCachesCalculo() { _movs = _movsMes = _aports = _objs = _pat = _cuentas = _recs = _activos = _cats = _cobros = undefined; _finMes = new Map(); _pos = new Map(); }
 const categorias = () => (_cats ??= registros("categoria").map((p) => ({
   p, nombre: p.nombre, grupo: txt(p.grupo).toLowerCase() || "variable", presupuesto: num(p.presupuesto), oculta: p.oculta === true,
 })));
@@ -312,22 +366,41 @@ const esDeAhorro = (m) => m.clase === "transferencia" && tipoCuenta(m.origen) ==
 const esAOtra = (m) => m.clase === "transferencia" && tipoCuenta(m.destino) === "otro";
 const esDeOtra = (m) => m.clase === "transferencia" && tipoCuenta(m.origen) === "otro";
 const esDelBroker = (m) => tipoCuenta(m.cuenta) === "broker"; // p. ej. intereses de la cuenta de efectivo del bróker
+// Una real enlaza con su fija si llega hasta 7 días antes o después (la más cercana). Lo que quede sin enlazar se enlaza con la real
+// del mismo mes natural (como antes). Devuelve el cargo (el día de la fija) de cada real enlazada, y las fijas que no tienen real.
+const enlazarFijas = (reales) => {
+  const fijas = recurrentes().filter((r) => r.clase === "aportacion" && r.activoInv)
+    .flatMap((r) => ocurrencias(r).map((fecha) => ({ r, fecha }))).sort((a, b) => a.fecha.toMillis() - b.fecha.toMillis());
+  const libres = new Set(reales.filter((a) => a.recurrente)), cargos = new Map();
+  const distancia = (a, b) => Math.round(Math.abs(a.toMillis() - b.toMillis()) / 864e5);
+  const sinPrimera = [];
+  for (const f of fijas) {
+    let mejor = null;
+    for (const a of libres) if (a.recurrente === f.r.nombre && distancia(a.fecha, f.fecha) <= 7 && (!mejor || distancia(a.fecha, f.fecha) < distancia(mejor.fecha, f.fecha))) mejor = a;
+    if (mejor) { libres.delete(mejor); cargos.set(mejor, f.fecha); } else sinPrimera.push(f);
+  }
+  const sinReal = [];
+  for (const f of sinPrimera) {
+    const a = [...libres].find((x) => x.recurrente === f.r.nombre && keyCal(x.fecha) === keyCal(f.fecha));
+    if (a) { libres.delete(a); cargos.set(a, f.fecha); } else sinReal.push(f);
+  }
+  return { cargos, sinReal };
+};
 // Recurrentes con `clase: aportacion` y `activo_inversion` generan aportaciones automáticas (salvo que exista la real con `recurrente`).
+// Las compras pendientes del bróker (`comprasPendientes`) cuentan como aportaciones y se enlazan con su plan fijo, como las importadas.
 const aportaciones = () => {
   if (_aports) return _aports;
   const reales = registros("aportacion").map((p) => ({
     p, fecha: toDate(p.fecha), activo: txt(p.activo), importe: num(p.importe), recurrente: txt(p.recurrente), cuenta: txt(p.cuenta), auto: false,
   })).filter((a) => a.fecha);
-  const virtuales = [];
-  const vinculadas = new Set(reales.filter((a) => a.recurrente).map((a) => `${a.recurrente}|${keyCal(a.fecha)}`));
-  for (const r of recurrentes().filter((r) => r.clase === "aportacion" && r.activoInv)) {
-    for (const fecha of ocurrencias(r)) {
-      if (vinculadas.has(`${r.nombre}|${keyCal(fecha)}`)) continue;
-      virtuales.push({ p: r.p, fecha, activo: r.activoInv, importe: r.importe, recurrente: r.nombre, cuenta: r.cuenta, auto: true });
-    }
-  }
-  return (_aports = [...reales, ...virtuales].map((a) => ({ ...a, previsto: a.fecha > finHoy })).sort((a, b) => a.fecha.toMillis() - b.fecha.toMillis()));
+  const pendientes = comprasPendientes();
+  const { cargos, sinReal } = enlazarFijas([...reales, ...pendientes]);
+  const virtuales = sinReal.map(({ r, fecha }) => ({ p: r.p, fecha, activo: r.activoInv, importe: r.importe, recurrente: r.nombre, cuenta: r.cuenta, auto: true }));
+  const conCargo = [...reales, ...pendientes].map((a) => (cargos.has(a) ? { ...a, cargo: cargos.get(a) } : a));
+  return (_aports = [...conCargo, ...virtuales].map((a) => ({ ...a, previsto: a.fecha > finHoy })).sort((a, b) => a.fecha.toMillis() - b.fecha.toMillis()));
 };
+// Mes que cuenta una aportación: el de su cargo (la fija a la que se enlazó) o, si no, el de su fecha.
+const cargoDe = (a) => a.cargo || a.fecha;
 const aportacionesReales = () => aportaciones().filter((a) => !a.previsto);
 // Cuenta del bróker de la que se paga una aportación: la del activo, la de la aportación o la primera del bróker.
 // Dividendos y comisiones de los activos (no cambian sus participaciones): importe siempre positivo, `tipo` dice el sentido.

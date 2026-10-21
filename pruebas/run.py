@@ -18,7 +18,7 @@ SALIDA = os.path.join(tempfile.gettempdir(), "fb-pruebas")
 # Navegadores con modo sin ventana (el primero que exista)
 EDGES = [r"C:\Program Files\Google\Chrome\Application\chrome.exe", r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
          r"C:\Program Files\Microsoft\Edge\Application\msedge.exe"]
-PANTALLAS = "inicio,movimientos,inversion,importar,revisar,apuntar,cerrar,valores,ajustes,fijos,gestionar/movimiento,gestionar/cuenta,editar/movimiento/nuevo,editar/recurrente/nuevo,revision,renta,anual,bienvenida,gestionar/categoria,editar/regla/nuevo,ajustes/datos"
+PANTALLAS = "inicio,movimientos,inversion,importar,revisar,apuntar,cerrar,valores,ajustes,fijos,gestionar/movimiento,gestionar/cuenta,editar/movimiento/nuevo,editar/recurrente/nuevo,revision,renta,anual,independencia,bienvenida,gestionar/categoria,editar/regla/nuevo,ajustes/datos"
 HOY = "2026-09-30"
 
 def main():
@@ -64,10 +64,10 @@ def main():
             out = subprocess.run(base + ([tam] if "guion" in flags and "ancho" in flags else []) + ["--dump-dom", url], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120).stdout
             m = re.search(r'<div id="log">(.*?)</div>', out, re.S)
             texto = html.unescape(m.group(1)).strip() if m else "(sin log)"
-            h2 = re.search(r"<h2[^>]*>(.*?)</h2>", out, re.S)
+            h1 = re.search(r"<h1[^>]*>(.*?)</h1>", out, re.S)
             if not out.strip(): texto = "(el navegador no devolvió la página)"
             if "Error" in texto or "✕" in texto or not out.strip(): fallos += 1
-            print(f"── {v} [{html.unescape(h2.group(1)) if h2 else '—'}]: {texto or 'ok'}")
+            print(f"── {v} [{html.unescape(h1.group(1)) if h1 else '—'}]: {texto or 'ok'}")
             # quieto=1: sin animaciones, o las cifras salen a medio contar en la foto
             if "shot" in flags:
                 png = os.path.join(SALIDA, f"{v.replace('/', '-')}{'-' + flags['tema'] if 'tema' in flags else ''}.png")

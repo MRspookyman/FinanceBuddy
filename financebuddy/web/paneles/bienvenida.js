@@ -5,16 +5,16 @@ const titulo = (t, sub, conNav = true) => cabecera(t, false, sub);
 // ───────────── primeros pasos ─────────────
 function vistaBienvenida() {
   const intro = root.createDiv({ cls: "fb-bienvenida" });
-  intro.createEl("h2", { text: "Hola, soy FinanceBuddy 👋" });
-  intro.createEl("p", { text: "Importas los extractos de tu banco (Excel o CSV) y te digo cuánto puedes gastar, a dónde va tu dinero y cómo va tu inversión. Todo se queda en tu ordenador." });
+  intro.createEl("h1", { text: "Hola, soy FinanceBuddy 👋" });
+  intro.createEl("p", { text: "Importas los extractos de tu banco (Excel, CSV, Norma 43, OFX o QIF) y te digo cuánto puedes gastar, a dónde va tu dinero y cómo va tu inversión. Todo se queda en tu ordenador." });
   const pe = intro.createDiv();
   pe.appendText("¿Prefieres verla antes con datos inventados? ");
   accion(pe, "Probar con datos de ejemplo", async () => { const r = await FB.api("/api/ejemplo", { activar: true }); if (r.ok) { await FB.recargar(); FB.ir("#inicio"); } else FB.aviso(r.mensaje, true); });
 
   const arch = root.createDiv({ cls: "fin-panel fb-primero" });
   arch.createEl("h3", { text: "Empieza por tu extracto" });
-  arch.createDiv({ cls: "fin-note", text: "Descarga de tu banco el Excel o CSV de movimientos y arrástralo aquí. La app reconoce la cuenta, toma el saldo del propio extracto, clasifica lo que sabe y te pregunta solo lo que no. Después te propone tus fijos y un límite de gasto." });
-  zonaSoltar(arch, "Arrastra aquí el Excel o CSV, o pulsa para elegirlo", () => FB.ir("#importar"),
+  arch.createDiv({ cls: "fin-note", text: "Descarga de tu banco el extracto de movimientos (Excel, CSV, Norma 43, OFX o QIF) y arrástralo aquí. La app reconoce la cuenta, toma el saldo del propio extracto, clasifica lo que sabe y te pregunta solo lo que no. Después te propone tus fijos y un límite de gasto." });
+  zonaSoltar(arch, "Arrastra aquí el extracto (Excel, CSV, Norma 43, OFX o QIF), o pulsa para elegirlo", () => FB.ir("#importar"),
     (files) => { FB.soltados = files; FB.ir("#importar"); });
   const manual = plegable(root, "Prefiero empezar a mano (cuentas, límite y fijos)", (c) => manualBienvenida(c), {});
 }

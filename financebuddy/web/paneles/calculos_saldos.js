@@ -38,7 +38,13 @@ function proyectar(u, hasta, exacto = false) {
   for (const c of cobros().filter((c) => tras(c.fecha))) mover(cuentaAportacion({ activo: c.activo, cuenta: c.cuenta }) || principal(), c.tipo === "dividendo" ? c.importe : -c.importe);  // entra o sale del efectivo del bróker
   const valores = {};
   for (const a of activos()) valores[a.nombre] = valorHoy(a);
-  const g = agrupar(S, activos().length ? valores : u.valores, u.otros);
+  // Compras del bróker sin dar de alta: no tienen participaciones que valorar, así que cuentan por lo pagado, como inversión. También las
+  // anteriores al último registro: el saldo del bróker que anotaste ya no lleva ese dinero, y los valores anotados no incluyen un activo que
+  // no existe (salvo que lo anotaras con su nombre: entonces ya cuenta).
+  const base = activos().length ? valores : { ...u.valores };
+  const sinAlta = aportaciones().filter((x) => x.pendiente && x.fecha <= hasta && !activos().some((y) => y.nombre === x.activo) && (tras(x.fecha) || !(x.activo in base)));
+  for (const c of sinAlta) base[c.activo] = (base[c.activo] || 0) + c.importe;
+  const g = agrupar(S, base, u.otros);
   const act = sum(Object.values(g.c));
   const imp = (f) => sum(ms.filter(f).map((m) => m.importe));
   return {
@@ -132,7 +138,7 @@ function repartoAhorro(key) {
   const aBroker = imp(esABroker) + imp((m) => esDelBroker(m) && m.clase === "ingreso");
   const emergencia = imp(esAAhorro) - imp(esDeAhorro) + imp((m) => tipoCuenta(m.cuenta) === "ahorro" && m.clase === "ingreso");
   const otras = imp(esAOtra) - imp(esDeOtra);
-  const compras = sum(aportaciones().filter((a) => enMes(a.fecha)).map((a) => a.importe));
+  const compras = sum(aportaciones().filter((a) => enMes(cargoDe(a))).map((a) => a.importe));
   return { ahorro: M.ahorro, aBroker, emergencia, otras, compras, liquido: M.ahorro - aBroker - emergencia - otras };
 }
 
@@ -153,7 +159,9 @@ function presupuestoSemana() {
   const fd = fechaDatos();
   const enMes = fd && keyDe(fd) === hoyKey;
   const M = finMes(hoyKey), vari = gastoVariable(M), dm = diasMes(hoyKey);
-  const restantes = dm - (enMes ? diaDeMes(fd) : 0); // días del mes sin datos todavía
+  // Días del mes sin datos todavía: desde mañana si hoy ya trae datos; desde hoy si el último dato es de ayer o más antiguo.
+  const dDatos = fd ? Math.max(enMes ? diaDeMes(fd) : 0, diaDeMes(hoy) - 1) : 0;
+  const restantes = dm - dDatos;
   const disponible = limiteVar - vari;
   const ref = enMes ? fd : hoy;
   const lunes = ref.startOf("week"), domingo = lunes.plus({ days: 6 }).endOf("day");
@@ -183,6 +191,42 @@ function resumenCategorias(key) {
     nombre: n, grupo: grupoDe(n), valor: act.get(n) || 0, presupuesto: (categorias().find((c) => c.nombre === n) || {}).presupuesto || 0,
     media: ref.length ? media(ref.map((m) => m.get(n) || 0)) : NaN,
   })).filter((c) => c.valor > 0.5 || c.presupuesto > 0).sort((a, b) => b.valor - a.valor);
+}
+
+// ───────────── foto del cierre ─────────────
+// Lo que dicen los datos de un mes al cerrarlo, para guardarlo y que no cambie aunque luego edites movimientos. Lo del mes (entró,
+// salió, categorías) va por «tu mes»; lo de la inversión y el patrimonio, por mes natural, como los cierres. Se guarda con 2 decimales.
+const FOTO_CIFRAS = [["ingresos", "Entró"], ["gastos", "Salió"], ["ahorro", "Ahorraste"], ["patrimonio", "Tu dinero total"], ["invertido", "Invertido"], ["metido", "Metido en inversión"]];
+const cent = (x) => Math.round(x * 100) / 100;
+function cifrasMes(key) {
+  const M = finMes(key), AP = sinTraspasos().filter((x) => keyCal(cargoDe(x)) === key);
+  return {
+    ingresos: cent(M.ingresos), gastos: cent(M.gastos), ahorro: cent(M.ahorro), metido: cent(sum(AP.map((x) => x.importe))),  // compras − ventas
+    categorias: Object.fromEntries([...gastoPorCategoria(key)].filter(([, v]) => Math.abs(v) >= 0.005).map(([k, v]) => [k, cent(v)])),
+  };
+}
+// saldos y valores pueden venir de los campos del formulario (cadenas, vacías si no se anotó).
+function cifrasPatrimonio(saldos, valores, otros, deudas) {
+  const limpio = (o) => Object.fromEntries(Object.entries(o || {}).filter(([, v]) => hasNum(v) && Number.isFinite(num(v))).map(([k, v]) => [k, num(v)]));
+  const { c } = agrupar(limpio(saldos), limpio(valores), otros);
+  return { patrimonio: cent(sum(Object.values(c)) - Math.abs(num(deudas))), invertido: cent(c["Inversión"] + c.Cripto) };
+}
+function fotoCierre(key, saldos, valores, otros, deudas, hecha) {
+  return { hecha, ...cifrasMes(key), ...cifrasPatrimonio(saldos, valores, otros, deudas) };
+}
+// Las mismas cifras con los datos de hoy: el mes se vuelve a calcular y el patrimonio sale del registro de saldos de la fecha del cierre.
+function fotoHoy(c) {
+  const p = patrimonio().find((x) => x.fecha.toISODate() === String(c.fecha).slice(0, 10));
+  return { ...cifrasMes(c.mes), ...(p ? cifrasPatrimonio(p.cuentas.saldos, p.valores, p.otros, p.deudas) : {}) };
+}
+// Qué ha cambiado desde la foto (más de 0,50 €): cifras [{ k, etiqueta, antes, ahora }] y categorías [{ nombre, antes, ahora }].
+function cambiosFoto(foto, ahora) {
+  const dif = (a, b) => Math.abs((b ?? a ?? 0) - (a ?? 0)) >= 0.5;
+  const cifras = FOTO_CIFRAS.filter(([k]) => foto[k] != null && ahora[k] != null && dif(foto[k], ahora[k])).map(([k, etiqueta]) => ({ k, etiqueta, antes: foto[k], ahora: ahora[k] }));
+  const antes = foto.categorias || {}, hoyC = ahora.categorias || {};
+  const categorias = [...new Set([...Object.keys(antes), ...Object.keys(hoyC)])].filter((n) => Math.abs((hoyC[n] || 0) - (antes[n] || 0)) >= 0.5)
+    .map((nombre) => ({ nombre, antes: antes[nombre] || 0, ahora: hoyC[nombre] || 0 })).sort((a, b) => Math.abs(b.ahora - b.antes) - Math.abs(a.ahora - a.antes));
+  return { cifras, categorias };
 }
 // Ritmo del gasto variable del mes en curso: acumulado día a día frente a la media de los meses de referencia.
 function ritmoMes(key = hoyKey) {
@@ -248,11 +292,13 @@ function porComercio(ms, dentro, fijo = () => false, pequeña = 10) {
     if (!clave) continue;
     if (!grupos.has(clave)) grupos.set(clave, { clave, total: 0, compras: new Set(), nombres: new Map() });
     const g = grupos.get(clave), id = m.p && m.p.id, compra = (m.p && m.p.parte_de) || id || m;
-    g.total += m.importe; g.compras.add(compra); g.nombres.set(m.concepto, (g.nombres.get(m.concepto) || 0) + 1);
+    const mio = m.medias ? m.medias.miParte : m.importe;  // un gasto a medias cuenta solo tu parte
+    g.total += mio; g.compras.add(compra); g.nombres.set(m.concepto, (g.nombres.get(m.concepto) || 0) + 1);
     if (id != null) deGasto.set(id, g);
-    compras.set(compra, (compras.get(compra) || 0) + m.importe);
+    compras.set(compra, (compras.get(compra) || 0) + mio);
   }
-  for (const m of ms) if (m.clase === "reembolso" && !m.previsto && m.p && deGasto.has(m.p.reembolsa)) deGasto.get(m.p.reembolsa).total -= m.importe;
+  // un reembolso resta lo que pasa de lo que te debían (`gasto` ya lo trae descontado; sin ese campo, el importe entero)
+  for (const m of ms) if (m.clase === "reembolso" && !m.previsto && m.p && deGasto.has(m.p.reembolsa)) deGasto.get(m.p.reembolsa).total -= m.gasto != null ? -m.gasto : m.importe;
   const lista = [...grupos.values()].filter((g) => g.total >= 0.5).map((g) => ({
     clave: g.clave, nombre: [...g.nombres].sort((a, b) => b[1] - a[1])[0][0], total: g.total, n: g.compras.size, medio: g.total / g.compras.size,
   })).sort((a, b) => b.total - a.total);
@@ -304,15 +350,15 @@ function planReparto(limite = limiteVar) {
     const o = objetivos().find((x) => x.vinculado && x.estado !== "conseguido" && x.cuenta !== principal());
     if (o && o.ahorrado < o.meta) {
       const x = aDiez(Math.min(sobra, o.meta - o.ahorrado));
-      if (x >= 10) { acciones.push({ tipo: "fondo", importe: x, texto: `Pasa ${eur(x, 0)} a ${o.cuenta}`, sub: `${o.nombre}: quedaría en ${eur(o.ahorrado + x, 0)} de ${eur(o.meta, 0)}` }); sobra -= x; }
+      if (x >= 10) { acciones.push({ tipo: "fondo", importe: x, texto: `Pasa ${eur(x, 2)} a ${o.cuenta}`, sub: `${o.nombre}: quedaría en ${eur(o.ahorrado + x, 2)} de ${eur(o.meta, 2)}` }); sobra -= x; }
     }
     const mensualApo = sum(recurrentes().filter((r) => r.clase === "aportacion").map((r) => r.importe));
     const hasta = F.agota ? Math.round(mesDT(F.agota.key).diff(mesDT(hoyKey), "months").months) : 99;
     if (F.agota && hasta <= 3 && sobra >= 50) {
       const x = aDiez(Math.min(sobra, Math.max(0, 3 * mensualApo - E.c["Efectivo bróker"])));
-      if (x >= 10) { acciones.push({ tipo: "broker", importe: x, texto: `Pasa ${eur(x, 0)} a ${nombresBroker()}`, sub: `su dinero sin invertir se acaba en ${mesLbl(F.agota.key).toLowerCase()}` }); sobra -= x; }
+      if (x >= 10) { acciones.push({ tipo: "broker", importe: x, texto: `Pasa ${eur(x, 2)} a ${nombresBroker()}`, sub: `su dinero sin invertir se acaba en ${mesLbl(F.agota.key).toLowerCase()}` }); sobra -= x; }
     }
-    if (sobra >= 50) acciones.push({ tipo: "libre", importe: aDiez(sobra), texto: `Te sobran ${eur(aDiez(sobra), 0)}`, sub: "puedes dejarlos en la corriente, ahorrarlos o invertirlos" });
+    if (sobra >= 50) acciones.push({ tipo: "libre", importe: aDiez(sobra), texto: `Te sobran ${eur(aDiez(sobra), 2)}`, sub: "puedes dejarlos en la corriente, ahorrarlos o invertirlos" });
   }
   // Próxima acción prevista (cuando no toca mover nada ahora): avisar con tiempo del traspaso al bróker.
   const futuro = F.agota ? { mes: F.agota.key, importe: Math.ceil(F.agota.apoBanco / 10) * 10 } : null;
@@ -344,9 +390,9 @@ function prevision(n = 12, sup = {}) {
   const mesesSuelto = mesesHasta(mesAnterior(hoyKey), 12).map(finMes).filter((M) => M.real.some((m) => !m.auto && m.clase === "gasto"));
   const sueltoEst = mesesSuelto.length ? Math.max(0, media(mesesSuelto.map(gastoFijoSuelto))) : 0;
   const sueltoMes = gastoFijoSuelto(finMes(hoyKey));
-  // Mes en curso: lo que falta hasta la estimación, sin pasar de la parte proporcional a los días que aún no traen tus datos.
-  const dc = diasConDatos();
-  const queda = (est, llevas) => Math.min(Math.max(0, est - llevas), est * (diasMes(hoyKey) - dc) / diasMes(hoyKey));
+  // Mes en curso: lo que falta hasta la estimación, y nunca menos que su parte proporcional a los días que aún no traen tus datos.
+  const dc = diasConDatos(), dmes = diasMes(hoyKey);
+  const queda = (est, llevas) => (dmes > dc ? Math.max(Math.max(0, est - llevas), (est * (dmes - dc)) / dmes) : 0);
   let saldo = inicio;
   const filas = mesesDesde(hoyKey, n).map((key) => {
     const pend = movimientos().filter((m) => m.previsto && keyDe(m.fecha) === key && !esDelBroker(m));
@@ -409,18 +455,18 @@ function puedoPermitirme(importe, d) {
   const peor = minimo && (finMes == null || minimo.saldo < finMes) ? { ...minimo, antes: d.minimo.saldo } : finMes != null ? { key: hoyKey, saldo: finMes, antes: d.finMes } : null;
   if (peor && peor.saldo <= -0.5) {
     const cuando = peor.key === hoyKey ? "al acabar este mes" : `en ${mesLbl(peor.key).toLowerCase()}`;
-    return { ...out, nivel: "mal", texto: peor.antes <= -0.5 ? `Ni sin este gasto: tus cuentas ya bajarían de cero ${cuando}; con él se quedarían en ${eur(peor.saldo, 0)}.`
-      : `No te llega: tus cuentas se quedarían en ${eur(peor.saldo, 0)} ${cuando}.` };
+    return { ...out, nivel: "mal", texto: peor.antes <= -0.5 ? `Ni sin este gasto: tus cuentas ya bajarían de cero ${cuando}; con él se quedarían en ${eur(peor.saldo, 2)}.`
+      : `No te llega: tus cuentas se quedarían en ${eur(peor.saldo, 2)} ${cuando}.` };
   }
   const pasado = limite != null && limite <= -0.5;
-  const tPasa = `te pasarías ${eur(-limite, 0)} del límite de este mes`, yaBajo = d.colchon && d.colchon.sobra <= -0.5;
-  const tColchon = yaBajo ? `tu cuenta del día a día ya está ${eur(-d.colchon.sobra, 0)} por debajo de tu colchón` : `dejaría tu cuenta del día a día ${eur(bajoColchon, 0)} por debajo de tu colchón`;
+  const tPasa = `te pasarías ${eur(-limite, 2)} del límite de este mes`, yaBajo = d.colchon && d.colchon.sobra <= -0.5;
+  const tColchon = yaBajo ? `tu cuenta del día a día ya está ${eur(-d.colchon.sobra, 2)} por debajo de tu colchón` : `dejaría tu cuenta del día a día ${eur(bajoColchon, 2)} por debajo de tu colchón`;
   const frase = (s) => s[0].toUpperCase() + s.slice(1) + ".";
   if (pasado && bajoColchon) return { ...out, nivel: "ojo", texto: frase(`${tPasa} y ${tColchon}`) };
   if (pasado) return { ...out, nivel: "ojo", texto: finMes == null ? frase(tPasa) : `Tus cuentas lo aguantan, pero ${tPasa}.` };
   if (bajoColchon) return { ...out, nivel: "ojo", texto: limite == null ? frase(tColchon) : `Te cabe en tu límite, pero ${tColchon}.` };
-  if (limite == null) return { ...out, nivel: "bien", texto: `Tus cuentas lo aguantan: acabarías el mes con ${eur(finMes, 0)}.` };
-  return { ...out, nivel: "bien", texto: finMes == null ? `Te cabe en tu límite de este mes: te quedarían ${eur(limite, 0)}.` : `Sí, te cabe: te quedarían ${eur(limite, 0)} de tu límite este mes.` };
+  if (limite == null) return { ...out, nivel: "bien", texto: `Tus cuentas lo aguantan: acabarías el mes con ${eur(finMes, 2)}.` };
+  return { ...out, nivel: "bien", texto: finMes == null ? `Te cabe en tu límite de este mes: te quedarían ${eur(limite, 2)}.` : `Sí, te cabe: te quedarían ${eur(limite, 2)} de tu límite este mes.` };
 }
 // Las cifras de hoy para puedoPermitirme(). Sin saldos anotados no hay previsión; sin ingresos fijos, la previsión solo ve lo que
 // sale y su mes más bajo no dice nada (`sinIngresos`).
@@ -431,19 +477,71 @@ function datosPermitir() {
 }
 
 // ───────────── «Más filtros» de Movimientos ─────────────
-// f: { cuenta: "" (todas) | nombre, desde, hasta: texto como lo escribe un español ("" = sin tope), sinRevisar: bool }. El importe es el absoluto
+// f: { cuenta: "" (todas) | nombre, desde, hasta: texto como lo escribe un español ("" = sin tope), sinRevisar: bool, etiqueta: "" | una etiqueta, deben: bool }. El importe es el absoluto
 // (movimiento.importe va siempre en positivo: da igual si es gasto o ingreso). Un tope que no es un importe válido no filtra.
 function filtrosMasLimpios(f) {
   const g = f || {}, n = (t) => { const v = leerImporte(t); return isFinite(v) ? v : null; };
-  return { cuenta: String(g.cuenta || ""), desde: n(g.desde), hasta: n(g.hasta), sinRevisar: !!g.sinRevisar };
+  return { cuenta: String(g.cuenta || ""), desde: n(g.desde), hasta: n(g.hasta), sinRevisar: !!g.sinRevisar, etiqueta: String(g.etiqueta || "").trim(), deben: !!g.deben };
 }
 // Cuántos de los filtros de «Más filtros» están puestos (0 = ninguno).
 function filtrosMasActivos(f) {
   const g = filtrosMasLimpios(f);
-  return (g.cuenta ? 1 : 0) + (g.desde != null || g.hasta != null ? 1 : 0) + (g.sinRevisar ? 1 : 0);
+  return (g.cuenta ? 1 : 0) + (g.desde != null || g.hasta != null ? 1 : 0) + (g.sinRevisar ? 1 : 0) + (g.etiqueta ? 1 : 0) + (g.deben ? 1 : 0);
 }
 function filtrarMas(ms, f) {
   const g = filtrosMasLimpios(f);
+  const etq = g.etiqueta.toLowerCase();  // «etiqueta»: una de las del movimiento (da igual mayúsculas) · «deben»: gastos a medias con algo por cobrar
   return ms.filter((m) => (!g.cuenta || m.cuenta === g.cuenta) && (g.desde == null || m.importe >= g.desde - 0.005)
-    && (g.hasta == null || m.importe <= g.hasta + 0.005) && (!g.sinRevisar || !!m.pendiente));
+    && (g.hasta == null || m.importe <= g.hasta + 0.005) && (!g.sinRevisar || !!m.pendiente)
+    && (!etq || ((m.p && m.p.etiquetas) || []).some((e) => String(e).toLowerCase() === etq)) && (!g.deben || (!!m.medias && m.medias.pendiente > 0.005)));
 }
+
+// ───────────── Filtros guardados de Movimientos ─────────────
+// Un filtro guardado es todo lo que condiciona la lista: búsqueda, categoría, periodo, orden y «Más filtros». Se guarda en config.filtros_movimientos.
+const MAX_FILTROS_MOV = 20;
+// v: { busqueda, categoria (null = todas), hist (false = el mes | "año" | true = todo el historial), orden ("fecha" | "importe"), mf (como filtrosMasLimpios) }
+function filtroDeVista(v) {
+  const g = filtrosMasLimpios(v.mf), mf = v.mf || {};
+  return { busqueda: String(v.busqueda || "").trim(), categoria: String(v.categoria || ""), cuenta: g.cuenta,
+    desde: g.desde == null ? "" : String(mf.desde).trim(), hasta: g.hasta == null ? "" : String(mf.hasta).trim(), sinRevisar: g.sinRevisar,
+    etiqueta: String(g.etiqueta || ""), deben: !!g.deben,
+    periodo: v.hist === true ? "todo" : v.hist === "año" ? "año" : "mes", orden: v.orden === "importe" ? "importe" : "fecha" };
+}
+// Lo contrario: lo que hay que poner en la vista para que quede como cuando se guardó.
+function vistaDeFiltro(f) {
+  return { busqueda: f.busqueda || "", categoria: f.categoria || null, hist: f.periodo === "todo" ? true : f.periodo === "año" ? "año" : false,
+    orden: f.orden === "importe" ? "importe" : "fecha",
+    mf: { cuenta: f.cuenta || "", desde: f.desde || "", hasta: f.hasta || "", sinRevisar: !!f.sinRevisar, etiqueta: f.etiqueta || "", deben: !!f.deben } };
+}
+// «Qué filtra», en una línea y con los importes en euros. "" = no filtra nada (el mes, por fecha).
+function resumenFiltro(f) {
+  const g = filtrosMasLimpios(f), out = [];
+  if (f.busqueda) out.push(`«${f.busqueda}»`);
+  if (f.categoria) out.push(f.categoria);
+  if (g.cuenta) out.push(g.cuenta);
+  if (g.desde != null && g.hasta != null) out.push(`de ${eur(g.desde, 2)} a ${eur(g.hasta, 2)}`);
+  else if (g.desde != null) out.push(`desde ${eur(g.desde, 2)}`);
+  else if (g.hasta != null) out.push(`hasta ${eur(g.hasta, 2)}`);
+  if (g.sinRevisar) out.push("solo sin revisar");
+  if (f.etiqueta) out.push(`etiqueta «${f.etiqueta}»`);
+  if (f.deben) out.push("solo lo que te deben");
+  if (f.periodo === "todo") out.push("todo el historial"); else if (f.periodo === "año") out.push("todo el año");
+  if (f.orden === "importe") out.push("mayor importe primero");
+  return out.join(" · ");
+}
+// Altas, cambios de nombre y bajas sobre la lista. Devuelven { lista } o { error } (nunca tocan la que reciben).
+function filtrosConGuardado(lista, nombre, f) {
+  const n = String(nombre || "").trim().replace(/\s+/g, " ");
+  if (!n) return { error: "Ponle un nombre al filtro." };
+  const i = lista.findIndex((x) => x.nombre.toLowerCase() === n.toLowerCase());
+  if (i < 0 && lista.length >= MAX_FILTROS_MOV) return { error: `Puedes guardar hasta ${MAX_FILTROS_MOV} filtros: quita alguno antes de guardar otro.` };
+  const nuevo = { ...f, nombre: n };
+  return { lista: i < 0 ? [...lista, nuevo] : lista.map((x, j) => (j === i ? nuevo : x)), sustituye: i >= 0 };
+}
+function filtrosConNombre(lista, i, nombre) {
+  const n = String(nombre || "").trim().replace(/\s+/g, " ");
+  if (!n) return { error: "Ponle un nombre al filtro." };
+  if (lista.some((x, j) => j !== i && x.nombre.toLowerCase() === n.toLowerCase())) return { error: `Ya hay un filtro que se llama «${n}».` };
+  return { lista: lista.map((x, j) => (j === i ? { ...x, nombre: n } : x)) };
+}
+const filtrosSin = (lista, i) => lista.filter((_, j) => j !== i);

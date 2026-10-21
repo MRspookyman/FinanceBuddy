@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS registros(id INTEGER PRIMARY KEY, tipo TEXT NOT NULL,
 CREATE INDEX IF NOT EXISTS registros_tipo ON registros(tipo);
 CREATE TABLE IF NOT EXISTS config(clave TEXT PRIMARY KEY, valor TEXT);
 """
-VERSION_ESQUEMA = 2
+VERSION_ESQUEMA = 4  # 4: campos nuevos en movimiento (divisa, a_medias, etiquetas…) y en otros registros; una app de la 3 los borraría al editar
 COPIAS_MAX = 30
 
 RE_COPIA = re.compile(r"datos (\d{4}-\d{2}-\d{2})(?: (\d{6}))?")
@@ -77,6 +77,7 @@ class Almacen:
         self.con = sqlite3.connect(ruta, check_same_thread=False, isolation_level=None)
         self.lock = threading.RLock()
         self._tx = 0
+        self._lote = None  # lote de la importación en curso (con_lote): lo que se inserte con insertar_crudo lo lleva
         try:
             self.con.execute("PRAGMA journal_mode=WAL")
             self.con.executescript(ESQUEMA)
@@ -104,6 +105,15 @@ class Almacen:
                 raise
             self._tx -= 1
             if self._tx == 0: self.con.execute("COMMIT")
+
+    @contextmanager
+    def con_lote(self, lote):
+        """Dentro, todo registro nuevo de los tipos de modelo.CON_LOTE (movimientos, aportaciones, cobros, dudas…) que se inserte con
+        `insertar_crudo` lleva `lote`. `None` = ninguno. Se pueden anidar: al salir se repone el de antes."""
+        with self.lock:
+            antes, self._lote = self._lote, lote or None
+            try: yield self
+            finally: self._lote = antes
 
     @contextmanager
     def simular(self):
@@ -174,9 +184,10 @@ class Almacen:
                     self.con.execute("UPDATE registros SET datos=? WHERE id=?", (json.dumps(r, ensure_ascii=False), i))
 
     def insertar_crudo(self, tipo, d):
-        """Inserta sin validar (datos ya limpios, p. ej. en importaciones masivas)."""
+        """Inserta sin validar (datos ya limpios, p. ej. en importaciones masivas). Dentro de `con_lote`, lo marca con su lote."""
         ahora = datetime.datetime.now().isoformat(timespec="seconds")
         with self.lock:
+            if self._lote and tipo in modelo.CON_LOTE: d = {**d, "lote": self._lote}
             return self.con.execute("INSERT INTO registros(tipo, datos, creado, modificado) VALUES(?,?,?,?)",
                                     (tipo, json.dumps(d, ensure_ascii=False), ahora, ahora)).lastrowid
 

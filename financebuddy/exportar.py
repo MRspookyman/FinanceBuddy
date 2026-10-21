@@ -53,7 +53,8 @@ def plantilla_excel(alm):
 _HOJAS = [
     ("Movimientos", "movimiento", [("Fecha", "fecha"), ("Tipo", "clase"), ("Concepto", "concepto"), ("Categoría", "categoria"), ("Importe", "importe"),
                                    ("Importe con signo", "_signo"), ("Cuenta", "cuenta"), ("Hacia / desde otra cuenta", "_otra"), ("Fijo enlazado", "recurrente"),
-                                   ("Nota", "nota"), ("Texto del extracto", "ext_texto")]),
+                                   ("Nota", "nota"), ("Texto del extracto", "ext_texto"), ("Divisa", "divisa"), ("Importe en esa divisa", "importe_divisa"),
+                                   ("A medias: tu parte", "mi_parte"), ("Te deben", "_deben"), ("Cobrado", "_cobrado"), ("Etiquetas", "etiquetas")]),
     ("Cuentas", "cuenta", [("Nombre", "nombre"), ("Tipo", "tipo"), ("Importo sus movimientos", "extracto"), ("IBAN (4 últimas)", "iban"), ("Notas", "notas")]),
     ("Saldos", "patrimonio", [("Fecha", "fecha"), ("Saldos por cuenta", "_saldos"), ("Valor de la inversión", "_valores"), ("Otros", "otros"), ("Deudas", "deudas"), ("Nota", "nota")]),
     ("Fijos", "recurrente", [("Nombre", "nombre"), ("Tipo", "clase"), ("Categoría", "categoria"), ("Importe", "importe"), ("Día", "dia"), ("Desde", "desde"),
@@ -83,6 +84,9 @@ def _valor(tipo, r, k):
     if k == "_valores": return "; ".join(f"{a}: {v:.2f}" for a, v in (r.get("valores") or {}).items())
     if k == "_meses": return ", ".join(str(m) for m in (r.get("meses") or [])) or "todos"
     if k == "_activo": return "no" if r.get("activo") is False else "sí"
+    if k == "_deben": return round(r["importe"] - r["mi_parte"], 2) if r.get("a_medias") and r.get("mi_parte") is not None else None
+    if k == "_cobrado": return ("sí" if r.get("cobrado") else "no") if r.get("a_medias") else ""
+    if k == "etiquetas": return ", ".join(r.get("etiquetas") or [])
     v = r.get(k)
     if k == "clase" and tipo in ("movimiento", "recurrente"): return _CLASE.get(v, v)
     if isinstance(v, bool): return "sí" if v else ("" if k == "oculta" else "no")
@@ -120,6 +124,7 @@ def datos_excel(alm):
                   "",
                   f"Exportados el {datetime.date.today():%d/%m/%Y} con FinanceBuddy {VERSION}. Es una copia para consultar o hacer tus propias cuentas: no cambia nada en la app.",
                   "En «Movimientos» el importe va sin signo y «Importe con signo» pone los gastos en negativo (las transferencias entre cuentas quedan vacías: no son ni gasto ni ingreso).",
+                  "En un gasto a medias, «Importe» es lo que pagaste tú entero; tu parte y lo que te deben van en sus columnas. En uno en otra divisa, «Importe» sigue siendo lo que salió en euros.",
                   "En «Aportaciones» una venta lleva el importe y las participaciones en negativo.",
                   "Para guardar algo que se pueda restaurar usa «Hacer una copia ahora» en Ajustes → Tus datos y copias.",
                   "",

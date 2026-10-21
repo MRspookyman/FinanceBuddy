@@ -2,7 +2,9 @@
 // Las dudas del banco se agrupan por comercio (mismo patrón, cuenta y sentido): una decisión resuelve el grupo entero.
 // Cada grupo ofrece la categoría más probable (por tu historial) y las que más usas, a un clic.
 function vistaRevisar() {
-  const P = DB.pendientes || [];
+  // Lo que la app no ha sabido clasificar: lo mismo que cuentan el aviso y los primeros pasos del Inicio y la insignia del menú. Las
+  // compras del bróker que ya reconoce (`compraBroker`) cuentan en tu inversión desde el principio: no son dudas y van aparte.
+  const P = porRevisar(), compras = (DB.pendientes || []).filter(compraBroker);
   const S = (DB.registros.movimiento || []).filter((m) => m.sugerido).sort((a, b) => String(b.fecha).localeCompare(String(a.fecha)) || b.id - a.id);
   // Los grupos se cuentan antes del título: la insignia del menú y el subtítulo iban por movimientos y los chips de abajo
   // por grupos, con la misma pinta («6 movimientos» arriba y «Todo · 4» justo debajo). Ahora el título dice las dos cosas.
@@ -17,14 +19,15 @@ function vistaRevisar() {
     for (const [k, g] of m) if (k.startsWith("reparto|")) g.reparto = true;  // varios Bizums iguales el mismo día: un solo gasto repartido
     return [...m.values()].sort((a, b) => b.length - a.length || sum(b.map((p) => Math.abs(p.fila.importe))) - sum(a.map((p) => Math.abs(p.fila.importe))));
   };
-  const G = agrupar(banco, true), GI = agrupar(inv, false);
+  const G = agrupar(banco, true), GI = agrupar(inv, false), GC = agrupar(compras, false);
   const nG = G.length + GI.length;
   titulo("Por revisar", P.length ? `${nG} grupo${nG > 1 ? "s" : ""} · ${P.length} movimiento${P.length > 1 ? "s" : ""} que la app no ha sabido clasificar sola`
     + (nG < P.length ? " (lo del mismo comercio se resuelve de una vez)" : "") : "");
   avisoDeshacerPendiente(root);
   if (S.length) panelSugeridos(root, S);
   if (!P.length) {
-    if (S.length) return;
+    seccionComprasBroker(root, GC);
+    if (S.length || GC.length) return;
     const ok = root.createDiv({ cls: "fb-hecho" });
     ok.createDiv({ cls: "i", text: "✓" });
     ok.createEl("b", { text: "Todo revisado" });
@@ -58,6 +61,16 @@ function vistaRevisar() {
     for (const g of pg.parte) tarjetaGrupoInversion(ci, g);
     pg.pie(root);
   }
+  if (filtroRev === "todo") seccionComprasBroker(root, GC);
+}
+// Compras del bróker que la app ya reconoce: cuentan en tu inversión por lo que pagaste, así que no suman al «por revisar». Aquí se
+// elige de qué activo son (o se crea) para dejarlas guardadas.
+function seccionComprasBroker(padre, GC) {
+  if (!GC.length) return;
+  padre.createEl("h3", { cls: "fb-sec", text: "Compras de tu bróker por confirmar" });
+  padre.createDiv({ cls: "fin-note fb-pista", text: "Ya cuentan en tu inversión por lo que pagaste, y no suman a lo que queda por revisar. Elige el activo (o créalo) para dejarlas guardadas." });
+  const ci = padre.createDiv({ cls: "fb-grupos" });
+  for (const g of GC) tarjetaGrupoInversion(ci, g);
 }
 // Movimientos ya guardados (y contados en el mes) con una categoría que la app eligió sola: se confirman de golpe o se corrigen uno a uno.
 function panelSugeridos(padre, S) {
@@ -106,6 +119,7 @@ const sugDe = (g) => (g.reparto ? g.map((p) => p.sugerencia).find((s) => s && s.
 const JEV_SEGURA = 0.85;  // igual que jev.SEGURA: desde aquí, la sugerencia sale marcada al aceptar en bloque
 function botonJev(padre, G, GI, conSug = new Set()) {
   const J = (DB.config || {}).jev || {};
+  if (J.repaso && J.repaso.en_marcha) { padre.createDiv({ cls: "fin-note", text: "✨ Jev está repasando lo que acabas de importar. Puedes seguir usando la app; esta lista se actualiza sola al terminar." }); esperarRepasoJev(); }
   const sinB = (GI || []).filter((g) => g[0].sugerencia && g[0].sugerencia.nuevo && !g[0].sugerencia.isin && !g[0].jev);
   const sin = [...G.filter((g) => !sugDe(g) && !g[0].jev && g[0].fila.clase !== "transferencia"), ...sinB];
   if (!sin.length) return;
@@ -126,6 +140,25 @@ function botonJev(padre, G, GI, conSug = new Set()) {
     FB.aviso(r.mensaje || (r.ok ? "Hecho" : "Error"), !r.ok);
     await FB.refrescar();
   };
+}
+// Jev repasa lo importado en segundo plano: esta vista espera a que acabe y se redibuja sola (si sigues aquí).
+function esperarRepasoJev() {
+  if (FB.estado.esperaJev) return;
+  FB.estado.esperaJev = true;
+  (async () => {
+    try {
+      for (let i = 0; i < 1200 && location.hash === "#revisar"; i++) {
+        await new Promise((f) => setTimeout(f, 700));
+        const e = await FB.api("/api/jev/repaso", {});
+        if (e.ok && e.en_marcha) continue;
+        if (e.error) FB.aviso("Jev no ha podido repasar lo importado: " + e.error, true);
+        await FB.refrescar();
+        return;
+      }
+    } finally {
+      FB.estado.esperaJev = false;
+    }
+  })();
 }
 const nombreGrupo = (g) => { const f = g[0].fila, s = g[0].sugerencia || {}; return g[0].tipo_import === "inversion" ? s.nuevo || s.activo || C_titulo(sugerirPatron(f.texto)) : f.concepto || C_titulo(sugerirPatron(f.texto)); };
 // Lo que la app propone para un grupo (o null): { texto, datos, motivo, segura }. «segura»: sale marcada al aceptar en bloque.
@@ -253,7 +286,7 @@ function tarjetaGrupoInversion(padre, g) {
   for (const a of acts.filter((a) => a !== sug.activo)) chip(`📈 ${a}`, () => ({ accion: "activo", activo: a }));
   if (sug.accion !== "interes") chip(entra ? "💰 Intereses" : "🏦 Comisión", () => ({ accion: "interes" }));
   if (entra && acts.length) {  // un dividendo o cupón: de qué activo
-    const sD = chips.createEl("select", { cls: "otra" });
+    const sD = chips.createEl("select", { cls: "otra", attr: { "aria-label": "Dividendo de qué activo" } });
     const d0 = sD.createEl("option", { text: sug.accion === "dividendo" && !sug.activo ? "✨ Dividendo de…" : "Dividendo de…" }); d0.value = "";
     for (const a of acts) { const o = sD.createEl("option", { text: `💵 ${a}` }); o.value = a; }
     sD.onchange = () => { if (sD.value) hecho({ accion: "dividendo", activo: sD.value }, sD); };
@@ -263,11 +296,11 @@ function tarjetaGrupoInversion(padre, g) {
   plegable(card, "Opciones", (c) => {
     const f0 = c.createDiv({ cls: "fb-fila" });
     f0.createSpan({ cls: "fb-et", text: "Nombre del activo nuevo" });
-    const iN = f0.createEl("input", { attr: { type: "text" } }); iN.value = nombreNuevo; iN.oninput = () => (nombreNuevo = iN.value);
+    const iN = f0.createEl("input", { attr: { type: "text", "aria-label": "Nombre del activo nuevo" } }); iN.value = nombreNuevo; iN.oninput = () => (nombreNuevo = iN.value);
     const f1 = c.createDiv({ cls: "fb-fila" });
     const lab = f1.createEl("label"); const chk = lab.createEl("input", { attr: { type: "checkbox" } }); chk.checked = recordar; chk.onchange = () => (recordar = chk.checked);
     lab.appendText("Recordar para la próxima vez los que contengan:");
-    const iPat = f1.createEl("input", { attr: { type: "text" } }); iPat.value = patron; iPat.oninput = () => (patron = iPat.value);
+    const iPat = f1.createEl("input", { attr: { type: "text", "aria-label": "Texto a recordar" } }); iPat.value = patron; iPat.oninput = () => (patron = iPat.value);
   });
 }
 // «¿De cuál de tus gastos es?»: los gastos tuyos de los días anteriores que un Bizum recibido (o un reparto) podría devolver, con
@@ -358,7 +391,7 @@ function tarjetaGrupo(padre, g) {
   }
   for (const c of catsFrecuentes(entra, 6, f.importe)) if (!vistas.has(c)) { vistas.add(c); chip(`${catIcono(c)} ${c}`, { accion: "guardar", clase: claseCat(c), categoria: c }); }
   // Cualquier otra categoría (o gasto/ingreso cruzado: un ingreso que en realidad te devuelve un gasto)
-  const sOtra = chips.createEl("select", { cls: "otra" });
+  const sOtra = chips.createEl("select", { cls: "otra", attr: { "aria-label": "Otra categoría" } });
   const o0 = sOtra.createEl("option", { text: "Otra…" }); o0.value = "";
   for (const [grupo, lbl] of [["gasto", entra ? "Te devuelven un gasto de…" : "Gasto"], ["ingreso", "Ingreso"]]) {
     const og = sOtra.createEl("optgroup"); og.label = lbl;
@@ -366,7 +399,7 @@ function tarjetaGrupo(padre, g) {
   }
   sOtra.onchange = () => { if (sOtra.value) hecho({ accion: "guardar", clase: claseCat(sOtra.value), categoria: sOtra.value }, sOtra); };
   if (!esTr && cuentas().length > 1) {
-    const sTr = chips.createEl("select", { cls: "otra" });
+    const sTr = chips.createEl("select", { cls: "otra", attr: { "aria-label": "Traspaso entre mis cuentas" } });
     const t0 = sTr.createEl("option", { text: "Entre mis cuentas…" }); t0.value = "";
     for (const c of cuentas().filter((c) => c.nombre !== p.cuenta)) { const o = sTr.createEl("option", { text: `${entra ? "← desde" : "→ a"} ${c.nombre}` }); o.value = c.nombre; }
     sTr.onchange = () => { if (sTr.value) hecho({ accion: "guardar", clase: "transferencia", cuenta_otra: sTr.value }, sTr); };
@@ -380,11 +413,11 @@ function tarjetaGrupo(padre, g) {
     const f1 = c.createDiv({ cls: "fb-fila" });
     const lab = f1.createEl("label"); const chk = lab.createEl("input", { attr: { type: "checkbox" } }); chk.checked = recordar; chk.onchange = () => (recordar = chk.checked);
     lab.appendText("Recordar para la próxima vez los que contengan:");
-    const iPat = f1.createEl("input", { attr: { type: "text" } }); iPat.value = patron; iPat.oninput = () => (patron = iPat.value);
+    const iPat = f1.createEl("input", { attr: { type: "text", "aria-label": "Texto a recordar" } }); iPat.value = patron; iPat.oninput = () => (patron = iPat.value);
     if (g.length === 1) {
       const f2 = c.createDiv({ cls: "fb-fila" });
       f2.createSpan({ cls: "fb-et", text: "Nombre para mostrar" });
-      const iC = f2.createEl("input", { attr: { type: "text" } }); iC.value = concepto; iC.oninput = () => (concepto = iC.value);
+      const iC = f2.createEl("input", { attr: { type: "text", "aria-label": "Nombre para mostrar" } }); iC.value = concepto; iC.oninput = () => (concepto = iC.value);
     }
   });
 }

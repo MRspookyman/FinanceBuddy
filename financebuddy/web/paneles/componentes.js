@@ -73,7 +73,7 @@ function zonaSoltar(padre, texto, pulsar, soltar) {
 function cabecera(titulo, conMes, subt) {
   const h = root.createDiv({ cls: "fin-head" });
   const izq = h.createDiv();
-  izq.createEl("h2", { text: titulo });
+  izq.createEl("h1", { text: titulo });
   if (subt) izq.createDiv({ cls: "sub", text: subt });
   if (conMes) {
     const box = h.createDiv({ cls: "fin-mes" });
@@ -110,7 +110,7 @@ function vacio(padre, titulo, pista, accion) {  // accion: { texto, ruta } = un 
 }
 // Diálogo propio en vez de confirm()/prompt() del navegador: <dialog> modal (foco atrapado, Esc cierra), con nombre y descripción,
 // el foco empieza en el botón seguro si la acción es destructiva y vuelve al elemento que lo abrió. Devuelve una promesa.
-function dialogoFB(mensaje, { titulo = "¿Seguro?", si = "Aceptar", no = "Cancelar", peligro = false, campo = null } = {}) {
+function dialogoFB(mensaje, { titulo = "¿Seguro?", si = "Aceptar", no = "Cancelar", peligro = false, campo = null, valor = "" } = {}) {
   return new Promise((resolver) => {
     const antes = document.activeElement;
     const d = document.body.appendChild(document.createElement("dialog"));
@@ -121,20 +121,27 @@ function dialogoFB(mensaje, { titulo = "¿Seguro?", si = "Aceptar", no = "Cancel
     for (const t of String(mensaje).split(/\n\n+/)) m.appendChild(document.createElement("p")).textContent = t;
     let inp = null;
     if (campo) {
-      inp = d.appendChild(document.createElement("input")); inp.type = "text"; inp.setAttribute("aria-label", campo);
-      inp.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); d.close("si"); } };
+      inp = d.appendChild(document.createElement("input")); inp.type = "text"; inp.setAttribute("aria-label", campo); inp.value = valor;
+      inp.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); d.close("si"); acabar(); } };
     }
     const fila = d.appendChild(document.createElement("div")); fila.className = "fb-dialogo-b";
     const bNo = fila.appendChild(document.createElement("button")); bNo.type = "button"; bNo.className = "fb-btn sec"; bNo.textContent = no;
     const bSi = fila.appendChild(document.createElement("button")); bSi.type = "button"; bSi.className = "fb-btn" + (peligro ? " sec peligro" : ""); bSi.textContent = si;
-    bNo.onclick = () => d.close("no"); bSi.onclick = () => d.close("si");
-    d.addEventListener("click", (e) => { if (e.target === d) d.close("no"); });
-    d.addEventListener("close", () => {
+    // Se resuelve al pulsar el botón, no cuando llega el evento «close» (que el navegador entrega más tarde, y a veces mucho más);
+    // el evento sigue sirviendo para Esc. `acabar` es idempotente: si ya se resolvió por el botón, el evento no hace nada.
+    let resuelto = false;
+    const acabar = () => {
+      if (resuelto) return;
+      resuelto = true;
       const ok = d.returnValue === "si", v = inp ? inp.value : "";
       d.remove();
       if (antes && antes.isConnected && antes.focus) antes.focus();
       resolver(campo ? (ok ? v : null) : ok);
-    });
+    };
+    const cerrar = (valor) => { d.close(valor); acabar(); };
+    bNo.onclick = () => cerrar("no"); bSi.onclick = () => cerrar("si");
+    d.addEventListener("click", (e) => { if (e.target === d) cerrar("no"); });
+    d.addEventListener("close", acabar);
     d.showModal();
     (inp || (peligro ? bNo : bSi)).focus();
   });
@@ -208,7 +215,7 @@ function stack(padre, partes) {
     const seg = st.createDiv();
     seg.style.flex = `${p.valor} 1 0`;
     seg.style.background = p.color;
-    seg.title = `${p.nombre}: ${eur(p.valor, 0)} · ${pct(p.valor / total)}`;
+    seg.title = `${p.nombre}: ${eur(p.valor, 2)} · ${pct(p.valor / total)}`;
   }
   return st;
 }

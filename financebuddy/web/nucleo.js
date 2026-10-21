@@ -225,25 +225,27 @@
     ajustes: '<path d="M4 7h9m4 0h3M4 17h3m4 0h9"/><circle cx="15" cy="7" r="2.2"/><circle cx="9" cy="17" r="2.2"/>',
   };
   const SECCION = { resumen: "inicio", gastos: "movimientos", prevision: "inicio", patrimonio: "inicio", objetivos: "ajustes",
-    gestionar: "ajustes", editar: "ajustes", fijos: "ajustes", revision: "ajustes", cerrar: "inicio", valores: "inversion", activo: "inversion", renta: "inversion", reparto: "inversion", anual: "movimientos" };
+    gestionar: "ajustes", editar: "ajustes", fijos: "ajustes", revision: "ajustes", cerrar: "inicio", valores: "inversion", activo: "inversion", renta: "inversion", reparto: "inversion", independencia: "inversion", anual: "movimientos" };
   function barra() {
     const DB = FB.DB; if (!DB) return;
     const fechas = (DB.registros.movimiento || []).map((m) => m.fecha).sort();
     document.getElementById("datos").textContent = fechas.length ? `Movimientos hasta el ${fechas[fechas.length - 1].split("-").reverse().join("/")}` : "";
     document.getElementById("ejemplo").hidden = !(DB.info && DB.info.ejemplo);
-    const n = (DB.pendientes || []).length;
+    // `hay`: todo lo que espera en «Por revisar»; `n`: lo que cuenta como duda (las compras del bróker que la app ya reconoce no suman).
+    // Los paneles publican `FB.nPorRevisar` al dibujarse (pantallas.js): hasta entonces vale `hay`.
+    const hay = (DB.pendientes || []).length, n = FB.nPorRevisar == null ? hay : FB.nPorRevisar;
     // Sin cuentas no hay nada que enseñar: todas esas pantallas acaban en la Bienvenida (pantallas.js), así que el menú
     // llevaba a sitios que no cambiaban nada. Hasta la primera cuenta, solo «Primeros pasos» y «Ajustes».
     const sinCuentas = !((DB.registros || {}).cuenta || []).length;
     // [ruta, nombre]. «Importar» no está en el menú: es el botón de la barra (y la tecla I).
     const items = sinCuentas ? [["bienvenida", "Primeros pasos"], ["ajustes", "Ajustes"]]
-      : [["inicio", "Inicio"], ["movimientos", "Movimientos"], ["inversion", "Inversión"], n ? ["revisar", "Por revisar"] : null, ["ajustes", "Ajustes"]].filter(Boolean);
+      : [["inicio", "Inicio"], ["movimientos", "Movimientos"], ["inversion", "Inversión"], hay ? ["revisar", "Por revisar"] : null, ["ajustes", "Ajustes"]].filter(Boolean);
     const [v, t] = ruta(), PORTIPO = { movimiento: "movimientos", aportacion: "inversion", activo: "inversion" };
     let act = (v === "editar" || v === "gestionar") && PORTIPO[t] ? PORTIPO[t] : SECCION[v] || v;
     if (sinCuentas && act !== "ajustes" && act !== "importar") act = "bienvenida";  // todo eso enseña la Bienvenida
     const menu = document.getElementById("menu");
     document.querySelector("#cabecera .apuntar").classList.toggle("act", act === "importar");
-    menu.innerHTML = items.map(([k, t]) => `<a href="#${k}" class="internal-link${k === act ? " act" : ""}" title="${t}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">${ICO[k]}</svg><span>${t}</span>${k === "revisar" ? `<span class="num">${n}</span>` : ""}</a>`).join("");
+    menu.innerHTML = items.map(([k, t]) => `<a href="#${k}" class="internal-link${k === act ? " act" : ""}"${k === act ? ` aria-current="${k === v ? "page" : "true"}"` : ""} title="${t}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">${ICO[k]}</svg><span>${t}</span>${k === "revisar" && n ? `<span class="num">${n}</span>` : ""}</a>`).join("");
     // El subrayado de la sección activa es un solo elemento (el ::after del menú) que se desliza hasta ella
     const sel = menu.querySelector("a.act");
     menu.style.setProperty("--ind-o", sel ? "1" : "0");
@@ -300,6 +302,7 @@
     FB.container = app.createDiv({ cls: "fin-page" });
     try { new Function("FB", "luxon", "input", FB.codigo)(FB, luxon, { vista, params, ...(extra || {}) }); }
     catch (e) { log("Error: " + (e.stack || e)); }
+    barra();  // ahora que la pantalla ha publicado FB.nPorRevisar, el menú lleva su número
     if (discreto) aplicarDiscreto();
     window.scrollTo(0, 0);
     if (FB._buscar) { FB._buscar = false; const s = app.querySelector("input.fin-search"); if (s) s.focus(); }  // tecla «/» desde otra pantalla

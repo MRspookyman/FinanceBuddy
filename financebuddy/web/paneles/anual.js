@@ -32,26 +32,26 @@ function vistaAnual() {
   // Pulsar un mes lleva a sus movimientos; una categoría, a los suyos de todo el año
   const verMes = (key) => () => { guardarEstado({ mes: key, filtroCat: null, hist: null }); FB.ir("#movimientos/lista"); };
   const verCat = (cat) => () => { guardarEstado({ mes: hasta, filtroCat: cat, hist: "año" }); FB.ir("#movimientos/lista"); };
-  // «2025: 1.234 € (+5 %)»: la misma cifra del año anterior, en neutro (más gasto no es una pérdida)
+  // «2025: 1.234,00 € (+5 %)»: la misma cifra del año anterior, en neutro (más gasto no es una pérdida)
   const frente = (a, b) => frenteAño(a, b, año - 1, B.meses > 0);
-  // Un ahorro de céntimos se ve «0 €», no «+0 €» ni «−0 €»
-  const ahorroTxt = (n) => eurS(Math.abs(n) < 0.5 ? 0 : n, 0);
+  // Un ahorro de céntimos se ve «0,00 €», no «+0,00 €» ni «−0,00 €»
+  const ahorroTxt = (n) => eurS(Math.abs(n) < 0.5 ? 0 : n, 2);
   const ahorroCls = (n) => (n <= -0.5 ? "neg" : "");
 
   const g = root.createDiv({ cls: "fb-stats" });
   const st = (cls, l, v, s, t) => { const c = g.createDiv({ cls: "fb-stat " + cls }); c.createDiv({ cls: "l", text: l }); c.createDiv({ cls: "v " + (t || ""), text: v }); if (s) c.createDiv({ cls: "s", text: s }); };
-  st("entra", "Entró", eur(A.ingresos, 0), frente(A.ingresos, B.ingresos));
-  st("sale", "Salió", eur(A.gastos, 0), frente(A.gastos, B.gastos));
+  st("entra", "Entró", eur(A.ingresos, 2), frente(A.ingresos, B.ingresos));
+  st("sale", "Salió", eur(A.gastos, 2), frente(A.gastos, B.gastos));
   st("ahorro", "Ahorraste", ahorroTxt(A.ahorro), [tasaAñoTexto(A), hayB ? `${año - 1}: ${ahorroTxt(B.ahorro)}` : B.meses > 0 ? `sin datos de ${año - 1}` : ""].filter(Boolean).join(" · "), ahorroCls(A.ahorro));
   root.createDiv({ cls: "fin-note", text: `${año}: ${A.meses} mes${A.meses === 1 ? "" : "es"} con movimientos${enCurso ? ` (${tramo}; este mes aún no ha acabado)` : ""}. `
     + (hayB ? `Se compara con ${tramo === "el año entero" ? "todo" : "los mismos meses de"} ${año - 1} (${B.meses} mes${B.meses === 1 ? "" : "es"} con movimientos).` : B.meses > 0 ? `${año - 1} no tiene datos para comparar.` : `De ${año - 1} no hay movimientos con los que comparar.`) });
   // Media al mes (solo meses acabados con movimientos) y, plegado, a dónde llegaría el año a este ritmo
   const MM = mediaMensualAño(A);
   if (MM) {
-    root.createDiv({ cls: "fin-note", text: `De media al mes, en ${MM.meses} mes${MM.meses === 1 ? "" : "es"} acabado${MM.meses === 1 ? "" : "s"}: entran ${eur(MM.ingresos, 0)} y salen ${eur(MM.gastos, 0)}${MM.enCurso ? " (sin contar este mes, que no ha acabado)" : ""}.` });
+    root.createDiv({ cls: "fin-note", text: `De media al mes, en ${MM.meses} mes${MM.meses === 1 ? "" : "es"} acabado${MM.meses === 1 ? "" : "s"}: entran ${eur(MM.ingresos, 2)} y salen ${eur(MM.gastos, 2)}${MM.enCurso ? " (sin contar este mes, que no ha acabado)" : ""}.` });
     const RI = enCurso ? ritmoAño(A) : null;
     if (RI) plegable(root, "Ver el ritmo del año", (c) => {
-      c.createDiv({ cls: "fin-note", text: `A este paso, acabarías ${año} con unos ${ahorroTxt(RI.año)} ahorrados: ${ahorroTxt(RI.hasta)} de lo que va de año más ${eurS(RI.mensual, 0)} al mes (la media de ${RI.meses} meses acabados) por los ${RI.quedan} mes${RI.quedan === 1 ? "" : "es"} que quedan después de este. Es una estimación: no cuenta pagas extra, gastos puntuales ni cambios de ingresos.` });
+      c.createDiv({ cls: "fin-note", text: `A este paso, acabarías ${año} con unos ${ahorroTxt(RI.año)} ahorrados: ${ahorroTxt(RI.hasta)} de lo que va de año más ${eurS(RI.mensual, 2)} al mes (la media de ${RI.meses} meses acabados) por los ${RI.quedan} mes${RI.quedan === 1 ? "" : "es"} que quedan después de este. Es una estimación: no cuenta pagas extra, gastos puntuales ni cambios de ingresos.` });
     });
   }
 
@@ -69,29 +69,29 @@ function vistaAnual() {
       [...A.filas.map((f, i) => {
         const b = B.filas[i];
         const nombre = mesLbl(f.key).split(" ")[0];
-        return [f.datos ? { text: nombre, onclick: verMes(f.key), title: `Ver los movimientos de ${mesLbl(f.key).toLowerCase()}` } : nombre, f.datos ? eur(f.ingresos, 0) : "—", f.datos ? eur(f.gastos, 0) : "—", f.datos ? { text: ahorroTxt(f.ahorro), cls: ahorroCls(f.ahorro) } : "—", hayB && b && b.datos ? eur(b.gastos, 0) : "—"];
-      }), conFila(["Total", eur(A.ingresos, 0), eur(A.gastos, 0), { text: ahorroTxt(A.ahorro), cls: ahorroCls(A.ahorro) }, hayB ? eur(B.gastos, 0) : "—"], "total")]);
+        return [f.datos ? { text: nombre, onclick: verMes(f.key), title: `Ver los movimientos de ${mesLbl(f.key).toLowerCase()}` } : nombre, f.datos ? eur(f.ingresos, 2) : "—", f.datos ? eur(f.gastos, 2) : "—", f.datos ? { text: ahorroTxt(f.ahorro), cls: ahorroCls(f.ahorro) } : "—", hayB && b && b.datos ? eur(b.gastos, 2) : "—"];
+      }), conFila(["Total", eur(A.ingresos, 2), eur(A.gastos, 2), { text: ahorroTxt(A.ahorro), cls: ahorroCls(A.ahorro) }, hayB ? eur(B.gastos, 2) : "—"], "total")]);
   });
 
   // En qué gastaste, por categoría, frente al año anterior
-  const pC = panel(root, "En qué gastaste", { text: eur(A.gastos, 0) }, "Lo gastado en cada categoría, menos lo que te devolvieron. La diferencia es con los mismos meses del año anterior.");
+  const pC = panel(root, "En qué gastaste", { text: eur(A.gastos, 2) }, "Lo gastado en cada categoría, menos lo que te devolvieron. La diferencia es con los mismos meses del año anterior.");
   const nombres = [...new Set([...A.gastoCat.keys(), ...B.gastoCat.keys()])].filter((n) => Math.abs(A.gastoCat.get(n) || 0) >= 0.5 || Math.abs(B.gastoCat.get(n) || 0) >= 0.5)
     .sort((a, b) => (A.gastoCat.get(b) || 0) - (A.gastoCat.get(a) || 0) || (B.gastoCat.get(b) || 0) - (B.gastoCat.get(a) || 0));
   if (!nombres.length) vacio(pC, "Sin gastos este año");
   else {
     const dif = (n) => (A.gastoCat.get(n) || 0) - (B.gastoCat.get(n) || 0);
     const RD = repartoDonut([...A.gastoCat]);
-    if (RD.partes.length) donut(pC, RD.partes.map((p) => ({ ...p, color: p.otras ? "var(--ink-3)" : catColor(p.nombre) })), { centro: eur(RD.total, 0) });
+    if (RD.partes.length) donut(pC, RD.partes.map((p) => ({ ...p, color: p.otras ? "var(--ink-3)" : catColor(p.nombre) })), { centro: eur(RD.total, 2) });
     const pg = paginacion(nombres, "anual_cat", () => FB.montar());
     tabla(pC, [{ t: "Categoría" }, { t: String(año), num: true }, { t: String(año - 1), num: true }, { t: "Diferencia", num: true }],
-      [...pg.parte.map((n) => [A.gastoCat.has(n) ? { text: n, dot: catColor(n), onclick: verCat(n), title: `Ver los movimientos de ${n} en ${año}` } : { text: n, dot: catColor(n) },eur(A.gastoCat.get(n) || 0, 0), hayB ? eur(B.gastoCat.get(n) || 0, 0) : "—", hayB ? eurS(dif(n), 0) : "—"]),
-        conFila(["Total", eur(A.gastos, 0), hayB ? eur(B.gastos, 0) : "—", hayB ? eurS(A.gastos - B.gastos, 0) : "—"], "total")]);
+      [...pg.parte.map((n) => [A.gastoCat.has(n) ? { text: n, dot: catColor(n), onclick: verCat(n), title: `Ver los movimientos de ${n} en ${año}` } : { text: n, dot: catColor(n) },eur(A.gastoCat.get(n) || 0, 2), hayB ? eur(B.gastoCat.get(n) || 0, 2) : "—", hayB ? eurS(dif(n), 2) : "—"]),
+        conFila(["Total", eur(A.gastos, 2), hayB ? eur(B.gastos, 2) : "—", hayB ? eurS(A.gastos - B.gastos, 2) : "—"], "total")]);
     pg.pie(pC);
     if (hayB) {
       const subidas = nombres.filter((n) => dif(n) >= 50).sort((a, b) => dif(b) - dif(a)).slice(0, 3);
-      if (subidas.length) pC.createDiv({ cls: "fin-note", text: `Lo que más ha subido: ${subidas.map((n) => `${n.toLowerCase()} (${eurS(dif(n), 0)})`).join(", ")}.` });
+      if (subidas.length) pC.createDiv({ cls: "fin-note", text: `Lo que más ha subido: ${subidas.map((n) => `${n.toLowerCase()} (${eurS(dif(n), 2)})`).join(", ")}.` });
       const bajadas = categoriasQueBajan(A.gastoCat, B.gastoCat, hayB);
-      if (bajadas.length) pC.createDiv({ cls: "fin-note", text: `Lo que más bajó: ${bajadas.map((x) => `${x.nombre.toLowerCase()} (${eurS(x.dif, 0)})`).join(", ")}.` });
+      if (bajadas.length) pC.createDiv({ cls: "fin-note", text: `Lo que más bajó: ${bajadas.map((x) => `${x.nombre.toLowerCase()} (${eurS(x.dif, 2)})`).join(", ")}.` });
     }
   }
   // Dónde más gastas: los comercios del año (gasto variable), y lo que suman las compras pequeñas
@@ -102,14 +102,14 @@ function vistaAnual() {
     const verCom = (nombre) => () => { guardarEstado({ mes: hasta, filtroCat: null, hist: "año", busqueda: nombre }); FB.ir("#movimientos/lista"); };
     const TOP = 10, top = PC.lista.slice(0, TOP);
     tabla(pD, [{ t: "Comercio" }, { t: "Gastado", num: true }, { t: "Compras", num: true }, { t: "De media", num: true, opt: true }],
-      top.map((c) => [{ text: c.nombre, onclick: verCom(c.nombre), title: `Ver los movimientos de ${c.nombre} en ${año}` }, eur(c.total, 0), String(c.n), eur(c.medio, 2)]));
+      top.map((c) => [{ text: c.nombre, onclick: verCom(c.nombre), title: `Ver los movimientos de ${c.nombre} en ${año}` }, eur(c.total, 2), String(c.n), eur(c.medio, 2)]));
     const resto = PC.lista.slice(TOP);
-    if (resto.length) pD.createDiv({ cls: "fin-note", text: `Y ${resto.length} comercio${resto.length === 1 ? "" : "s"} más: ${eur(sum(resto.map((c) => c.total)), 0)}.` });
-    if (PC.pequeñas.n) pD.createDiv({ cls: "fin-note", text: `Compras de menos de 10 €: ${PC.pequeñas.n}, que suman ${eur(PC.pequeñas.total, 0)}${A.meses > 1 ? ` (unos ${eur(PC.pequeñas.total / A.meses, 0)} al mes)` : ""}.` });
+    if (resto.length) pD.createDiv({ cls: "fin-note", text: `Y ${resto.length} comercio${resto.length === 1 ? "" : "s"} más: ${eur(sum(resto.map((c) => c.total)), 2)}.` });
+    if (PC.pequeñas.n) pD.createDiv({ cls: "fin-note", text: `Compras de menos de 10 €: ${PC.pequeñas.n}, que suman ${eur(PC.pequeñas.total, 2)}${A.meses > 1 ? ` (unos ${eur(PC.pequeñas.total / A.meses, 2)} al mes)` : ""}.` });
   }
   if (A.ingresoCat.size) {
-    const pI = panel(root, "De dónde entró", { text: eur(A.ingresos, 0) });
-    filasDato(pI, [...A.ingresoCat].sort((a, b) => b[1] - a[1]).map(([n, v]) => ({ l: n, dot: catColor(n), v: eur(v, 0), s: hayB ? `${año - 1}: ${eur(B.ingresoCat.get(n) || 0, 0)}` : "", onclick: verCat(n) })));
+    const pI = panel(root, "De dónde entró", { text: eur(A.ingresos, 2) });
+    filasDato(pI, [...A.ingresoCat].sort((a, b) => b[1] - a[1]).map(([n, v]) => ({ l: n, dot: catColor(n), v: eur(v, 2), s: hayB ? `${año - 1}: ${eur(B.ingresoCat.get(n) || 0, 2)}` : "", onclick: verCat(n) })));
   }
 
   // Patrimonio (mes natural): de enero a diciembre
@@ -122,9 +122,9 @@ function vistaAnual() {
     if (PA.valores.filter((v) => v != null).length >= 2) lineas(pP, { etiquetas: PA.keys.map(mesLbl), etiquetasX: NOMBRES, marcas: PA.keys.map((_, i) => i), series: [{ nombre: "Patrimonio", color: "var(--brand)", valores: PA.valores }], alto: 170 });
     const finTxt = año === añoHoy && PA.mesFin === hoyCal ? "Hoy (estimado)" : `Al final de ${mesLbl(PA.mesFin).toLowerCase()}`;
     filasDato(pP, [
-      PA.cambio != null ? { l: PA.dentro ? `El ${PA.fechaInicio.toFormat("dd/MM/yyyy")}` : "Al empezar el año", v: eur(PA.inicio, 0), s: PA.dentro ? "tus primeros saldos anotados de este año" : `saldos del ${PA.fechaInicio.toFormat("dd/MM/yyyy")}` } : null,
-      { l: finTxt, v: eur(PA.fin, 0) },
-      PA.cambio != null ? { l: "Cuánto ha cambiado", v: eurS(PA.cambio, 0), t: tone(PA.cambio) } : null,
+      PA.cambio != null ? { l: PA.dentro ? `El ${PA.fechaInicio.toFormat("dd/MM/yyyy")}` : "Al empezar el año", v: eur(PA.inicio, 2), s: PA.dentro ? "tus primeros saldos anotados de este año" : `saldos del ${PA.fechaInicio.toFormat("dd/MM/yyyy")}` } : null,
+      { l: finTxt, v: eur(PA.fin, 2) },
+      PA.cambio != null ? { l: "Cuánto ha cambiado", v: eurS(PA.cambio, 2), t: tone(PA.cambio) } : null,
     ]);
     if (PA.dentro) pP.createDiv({ cls: "fin-note", text: `No hay saldos de antes de ${año}: ${PA.cambio != null ? "el cambio se mide desde los primeros que anotaste este año" : "no se puede saber cuánto ha cambiado en el año"}.` });
   }
@@ -138,9 +138,9 @@ function vistaAnual() {
     const R = rentabilidadAño(evolucionInversion(), año);
     const hastaTxt = (k) => (k === hoyCal ? "hoy" : `fin de ${mesLbl(k).toLowerCase()}`);
     filasDato(pV, [
-      { l: "Lo que metiste", v: eur(compras, 0), s: ventas > 0.5 ? `y sacaste ${eur(ventas, 0)} vendiendo` : "compras (los traspasos entre fondos no cuentan)" },
-      DV.length ? { l: "Dividendos cobrados", v: eur(sum(DV.map((c) => c.importe)), 0), ruta: "#renta" } : null,
-      R.ok ? { l: "Lo que ganó tu inversión", v: eurS(R.gan, 0), t: tone(R.gan), s: `de fin de ${mesLbl(R.desde).toLowerCase()} a ${hastaTxt(R.hasta)}` } : null,
+      { l: "Lo que metiste", v: eur(compras, 2), s: ventas > 0.5 ? `y sacaste ${eur(ventas, 2)} vendiendo` : "compras (los traspasos entre fondos no cuentan)" },
+      DV.length ? { l: "Dividendos cobrados", v: eur(sum(DV.map((c) => c.importe)), 2), ruta: "#renta" } : null,
+      R.ok ? { l: "Lo que ganó tu inversión", v: eurS(R.gan, 2), t: tone(R.gan), s: `de fin de ${mesLbl(R.desde).toLowerCase()} a ${hastaTxt(R.hasta)}` } : null,
       R.ok && isFinite(R.r) ? { l: "Rentabilidad", v: pct(R.r, true), t: tone(R.r) } : null,
     ]);
     if (!R.ok) pV.createDiv({ cls: "fin-note", text: `No se puede calcular la rentabilidad del año: ${R.motivo}.` });

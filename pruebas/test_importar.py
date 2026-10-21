@@ -585,6 +585,17 @@ class TestInversion(Base):
         self.assertEqual((r["nuevas"], r["dudas"]), (0, 0))
         self.assertIn("ishares gold", next(a for a in self.a.todos("activo") if a["nombre"] == "Oro")["patrones"])
 
+    def test_confirmar_una_compra_la_enlaza_con_su_plan_fijo(self):
+        # Sin el enlace, la compra confirmada y la aportación automática del plan sumarían las dos en el mismo mes
+        self.a.guardar("activo", {"nombre": "Oro", "clase": "etf", "cuenta": "Bróker"})
+        for nombre, importe in (("Plan grande", 200), ("Plan oro", 50)):
+            self.a.guardar("recurrente", {"nombre": nombre, "clase": "aportacion", "importe": importe, "dia": 12, "desde": "2026-01-01",
+                                          "activo_inversion": "Oro", "cuenta": "Bróker"})
+        IM.importar_archivo(self.a, self.c, self.csv(), "inversion", "Bróker")
+        p = next(p for p in self.a.todos("pendiente") if "GOLD" in p["fila"]["texto"])
+        IM.resolver(self.a, p["id"], {"accion": "activo", "activo": "Oro"})
+        self.assertEqual([(x["importe"], x.get("recurrente")) for x in self.a.todos("aportacion") if x["activo"] == "Oro"], [(50.0, "Plan oro")])  # el de 200 € no es el suyo
+
     def test_sin_broker_no_ofrece_otras_cuentas(self):
         self.a.borrar("cuenta", next(c for c in self.a.todos("cuenta") if c["tipo"] == "broker")["id"])
         with self.assertRaises(IM.NecesitaCuenta) as e: IM.importar_archivo(self.a, self.c, self.csv(), "inversion")
@@ -857,6 +868,419 @@ class TestMilesAlImportar(Base):
         from financebuddy import operaciones as OP
         ops = OP.leer(ruta, self.a)[1]
         self.assertEqual([(o["importe"], o["part"]) for o in ops], [(1500.0, 2.199)])
+
+class TestNorma43OfxQif(Base):
+    """B-017: extractos de Norma 43, OFX y QIF por el mismo camino que el del banco. Todo inventado (cuenta 0000008901)."""
+    @staticmethod
+    def reg(*campos):
+        """Registro de ancho fijo de la Norma 43: pares (valor, ancho). Un número se rellena con ceros; un texto, con espacios."""
+        out = ""
+        for valor, ancho in campos:
+            s = str(valor).rjust(ancho, "0") if isinstance(valor, int) else str(valor).ljust(ancho)
+            assert len(s) == ancho, (valor, ancho)
+            out += s
+        return out + "\n"
+    def n43_cabecera(self, cuenta=8901):
+        return self.reg(("11", 2), (9999, 4), (1, 4), (cuenta, 10), (260901, 6), (260930, 6), ("2", 1), (100000, 14),
+                        (978, 3), (1, 1), ("TITULAR INVENTADO", 26), ("", 3))
+    def n43_movimiento(self, fecha, clave, centimos):
+        return self.reg(("22", 2), (9999, 4), (1, 4), (fecha, 6), (fecha, 6), ("", 2), ("", 3), (clave, 1),
+                        (centimos, 14), (1, 10), ("", 12), ("", 16))
+    def n43_concepto(self, texto):
+        return self.reg(("23", 2), ("01", 2), (texto[:38], 38), (texto[38:76], 38))
+    def n43_final(self, cuenta=8901):
+        return self.reg(("33", 2), (9999, 4), (1, 4), (cuenta, 10), (1, 5), (4520, 14), (1, 5), (150000, 14),
+                        ("2", 1), (245480, 14), (978, 3), ("", 4))
+    def n43_fin(self):
+        return self.reg(("88", 2), ("9" * 18, 18), (6, 6), ("", 54))
+    def n43_ejemplo(self, cuenta=8901):
+        return (self.n43_cabecera(cuenta)
+                + self.n43_movimiento(260902, "1", 4520) + self.n43_concepto("PAGO MOVIL EN KIOSKO ANA MADRID")
+                + self.n43_movimiento(260915, "2", 150000) + self.n43_concepto("TRANSFERENCIA NOMINA EMPRESA SL")
+                + self.n43_final(cuenta) + self.n43_fin())
+    def ofx(self, debito="-45.20", cuenta="0000008901"):
+        return ("OFXHEADER:100\nDATA:OFXSGML\nVERSION:102\nSECURITY:NONE\nENCODING:USASCII\nCHARSET:1252\n"
+                "COMPRESSION:NONE\nOLDFILEUID:NONE\nNEWFILEUID:NONE\n\n"
+                "<OFX>\n<SIGNONMSGSRSV1><SONRS><STATUS><CODE>0<SEVERITY>INFO</STATUS><DTSERVER>20260930120000"
+                "<LANGUAGE>SPA</SONRS></SIGNONMSGSRSV1>\n"
+                "<BANKMSGSRSV1><STMTTRNRS><TRNUID>1<STATUS><CODE>0<SEVERITY>INFO</STATUS>\n"
+                f"<STMTRS><CURDEF>EUR<BANKACCTFROM><BANKID>9999<ACCTID>{cuenta}<ACCTTYPE>CHECKING</BANKACCTFROM>\n"
+                "<BANKTRANLIST><DTSTART>20260901<DTEND>20260930\n"
+                f"<STMTTRN><TRNTYPE>DEBIT<DTPOSTED>20260902<TRNAMT>{debito}<FITID>2026090201"
+                "<NAME>PAGO MOVIL<MEMO>KIOSKO ANA MADRID</STMTTRN>\n"
+                "<STMTTRN><TRNTYPE>CREDIT<DTPOSTED>20260915<TRNAMT>1500.00<FITID>2026091501"
+                "<NAME>EMPRESA SL<MEMO>NOMINA</STMTTRN>\n"
+                "</BANKTRANLIST>\n<LEDGERBAL><BALAMT>2454.80<DTASOF>20260930</LEDGERBAL>\n"
+                "</STMTRS></STMTTRNRS></BANKMSGSRSV1>\n</OFX>\n")
+    def qif(self, fecha="02/09/2026"):
+        return ("!Option:AutoSwitch\n!Account\nNNómina\nTBank\n^\n!Clear:AutoSwitch\n!Type:Bank\n"
+                f"D{fecha}\nT-45.20\nPKIOSKO ANA\nMPAGO MOVIL\n^\n"
+                "D15/09/2026\nT1500.00\nPEMPRESA SL\nMNOMINA\n^\n")
+    def escribir_extracto(self, texto, nombre):
+        ruta = os.path.join(self.c.banco, nombre)
+        escribir(ruta, "latin-1", texto)
+        return ruta
+    def fijar_iban(self, nombre, digitos):
+        c = next(x for x in self.a.todos("cuenta") if x["nombre"] == nombre)
+        self.a.guardar("cuenta", {**c, "iban": digitos}, c["id"])
+    def extraidos(self):
+        """Lo que ha entrado del extracto, en movimientos y pendientes: (fecha, importe con su signo, texto)."""
+        out = [(m["ext_fecha"], m["ext_importe"], m["ext_texto"]) for m in self.movs() if m.get("ext_fecha")]
+        out += [(p["fila"]["op"], p["fila"]["importe"], p["fila"]["texto"]) for p in self.a.todos("pendiente")]
+        return sorted(out)
+
+    def test_norma43_cargo_y_abono_con_su_signo(self):
+        r = self.importar(self.escribir_extracto(self.n43_ejemplo(), "extracto.n43"))
+        self.assertTrue(r["ok"])
+        self.assertEqual(self.extraidos(), [("2026-09-02", -45.2, "PAGO MOVIL EN KIOSKO ANA MADRID"),
+                                            ("2026-09-15", 1500.0, "TRANSFERENCIA NOMINA EMPRESA SL")])
+        self.assertEqual(self.a.config("saldo_extracto:Nómina"), {"fecha": "2026-09-30", "saldo": 2454.8})
+
+    def test_norma43_reimportar_no_duplica(self):
+        self.importar(self.escribir_extracto(self.n43_ejemplo(), "extracto.n43"))
+        r = self.importar(self.escribir_extracto(self.n43_ejemplo(), "copia.n43"))
+        self.assertEqual((r["nuevas"], r["existentes"]), (0, 2))
+        self.assertEqual(len(self.extraidos()), 2)
+
+    def test_norma43_de_otra_cuenta_pide_cual_es(self):
+        ruta = self.escribir_extracto(self.n43_ejemplo(cuenta=1111), "otra.n43")
+        with self.assertRaises(IM.NecesitaCuenta):
+            IM.importar_archivo(self.a, self.c, ruta, "banco")
+
+    def test_norma43_la_segunda_vez_reconoce_la_cuenta_por_el_numero(self):
+        self.importar(self.escribir_extracto(self.n43_ejemplo(), "extracto.n43"))
+        r = IM.importar_archivo(self.a, self.c, self.escribir_extracto(self.n43_ejemplo(), "otro.n43"), "banco")
+        self.assertEqual(r["cuenta"], "Nómina")
+
+    def test_norma43_con_dos_cuentas_se_rechaza_entera(self):
+        ruta = self.escribir_extracto(self.n43_ejemplo() + self.n43_ejemplo(cuenta=1111), "dos.n43")
+        with self.assertRaises(ValueError) as e:
+            self.importar(ruta)
+        self.assertIn("2 cuentas", str(e.exception))
+        self.assertEqual(self.movs(), [])
+
+    def test_norma43_fecha_ilegible_va_a_ilegibles_y_lo_demas_entra(self):
+        texto = (self.n43_cabecera() + self.n43_movimiento(261302, "1", 4520) + self.n43_concepto("PAGO MOVIL EN KIOSKO ANA MADRID")
+                 + self.n43_movimiento(260915, "2", 150000) + self.n43_concepto("TRANSFERENCIA NOMINA EMPRESA SL")
+                 + self.n43_final() + self.n43_fin())
+        r = self.importar(self.escribir_extracto(texto, "mal.n43"))
+        self.assertEqual([(i["fila"], i["que"]) for i in r["ilegibles"]], [(2, "la fecha")])
+        self.assertEqual(self.extraidos(), [("2026-09-15", 1500.0, "TRANSFERENCIA NOMINA EMPRESA SL")])
+
+    def test_norma43_registro_desconocido_va_a_ilegibles(self):
+        texto = (self.n43_cabecera() + self.reg(("XX", 2), ("", 78)) + self.n43_movimiento(260902, "1", 4520)
+                 + self.n43_concepto("PAGO MOVIL EN KIOSKO ANA MADRID") + self.n43_final() + self.n43_fin())
+        r = self.importar(self.escribir_extracto(texto, "raro.n43"))
+        self.assertEqual([(i["fila"], i["que"]) for i in r["ilegibles"]], [(2, "el registro")])
+        self.assertEqual(len(self.extraidos()), 1)
+
+    def test_norma43_saldo_final_ilegible_no_importa_nada(self):
+        texto = self.n43_ejemplo().replace(self.n43_final(), self.reg(("33", 2), ("X", 78)))
+        with self.assertRaises(ValueError) as e:
+            self.importar(self.escribir_extracto(texto, "saldo.n43"))
+        self.assertIn("saldo final", str(e.exception))
+        self.assertEqual(self.movs(), [])
+
+    def test_extracto_sin_movimientos_avisa_en_vez_de_romper(self):
+        ruta = self.escribir_extracto(self.n43_cabecera() + self.n43_final() + self.n43_fin(), "vacio.n43")
+        with self.assertRaises(ValueError) as e:
+            self.importar(ruta)
+        self.assertIn("no trae movimientos", str(e.exception))
+
+    def test_ofx_cargo_y_abono_con_su_signo(self):
+        r = self.importar(self.escribir_extracto(self.ofx(), "extracto.ofx"))
+        self.assertTrue(r["ok"])
+        self.assertEqual(self.extraidos(), [("2026-09-02", -45.2, "PAGO MOVIL KIOSKO ANA MADRID"),
+                                            ("2026-09-15", 1500.0, "EMPRESA SL NOMINA")])
+        self.assertEqual(self.a.config("saldo_extracto:Nómina"), {"fecha": "2026-09-30", "saldo": 2454.8})
+
+    def test_ofx_reconoce_la_cuenta_por_el_iban(self):
+        self.fijar_iban("Nómina", "8901")
+        r = IM.importar_archivo(self.a, self.c, self.escribir_extracto(self.ofx(), "extracto.ofx"), "banco")
+        self.assertEqual(r["cuenta"], "Nómina")
+
+    def test_ofx_importe_ilegible_va_a_ilegibles(self):
+        texto = self.ofx(debito="-4,5O")
+        linea = next(n for n, l in enumerate(texto.splitlines(), 1) if "<STMTTRN>" in l)
+        r = self.importar(self.escribir_extracto(texto, "mal.ofx"))
+        self.assertEqual([(i["fila"], i["que"]) for i in r["ilegibles"]], [(linea, "el importe")])
+        self.assertEqual(self.extraidos(), [("2026-09-15", 1500.0, "EMPRESA SL NOMINA")])
+
+    def test_ofx_sin_cuenta_bancaria_se_rechaza(self):
+        ruta = self.escribir_extracto(self.ofx().replace("<ACCTID>0000008901", ""), "sin cuenta.ofx")
+        with self.assertRaises(ValueError) as e:
+            self.importar(ruta)
+        self.assertIn("bancaria", str(e.exception))
+
+    def test_qif_pide_la_cuenta_y_luego_importa_con_su_signo(self):
+        ruta = self.escribir_extracto(self.qif(), "extracto.qif")
+        with self.assertRaises(IM.NecesitaCuenta):
+            IM.importar_archivo(self.a, self.c, ruta, "banco")
+        r = self.importar(ruta)
+        self.assertTrue(r["ok"])
+        self.assertEqual(self.extraidos(), [("2026-09-02", -45.2, "KIOSKO ANA PAGO MOVIL"),
+                                            ("2026-09-15", 1500.0, "EMPRESA SL NOMINA")])
+
+    def test_qif_fecha_ilegible_va_a_ilegibles(self):
+        texto = self.qif(fecha="31/02/2026")
+        linea = next(n for n, l in enumerate(texto.splitlines(), 1) if l.startswith("D"))
+        r = self.importar(self.escribir_extracto(texto, "mal.qif"))
+        self.assertEqual([(i["fila"], i["que"]) for i in r["ilegibles"]], [(linea, "la fecha")])
+        self.assertEqual(self.extraidos(), [("2026-09-15", 1500.0, "EMPRESA SL NOMINA")])
+
+    def test_qif_de_tarjeta_se_rechaza(self):
+        ruta = self.escribir_extracto("!Type:CCard\nD02/09/2026\nT-45.20\nPTIENDA\n^\n", "tarjeta.qif")
+        with self.assertRaises(ValueError) as e:
+            self.importar(ruta)
+        self.assertIn("bancaria", str(e.exception))
+
+    def test_ofx_con_coma_decimal_se_lee(self):
+        r = self.importar(self.escribir_extracto(self.ofx(debito="-45,20"), "coma.ofx"))
+        self.assertIn(("2026-09-02", -45.2, "PAGO MOVIL KIOSKO ANA MADRID"), self.extraidos())
+
+    def test_qif_mes_dia_se_lee_en_ese_orden(self):
+        # 09/15 solo puede ser mes/día: todo el archivo lo es, y 02/09 es el 9 de febrero, no el 2 de septiembre
+        texto = "!Type:Bank\nD02/09/2026\nT-45.20\nPKIOSKO\n^\nD09/15/2026\nT1500.00\nPEMPRESA\n^\n"
+        self.importar(self.escribir_extracto(texto, "americano.qif"))
+        self.assertEqual(sorted(f for f, _, _ in self.extraidos()), ["2026-02-09", "2026-09-15"])
+
+    def test_qif_con_fechas_que_no_se_pueden_ordenar_se_rechaza(self):
+        # 05/09 y 10/05: ninguna pasa del 12, no hay forma de saber si es día/mes o mes/día
+        texto = "!Type:Bank\nD05/09/2026\nT-45.20\nPKIOSKO\n^\nD10/05/2026\nT-3.00\nPCAFE\n^\n"
+        with self.assertRaises(ValueError):
+            self.importar(self.escribir_extracto(texto, "ambiguo.qif"))
+        self.assertEqual(self.extraidos(), [])
+
+    def test_mismo_extracto_en_otro_formato_no_duplica(self):
+        self.importar(self.escribir_extracto(self.ofx(), "a.ofx"))
+        r = self.importar(self.escribir_extracto(self.qif(), "a.qif"))
+        self.assertEqual((r["nuevas"], r["existentes"]), (0, 2))
+        self.assertEqual(len(self.extraidos()), 2)
+
+    def test_extracto_suelto_en_la_raiz_se_reconoce_por_lo_que_es(self):
+        os.makedirs(self.c.importar, exist_ok=True)
+        ruta = os.path.join(self.c.importar, "suelto.txt")
+        escribir(ruta, "latin-1", self.n43_ejemplo())
+        r = IM.importar_archivo(self.a, self.c, ruta, None, "Nómina")
+        self.assertEqual(r["tipo"], "banco")
+        self.assertEqual(len(self.extraidos()), 2)
+
+    def test_archivos_pendientes_incluye_los_extractos(self):
+        for nombre in ("a.n43", "b.ofx", "c.qfx", "d.qif"):
+            escribir(os.path.join(self.c.banco, nombre), "latin-1", "x")
+        self.assertEqual(sorted(os.path.basename(p) for p, _ in IM.archivos_pendientes(self.c)),
+                         ["a.n43", "b.ofx", "c.qfx", "d.qif"])
+
+    def test_un_extracto_no_se_importa_como_movimientos_del_broker(self):
+        ruta = self.escribir_extracto(self.n43_ejemplo(), "extracto.n43")
+        with self.assertRaises(ValueError) as e:
+            IM.importar_archivo(self.a, self.c, ruta, "inversion", "Bróker")
+        self.assertIn("extracto", str(e.exception))
+
+    def test_formato_desconocido_conserva_el_mensaje_de_siempre(self):
+        ruta = self.escribir_extracto("%PDF-1.4 inventado", "extracto.pdf")
+        with self.assertRaises(ValueError) as e:
+            self.importar(ruta)
+        self.assertIn("Formato no admitido", str(e.exception))
+
+class TestLotes(Base):
+    """B-061: cada archivo importado deja un lote y se puede quitar entero sin tocar lo apuntado a mano ni lo de otros archivos."""
+    def registros_del_lote(self, lote):
+        return {t: [r for r in self.a.todos(t) if r.get("lote") == lote] for t in ("movimiento", "aportacion", "cobro", "pendiente", "ignorado", "operacion")}
+
+    def test_lo_que_crea_una_importacion_lleva_su_lote(self):
+        r = self.importar(self.extracto())
+        self.assertTrue(r["lote"])
+        self.assertEqual({m["lote"] for m in self.movs()}, {r["lote"]})
+        self.assertEqual({p["lote"] for p in self.a.todos("pendiente")}, {r["lote"]})  # también las dudas
+        self.assertEqual(r["registros"], {"movimiento": 6, "pendiente": 2})
+        (e,) = self.a.config("importaciones")
+        self.assertEqual((e["id"], e["archivo"], e["tipo"], e["cuenta"]), (r["lote"], "movs.xlsx", "banco", "Nómina"))
+
+    def test_cada_archivo_su_lote_y_una_importacion_que_no_trae_nada_no_deja_ninguno(self):
+        a = self.importar(self.extracto())
+        otra = self.importar(self.extracto(FILAS[:2], nombre="repetido.xlsx"))  # lo mismo que ya estaba: nada nuevo
+        self.assertEqual(otra["nuevas"], 0)
+        self.assertNotIn("lote", otra)
+        b = self.importar(self.extracto([("2026-10-01", "Compra Lidl, Madrid", -7.0)], nombre="b.xlsx", saldo_inicial=2542.3))
+        self.assertNotEqual(a["lote"], b["lote"])
+        self.assertEqual([e["id"] for e in self.a.config("importaciones")], [a["lote"], b["lote"]])
+
+    def test_la_vista_previa_no_deja_lote(self):
+        ruta = self.extracto()
+        with self.a.simular():
+            r = IM.importar_archivo(self.a, self.c, ruta, "banco", "Nómina", simulando=True)
+            self.assertTrue(r["ok"] and r["nuevas"])
+            self.assertEqual([m for m in self.movs() if m.get("lote")], [])
+            self.assertNotIn("lote", r)
+        self.assertIsNone(self.a.config("importaciones"))
+
+    def test_quitar_el_lote_borra_justo_lo_suyo(self):
+        self.a.guardar("movimiento", {"fecha": "2026-09-20", "clase": "gasto", "categoria": "Ocio", "importe": 9.0, "cuenta": "Nómina", "concepto": "Cine a mano"})
+        a = self.importar(self.extracto())
+        b = self.importar(self.extracto([("2026-10-01", "Compra Lidl, Madrid", -7.0)], nombre="b.xlsx", saldo_inicial=2542.3))
+        propias = [m["id"] for m in self.movs() if m.get("lote") == a["lote"]]
+        # el usuario toca cosas de la importación: sigue siendo de ese lote
+        m = next(m for m in self.movs() if m.get("lote") == a["lote"] and "Mercadona" in m["ext_texto"])
+        self.a.guardar("movimiento", {**m, "categoria": "Hogar", "nota": "a mano"}, m["id"])
+        msg, n = IM.deshacer_lote(self.a, a["lote"])
+        self.assertEqual(n, 8)  # 6 movimientos + 2 dudas
+        self.assertIn("6 movimientos y 2 filas por revisar", msg)
+        self.assertIn("movs.xlsx", msg)
+        self.assertEqual(sorted(m["concepto"] for m in self.movs()), sorted(["Cine a mano", next(x["concepto"] for x in self.movs() if x.get("lote") == b["lote"])]))
+        self.assertTrue(all(i not in {x["id"] for x in self.movs()} for i in propias))
+        self.assertEqual(self.a.todos("pendiente"), [])
+        self.assertEqual([e["id"] for e in self.a.config("importaciones")], [b["lote"]])
+        self.assertEqual(list(IM.lotes_recientes(self.a)[0]["registros"].items()), [("movimiento", 1)])
+
+    def test_quitar_dos_veces_no_falla(self):
+        a = self.importar(self.extracto())
+        self.assertEqual(IM.deshacer_lote(self.a, a["lote"])[1], 8)
+        msg, n = IM.deshacer_lote(self.a, a["lote"])
+        self.assertEqual(n, 0); self.assertIn("ya no tiene nada", msg)
+        self.assertEqual(IM.deshacer_lote(self.a, "no-existe")[1], 0)
+        self.assertEqual(IM.deshacer_lote(self.a, "")[1], 0)
+        self.assertEqual(IM.deshacer_lote(self.a, None)[1], 0)
+
+    def test_vaciar_un_lote_con_una_cadena_vacia_no_borra_lo_apuntado_a_mano(self):
+        self.a.guardar("movimiento", {"fecha": "2026-09-20", "clase": "gasto", "categoria": "Ocio", "importe": 9.0, "cuenta": "Nómina", "concepto": "Cine a mano"})
+        IM.deshacer_lote(self.a, "")
+        self.assertEqual(len(self.movs()), 1)
+
+    def test_lo_apuntado_a_mano_que_la_importacion_casa_con_una_fila_se_queda(self):
+        mano = self.a.guardar("movimiento", {"fecha": "2026-09-05", "clase": "gasto", "categoria": "Hogar", "importe": 12.5, "cuenta": "Nómina", "concepto": "Ferretería"})
+        a = self.importar(self.extracto())
+        casado = self.a.obtener("movimiento", mano)
+        self.assertTrue(casado.get("ext_fecha")); self.assertNotIn("lote", casado)  # se queda con la huella del extracto, pero es tuyo
+        IM.deshacer_lote(self.a, a["lote"])
+        self.assertEqual([m["concepto"] for m in self.movs()], ["Ferretería"])
+        r = self.importar(self.extracto())  # y al reimportar no se duplica
+        self.assertEqual(len([m for m in self.movs() if "Ferreteria" in (m.get("ext_texto") or "") or m["concepto"] == "Ferretería"]), 1)
+        self.assertEqual((r["existentes"], r["nuevas"] + r["dudas"]), (1, 7))  # la fila casada ya estaba; las otras siete, otra vez
+
+    def test_reimportar_tras_quitar_trae_otra_vez_las_filas(self):
+        a = self.importar(self.extracto())
+        antes = sorted((m["ext_fecha"], m["ext_importe"], m["ext_texto"]) for m in self.movs())
+        IM.deshacer_lote(self.a, a["lote"])
+        self.assertEqual(self.movs(), [])
+        r = self.importar(self.extracto())
+        self.assertEqual((r["nuevas"], r["dudas"], r["existentes"]), (6, 2, 0))
+        self.assertEqual(sorted((m["ext_fecha"], m["ext_importe"], m["ext_texto"]) for m in self.movs()), antes)
+        self.assertNotEqual(r["lote"], a["lote"])
+
+    def test_lo_que_sale_de_resolver_una_duda_es_del_lote_del_archivo(self):
+        a = self.importar(self.extracto())
+        p = next(p for p in self.a.todos("pendiente") if "Juan Perez" in p["fila"]["texto"])
+        IM.resolver(self.a, p["id"], {"accion": "guardar", "clase": "ingreso", "categoria": "Otros ingresos", "concepto": "De Juan"})
+        self.assertEqual(next(m for m in self.movs() if m["concepto"] == "De Juan")["lote"], a["lote"])
+        b = self.importar(self.extracto([("2026-10-01", "Compra Lidl, Madrid", -7.0)], nombre="b.xlsx", saldo_inicial=2542.3))
+        IM.deshacer_lote(self.a, a["lote"])
+        self.assertEqual([m["lote"] for m in self.movs()], [b["lote"]])
+        self.assertEqual(self.a.todos("pendiente"), [])
+
+    def test_descartar_una_duda_queda_en_el_lote_y_reimportar_la_recupera(self):
+        a = self.importar(self.extracto())
+        p = self.a.todos("pendiente")[0]
+        IM.resolver(self.a, p["id"], {"accion": "ignorar"})
+        self.assertEqual(len(self.registros_del_lote(a["lote"])["ignorado"]), 1)
+        IM.deshacer_lote(self.a, a["lote"])
+        self.assertEqual(self.a.todos("ignorado"), [])
+        self.assertEqual(self.importar(self.extracto())["dudas"], 2)
+
+    def test_los_bizums_de_otro_archivo_no_se_quedan_apuntando_a_un_gasto_que_ya_no_esta(self):
+        from financebuddy import bizums
+        a = self.importar(self.extracto([("2026-09-10", "Pago Movil En Restaurante El Pino, Jaen", -60.00)], nombre="a.xlsx"))
+        b = self.importar(self.extracto([("2026-09-13", "Bizum de Ana Ruiz Lopez", 15.00), ("2026-09-13", "Bizum de Luis Perez Gil", 15.00),
+                                         ("2026-09-13", "Bizum de Eva Sanz Diaz", 15.00)], nombre="b.xlsx", saldo_inicial=940.0))
+        bizums.enlazar(self.a)
+        gasto = next(m for m in self.movs() if m["clase"] == "gasto")
+        reem = [m for m in self.movs() if m["clase"] == "reembolso"]
+        self.assertEqual({m.get("reembolsa") for m in reem}, {gasto["id"]})
+        IM.deshacer_lote(self.a, a["lote"])
+        reem = [m for m in self.movs() if m["clase"] == "reembolso"]
+        self.assertEqual((len(reem), [m.get("reembolsa") for m in reem]), (3, [None, None, None]))  # siguen, sin enlace roto
+        self.assertEqual({m["lote"] for m in reem}, {b["lote"]})
+
+    def test_quitar_los_dos_lados_de_un_enlace_de_bizum_no_deja_nada_colgando(self):
+        from financebuddy import bizums
+        a = self.importar(self.extracto([("2026-09-10", "Pago Movil En Restaurante El Pino, Jaen", -60.00)], nombre="a.xlsx"))
+        b = self.importar(self.extracto([("2026-09-13", "Bizum de Ana Ruiz Lopez", 15.00), ("2026-09-13", "Bizum de Luis Perez Gil", 15.00),
+                                         ("2026-09-13", "Bizum de Eva Sanz Diaz", 15.00)], nombre="b.xlsx", saldo_inicial=940.0))
+        bizums.enlazar(self.a)
+        IM.deshacer_lote(self.a, b["lote"])
+        self.assertEqual([m["clase"] for m in self.movs()], ["gasto"])
+        self.assertEqual(IM.deshacer_lote(self.a, a["lote"])[1], 1)
+        self.assertEqual(self.movs(), [])
+
+    def test_un_movimiento_dividido_se_quita_entero(self):
+        a = self.importar(self.extracto())
+        m = next(m for m in self.movs() if "Mercadona" in m["ext_texto"])
+        IM.dividir(self.a, m["id"], [{"importe": 30.2, "categoria": "Supermercado"}, {"importe": 15.0, "categoria": "Hogar"}])
+        partes = [x for x in self.movs() if x.get("parte_de")]
+        self.assertEqual((len(partes), {x["lote"] for x in partes}), (2, {a["lote"]}))  # las partes heredan el lote
+        IM.deshacer_lote(self.a, a["lote"])
+        self.assertEqual([x for x in self.movs() if x.get("parte_de")], [])
+        self.assertEqual(self.movs(), [])
+        self.assertEqual(self.importar(self.extracto())["nuevas"], 6)  # y vuelven como una sola fila
+
+    def test_el_broker_tambien_deja_lote_y_se_quita_con_sus_cobros_y_aportaciones(self):
+        csv = ("Fecha de operación;Fecha valor;Concepto;Importe\n"
+               "10/09/2026;10/09/2026;FIDELITY MSCI WORLD INDEX;-150,00\n"
+               "20/09/2026;20/09/2026;DIVIDENDO FIDELITY MSCI WORLD INDEX;2,00\n"
+               "30/09/2026;30/09/2026;Periodo 01/09/2026 30/09/2026;0,45\n"
+               "01/09/2026;01/09/2026;Ahorro;200,00\n")
+        ruta = os.path.join(self.c.inversion, "b.csv"); escribir(ruta, "utf-8", csv)
+        r = IM.importar_archivo(self.a, self.c, ruta, "inversion", "Bróker")
+        lote = r["lote"]
+        reg = self.registros_del_lote(lote)
+        self.assertEqual((len(reg["aportacion"]), len(reg["cobro"]), len(reg["pendiente"])), (1, 1, 1))
+        self.assertEqual(r["registros"], {t: len(v) for t, v in reg.items() if v})
+        IM.deshacer_lote(self.a, lote)
+        self.assertEqual([self.a.todos(t) for t in ("aportacion", "cobro", "pendiente", "movimiento")], [[], [], [], []])
+        self.assertEqual(self.a.todos("activo")[0]["nombre"], "Fondo MSCI")  # los activos no son del lote
+
+    ORDENES = ("Fecha de la orden;ISIN;Importe estimado;Nº de participaciones;Estado\n"
+               "12/03/2026;IE00BYX5MX67;500.2 EUR;30,5;Finalizada\n"
+               "04/03/2026;FR0000989626;1000 EUR;0,022;Finalizada\n")
+    CUENTA = "Fecha de operación;Fecha valor;Concepto;Importe\n06/03/2026;06/03/2026;GROUPAMA TRESORERIE I ACC EUR;-999,50\n"
+
+    def test_el_archivo_de_ordenes_deja_lote_y_se_quita_sin_borrar_los_activos(self):
+        ruta = os.path.join(self.c.inversion, "ordenes.csv"); escribir(ruta, "cp1252", self.ORDENES)
+        r = IM.importar_archivo(self.a, self.c, ruta, None, "Bróker")
+        self.assertEqual(r["tipo"], "operaciones")
+        self.assertEqual(({x.get("lote") for x in self.a.todos("aportacion")}, r["registros"]), ({r["lote"]}, {"aportacion": 2}))
+        activos = len(self.a.todos("activo"))
+        self.assertEqual(IM.deshacer_lote(self.a, r["lote"])[1], 2)
+        self.assertEqual((self.a.todos("aportacion"), len(self.a.todos("activo"))), ([], activos))  # los activos que creó se quedan: tienen sus ajustes
+        ruta = os.path.join(self.c.inversion, "ordenes2.csv"); escribir(ruta, "cp1252", self.ORDENES)
+        self.assertEqual(IM.importar_archivo(self.a, self.c, ruta, None, "Bróker")["nuevas"], 2)
+
+    def test_una_duda_del_broker_que_resuelven_las_ordenes_se_queda_con_el_lote_de_las_ordenes(self):
+        ruta = os.path.join(self.c.inversion, "cuenta.csv"); escribir(ruta, "cp1252", self.CUENTA)
+        cuenta = IM.importar_archivo(self.a, self.c, ruta, "inversion", "Bróker")
+        ruta = os.path.join(self.c.inversion, "ordenes.csv"); escribir(ruta, "cp1252", self.ORDENES)
+        ordenes = IM.importar_archivo(self.a, self.c, ruta, None, "Bróker")
+        self.assertEqual(self.a.todos("pendiente"), [])
+        g = next(a for a in self.a.todos("aportacion") if a["fecha"] == "2026-03-06")
+        self.assertEqual(g["lote"], ordenes["lote"])  # la compra existe porque llegó la orden: quitar el extracto de la cuenta no la borra
+        self.assertEqual(IM.deshacer_lote(self.a, cuenta["lote"])[1], 0)  # de ese extracto ya no queda nada que quitar
+        self.assertEqual(len([a for a in self.a.todos("aportacion") if a["fecha"] == "2026-03-06"]), 1)
+
+    def test_el_registro_guarda_solo_las_ultimas_importaciones(self):
+        for i in range(IM.LOTES_MAX + 3):
+            self.importar(self.extracto([(f"2026-09-{i + 1:02d}", f"Compra Tienda{i}, Madrid", -1.0)], nombre=f"x{i}.xlsx", saldo_inicial=1000.0 - i))
+        self.assertEqual(len(self.a.config("importaciones")), IM.LOTES_MAX)
+
+    def test_una_base_de_la_version_2_se_abre_y_se_marca(self):
+        from financebuddy import almacen
+        self.a.guardar("movimiento", {"fecha": "2026-09-20", "clase": "gasto", "categoria": "Ocio", "importe": 9.0, "concepto": "Antiguo"})
+        self.a.set_config("version_esquema", 2); self.a.cerrar()
+        self.a = Almacen(self.c.db)
+        self.assertEqual((self.a.config("version_esquema"), almacen.VERSION_ESQUEMA), (4, 4))
+        self.assertEqual([m["concepto"] for m in self.movs()], ["Antiguo"])  # sin lote: nunca se quita con una importación
+        self.assertEqual(IM.deshacer_lote(self.a, "cualquiera")[1], 0)
+
+
 
 if __name__ == "__main__":
     unittest.main()

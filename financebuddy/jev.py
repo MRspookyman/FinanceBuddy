@@ -20,6 +20,7 @@
 #   → {"model": "jev-1.13.0", "answers": {"<nombre>": {"type": "choice", "choice": "<opción>", "confidence": 0.93,
 #      "probabilities": {…}}}, "usage": {"input_tokens": …, "output_tokens": …}}
 import datetime, difflib, json, os, re, threading, urllib.error, urllib.request
+import sqlite3
 from collections import Counter, deque
 from concurrent.futures import ThreadPoolExecutor
 from . import bizums, clasificar as C, lectura as L, secreto
@@ -38,6 +39,11 @@ class ErrorJev(Exception):
 PRECIO_MTOK = 0.042  # $ por millón de tokens de entrada (la salida es gratis)
 _uso, _uso_lock = {"consultas": 0, "tokens": 0}, threading.Lock()
 _enviado = deque(maxlen=30)  # lo último que se ha mandado a Jev (para enseñártelo en Ajustes): lo mismo que sale por la red
+# repaso en segundo plano (tras importar, ver repasar): si hay un hilo trabajando, lo pendiente y el último error
+_repaso = {"en_marcha": False, "error": ""}
+_cola = []  # (alm, tarea) pendientes
+_cerrojo_repaso = threading.Lock()
+
 def registro(alm):
     """Lo último que se ha enviado a Jev, de más nuevo a más viejo: [{cuando, estado, preguntas:[{nombre, instrucciones, opciones}]}]."""
     return list(reversed(alm.config("jev_enviado") or []))
@@ -47,13 +53,14 @@ def guardar_uso(alm):
     with _uso_lock:
         n, t = _uso["consultas"], _uso["tokens"]; _uso["consultas"] = _uso["tokens"] = 0
         nuevos = list(_enviado); _enviado.clear()
-    if nuevos: alm.set_config("jev_enviado", ((alm.config("jev_enviado") or []) + nuevos)[-30:])
-    if not n: return
-    u = dict(alm.config("jev_uso") or {})
-    mes = datetime.date.today().strftime("%Y-%m")
-    m = u.get(mes) or {"consultas": 0, "tokens": 0}
-    u[mes] = {"consultas": m["consultas"] + n, "tokens": m["tokens"] + t}
-    alm.set_config("jev_uso", dict(sorted(u.items())[-12:]))
+    with alm.transaccion():  # leer y escribir van juntos: el hilo del repaso y las rutas de Jev sin cerrojo la llaman a la vez
+        if nuevos: alm.set_config("jev_enviado", ((alm.config("jev_enviado") or []) + nuevos)[-30:])
+        if not n: return
+        u = dict(alm.config("jev_uso") or {})
+        mes = datetime.date.today().strftime("%Y-%m")
+        m = u.get(mes) or {"consultas": 0, "tokens": 0}
+        u[mes] = {"consultas": m["consultas"] + n, "tokens": m["tokens"] + t}
+        alm.set_config("jev_uso", dict(sorted(u.items())[-12:]))
 
 # ───────────── configuración (la clave vive solo en la base de datos local) ─────────────
 _ocultar = []  # palabras de tus titulares (tu nombre): nunca salen, ni en el concepto de una transferencia
@@ -75,7 +82,8 @@ def config_publica(alm):
     return {"hay_clave": bool(c["clave"]), "fin_clave": c["clave"][-4:] if c["clave"] else "", "activo": c["activo"], "al_importar": c["al_importar"],
             "de_entorno": bool(c["clave"]) and not c["propia"], "ilegible": c["ilegible"],
             "uso": {**uso, "coste": round(uso["tokens"] / 1e6 * PRECIO_MTOK, 6)},
-            "revision": {"fecha": rev.get("fecha"), "hallazgos": rev.get("hallazgos") or [], "preguntados": len(rev.get("vistos") or {})}}
+            "revision": {"fecha": rev.get("fecha"), "hallazgos": rev.get("hallazgos") or [], "preguntados": len(rev.get("vistos") or {})},
+            "repaso": estado_repaso()}
 
 def guardar_config(alm, d):
     c = dict(alm.config("jev") or {})
@@ -128,12 +136,12 @@ def probar(alm):
     guardar_uso(alm)
     return f"Jev responde ({d.get('model', MODELO)}): «Mercadona» → {a.get('choice', '?')} ({round(100 * float(a.get('confidence') or 0))} %)."
 
-def _lote(uno, items):
+def _lote(uno, items, activo=None):
     """`uno(x)` en paralelo → [(x, resultado, error)]. Si Jev falla (sin conexión, clave, saldo…), no se sigue preguntando
-    el resto: esos vuelven con error "" (sin respuesta: se preguntarán la próxima vez)."""
+    el resto: esos vuelven con error "" (sin respuesta: se preguntarán la próxima vez). Lo mismo si `activo()` es falso (Jev apagado mientras tanto)."""
     parar = threading.Event()
     def envuelto(x):
-        if parar.is_set(): return x, None, ""
+        if parar.is_set() or (activo is not None and not activo()): return x, None, ""
         try: return x, uno(x), None
         except ErrorJev as e: parar.set(); return x, None, str(e)
     with ThreadPoolExecutor(HILOS) as ex: return list(ex.map(envuelto, items))
@@ -396,7 +404,7 @@ def revisar(alm, limite=MAX_GRUPOS, url=None):
             if r: return r
         return clasificar(c["clave"], f.get("texto", ""), f.get("importe", 0), gasto, ingreso, url=url,
                           contexto=ctx.de(f.get("texto", ""), f.get("importe", 0), persona=len(g) == 1), nuevas=nuevas)
-    res =_lote(uno, grupos)
+    res = _lote(uno, grupos, lambda: config(alm)["activo"])
     n, error = 0, None
     with alm.transaccion():
         for g, r, err in res:
@@ -482,10 +490,10 @@ CLASES_ACTIVO = {"fondo": "Fondo de inversión (indexado o no)", "etf": "ETF o E
                  "cripto": "Criptomoneda o producto que la replica", "materia": "Oro, plata, cobre u otras materias primas", "otro": "Otro producto"}
 def revisar_broker(alm, limite=MAX_GRUPOS, url=None):
     """Dudas del bróker cuyo texto la app no reconoce (propondría crear un activo con ese nombre): Jev dice si es una
-    compra, venta, intereses, comisión o traspaso, y qué tipo de activo. Se guarda en la duda (`jev`). → nº de grupos."""
+    compra, venta, intereses, comisión o traspaso, y qué tipo de activo. Se guarda en la duda (`jev`). → (nº de grupos, error o None)."""
     from .importar import sugerencia_inversion
     c = config(alm)
-    if not c["activo"]: return 0
+    if not c["activo"]: return 0, None
     activos = alm.todos("activo")
     grupos = {}
     for p in alm.todos("pendiente"):
@@ -503,17 +511,20 @@ def revisar_broker(alm, limite=MAX_GRUPOS, url=None):
         a, k = ans.get("accion") or {}, ans.get("clase") or {}
         return {"accion": a.get("choice"), "confianza": round(float(a.get("confidence") or 0), 3), "clase": k.get("choice"),
                 "confianza_clase": round(float(k.get("confidence") or 0), 3), "modelo": d.get("model", MODELO)}
-    res = _lote(uno, grupos)
-    n = 0
+    res = _lote(uno, grupos, lambda: config(alm)["activo"])
+    n, error = 0, None
     with alm.transaccion():
-        for g, r, _ in res:
+        for g, r, err in res:
+            if err is not None:  # sin respuesta (red, clave…): se volverá a preguntar la próxima vez
+                error = error or err or None; continue
             if not r: continue
             n += 1
             for p in g:
                 actual = alm.obtener("pendiente", p["id"])
                 if actual: alm.guardar("pendiente", {**actual, "jev": r}, p["id"])
     guardar_uso(alm)
-    return n
+    if error and not n: return 0, error
+    return n, None
 
 def sugerencia_broker(s, j):
     """Mezcla la sugerencia de la app para una duda del bróker (`s`) con lo que dijo Jev (`j`), si la app no la reconocía."""
@@ -539,6 +550,8 @@ def auditar(alm, limite=150, url=None):
     ctx = Contexto(alm)
     rev = dict(alm.config("jev_revision") or {})
     vistos, hallazgos = dict(rev.get("vistos") or {}), {h["clave"]: h for h in rev.get("hallazgos") or []}
+    base_v, base_h = dict(vistos), dict(hallazgos)  # lo que había al empezar: si lo cambias mientras Jev piensa, gana tu cambio
+    decididas = set()
     grupos = {}
     for m in alm.todos("movimiento"):
         if m.get("clase") not in ("gasto", "ingreso", "reembolso") or not m.get("categoria") or m.get("parte_de"): continue  # lo dividido lo decidiste tú
@@ -561,7 +574,7 @@ def auditar(alm, limite=150, url=None):
         # Sin su propio historial (si no, solo repetiría lo que ya hay): comparte lo demás, pero no la misma ficha ni a la misma persona
         return _elegir(c["clave"], _con_contexto(saneado(t, imp), ctx.de(t, imp, incluir_misma=False, persona=False)),
                        "¿De qué tipo de ingreso es?" if entra else "¿En qué categoría de gasto encaja?", ingreso if entra else gasto, url=url)
-    res = _lote(uno, pendientes)
+    res = _lote(uno, pendientes, lambda: config(alm)["activo"])
     n, error = 0, None
     for (k, ms, cat), r, err in res:
         if err is not None: error = error or err or None; continue
@@ -569,6 +582,7 @@ def auditar(alm, limite=150, url=None):
         if j is None: continue
         n += 1
         vistos[k] = {"cat": cat, "jev": j, "conf": round(conf, 3)}
+        decididas.add(k)
         hallazgos.pop(k, None)
         if j != cat and ((cat in OTROS and j not in OTROS and conf >= MINIMA) or conf >= SEGURA):
             m = ms[-1]
@@ -577,24 +591,34 @@ def auditar(alm, limite=150, url=None):
                             "total": round(sum(float(x["importe"]) for x in ms), 2), "actual": cat, "propuesta": j, "confianza": round(conf, 3),
                             "ingreso": m["clase"] == "ingreso", "ejemplo": saneado(m.get("ext_texto") or m.get("concepto"), -1 if m["clase"] == "gasto" else 1).split("«", 1)[-1].split("»")[0]}
     if error and not n: guardar_uso(alm); return 0, len(hallazgos), error  # sin respuesta: nada cambia
-    alm.set_config("jev_revision", {"fecha": datetime.date.today().isoformat(), "vistos": vistos,
-                                    "hallazgos": sorted(hallazgos.values(), key=lambda h: (h["actual"] not in OTROS, -h["confianza"]))})
+    with alm.transaccion():  # lo que decidas mientras tanto (p. ej. descartar un hallazgo) no se pisa
+        act = dict(alm.config("jev_revision") or {})
+        av = dict(act.get("vistos") or {})
+        ah = {h["clave"]: h for h in act.get("hallazgos") or []}
+        for k in decididas:
+            if av.get(k) != base_v.get(k) or ah.get(k) != base_h.get(k): continue  # lo tocaste tú: gana tu decisión
+            av[k] = vistos[k]
+            if k in hallazgos: ah[k] = hallazgos[k]
+            else: ah.pop(k, None)
+        alm.set_config("jev_revision", {"fecha": datetime.date.today().isoformat(), "vistos": av,
+                                        "hallazgos": sorted(ah.values(), key=lambda h: (h["actual"] not in OTROS, -h["confianza"]))})
     guardar_uso(alm)
-    return n, len(hallazgos), None
+    return n, len(ah), None
 
 def resolver_hallazgo(alm, clave, accion):
     """aplicar: la categoría que propone Jev para todo ese comercio (y la recuerda como regla) · descartar: está bien así."""
     from .importar import recategorizar
-    rev = dict(alm.config("jev_revision") or {})
-    h = next((x for x in rev.get("hallazgos") or [] if x["clave"] == clave), None)
-    if not h: raise ValueError("Eso ya está revisado.")
-    msg = "Vale, se queda como está"
-    if accion == "aplicar":
-        if not alm.obtener("movimiento", int(h["id"])): raise ValueError("Ese movimiento ya no existe.")
-        msg = recategorizar(alm, int(h["id"]), {"categoria": h["propuesta"], "parecidos": True, "recordar": True})
-        (rev.setdefault("vistos", {}))[clave] = {"cat": h["propuesta"], "jev": h["propuesta"], "conf": h["confianza"]}
-    rev["hallazgos"] = [x for x in rev.get("hallazgos") or [] if x["clave"] != clave]
-    alm.set_config("jev_revision", rev)
+    with alm.transaccion():  # leer y escribir de una vez: un repaso en segundo plano no puede pisarlo
+        rev = dict(alm.config("jev_revision") or {})
+        h = next((x for x in rev.get("hallazgos") or [] if x["clave"] == clave), None)
+        if not h: raise ValueError("Eso ya está revisado.")
+        msg = "Vale, se queda como está"
+        if accion == "aplicar":
+            if not alm.obtener("movimiento", int(h["id"])): raise ValueError("Ese movimiento ya no existe.")
+            msg = recategorizar(alm, int(h["id"]), {"categoria": h["propuesta"], "parecidos": True, "recordar": True})
+            (rev.setdefault("vistos", {}))[clave] = {"cat": h["propuesta"], "jev": h["propuesta"], "conf": h["confianza"]}
+        rev["hallazgos"] = [x for x in rev.get("hallazgos") or [] if x["clave"] != clave]
+        alm.set_config("jev_revision", rev)
     return msg
 
 # ───────────── fijos: ¿cuota fija o gasto que coincide? ─────────────
@@ -621,3 +645,34 @@ def fijos(alm, lista, url=None):
     for f in candidatos:
         if clave(f) in cache: f["jev_fijo"] = cache[clave(f)]
     return lista
+
+# ───────────── repaso en segundo plano: Jev repasa lo importado sin retener la importación ni la pantalla ─────────────
+def repasar(alm, *tareas):
+    """Encola `tareas` («revisar», «revisar_broker», «auditar») y las hace en un hilo aparte, una tras otra."""
+    with _cerrojo_repaso:
+        _cola.extend((alm, t) for t in tareas)
+        _repaso["error"] = ""
+        if _repaso["en_marcha"]: return
+        _repaso["en_marcha"] = True
+    threading.Thread(target=_procesar, daemon=True, name="jev-repaso").start()
+def _procesar():
+    while True:
+        with _cerrojo_repaso:
+            if not _cola:
+                _repaso["en_marcha"] = False
+                return
+            alm, tarea = _cola.pop(0)
+        try: err = _hacer(tarea, alm) if config(alm)["activo"] else ""
+        except Exception as e:
+            # Si cambias de carpeta mientras Jev repasa, App.abrir cierra la base anterior: eso no es un error que contarte.
+            err = "" if isinstance(e, sqlite3.ProgrammingError) and "closed" in str(e) else str(e) or type(e).__name__
+        if err:
+            with _cerrojo_repaso: _repaso["error"] = err
+def _hacer(tarea, alm):
+    """→ error o "" (sin respuesta de Jev o nada que preguntar: no es un error)."""
+    if tarea == "revisar": return revisar(alm)[2] or ""
+    if tarea == "revisar_broker": return revisar_broker(alm)[1] or ""
+    return auditar(alm, limite=40)[2] or ""
+def estado_repaso():
+    """Para la pantalla: si Jev sigue repasando y, si falló, por qué (hasta el siguiente repaso)."""
+    with _cerrojo_repaso: return dict(_repaso)

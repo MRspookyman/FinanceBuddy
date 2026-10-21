@@ -38,12 +38,16 @@ const FORMS = {
       { k: "icono", l: "Icono", t: "emoji" },
       { k: "color", l: "Color", t: "color" },
       { k: "oculta", l: "Ocultar", t: "bool", ayuda: "Una categoría oculta no sale al elegir categoría ni la propone Jev, pero sus movimientos se conservan y siguen contando en los totales." }],
-    fila: (r) => [`${r.icono || catIcono(r.nombre)}  ${r.nombre}`, ({ variable: "variable", fijo: "fijo", ingreso: "ingreso" }[r.grupo] || r.grupo) + (r.oculta ? " · oculta" : ""), r.presupuesto ? eur(r.presupuesto, 0) : ""], cols: ["Nombre", "Grupo", "Presupuesto"] },
+    fila: (r) => [`${r.icono || catIcono(r.nombre)}  ${r.nombre}`, ({ variable: "variable", fijo: "fijo", ingreso: "ingreso" }[r.grupo] || r.grupo) + (r.oculta ? " · oculta" : ""), r.presupuesto ? eur(r.presupuesto, 2) : ""], cols: ["Nombre", "Grupo", "Presupuesto"] },
   movimiento: { uno: "movimiento", plural: "Movimientos", ayuda: "Todo lo importado del banco y lo apuntado a mano.",
     campos: [
       { k: "fecha", l: "Fecha", t: "fecha", req: true, defecto: () => hoy.toISODate() },
       { k: "clase", l: "Tipo", t: "opc", opc: Object.entries(CLASE_MOV) },
       { k: "importe", l: "Importe (€, sin signo)", t: "num", req: true },
+      { k: "_otra_divisa", l: "Lo pagué en otra moneda (dólares, libras…)", t: "bool", virtual: true, redibuja: true, si: (d) => d.clase !== "transferencia",
+        ayuda: "El importe de arriba, en euros, es el que cuenta (lo que salió de tu cuenta). Aquí solo apuntas lo que costó en la otra moneda; la app no convierte nada ni consulta cambios por internet." },
+      { k: "importe_divisa", l: "Cuánto fue en esa moneda", t: "num", si: (d) => d._otra_divisa && d.clase !== "transferencia", ph: "p. ej. 50" },
+      { k: "divisa", l: "Moneda (código de 3 letras)", si: (d) => d._otra_divisa && d.clase !== "transferencia", ph: "p. ej. USD" },
       { k: "concepto", l: "Concepto", req: true, ph: "p. ej. Cena con amigos", alSalir: sugerirCategoria },
       { k: "categoria", l: "Categoría", t: "opc", opc: catSegunClase, si: (d) => d.clase !== "transferencia",
         nota: (d) => (d._sug && d._sug.cat === d.categoria ? d._sug.txt : "") },
@@ -54,11 +58,22 @@ const FORMS = {
         ayuda: "Si te devuelven dinero de un gasto que pagaste tú (un Bizum de un amigo…), elige cuál: así ves cuánto te costó de verdad." },
       { k: "recurrente", l: "Es el pago/cobro de este recurrente", t: "opc", opc: opcRecurrentes(), vacio: "— ninguno —", si: (d) => d.clase === "gasto" || d.clase === "ingreso",
         ayuda: "Si lo enlazas, ese mes el recurrente no se cuenta dos veces." },
+      { k: "a_medias", l: "Lo he pagado yo pero lo comparto (a medias)", t: "bool", redibuja: true, si: (d) => d.clase === "gasto" && !d.parte_de,
+        ayuda: "Para una cena o un regalo que pagas tú entero y otros te devuelven su parte. El importe de arriba es lo que salió de tu cuenta; en tus gastos solo cuenta tu parte." },
+      { k: "mi_parte", l: "Tu parte (€)", t: "num", si: (d) => d.clase === "gasto" && d.a_medias && !d.parte_de, ph: "p. ej. 25",
+        nota: (d) => (num(d.mi_parte) >= 0 && hasNum(d.mi_parte) && num(d.importe) > num(d.mi_parte) ? `Te deben ${eur(num(d.importe) - num(d.mi_parte))}.` : "") },
+      { k: "cobrado", l: "Ya me han pagado el resto", t: "bool", si: (d) => d.clase === "gasto" && d.a_medias && !d.parte_de,
+        ayuda: "Márcalo cuando te hayan dado lo que te debían. Si te lo pagan con un Bizum, enlázalo a este gasto (tipo «Te lo devolvieron») y se da por cobrado solo." },
+      { k: "etiquetas", l: "Etiquetas (opcional)", t: "lista", ph: "p. ej. vacaciones, regalo de boda",
+        ayuda: "Palabras libres separadas por comas para juntar movimientos de cualquier categoría (un viaje, una reforma…). Luego los filtras en Movimientos → Más filtros." },
       { k: "nota", l: "Nota" }],
     fila: (r) => [fechaCorta(r.fecha), r.concepto, r.clase === "transferencia" ? `entre cuentas${r.destino ? " → " + r.destino : r.origen ? " ← " + r.origen : ""}` : r.categoria || "", { text: (r.clase === "gasto" ? "−" : r.clase === "transferencia" ? "" : "+") + eur(r.importe), cls: r.clase === "ingreso" ? "pos" : "" }],
     cols: ["Fecha", "Concepto", "Categoría", "Importe"], orden: (a, b) => String(b.fecha).localeCompare(String(a.fecha)) || b.id - a.id,
-    antes: (d) => { if (d.clase === "transferencia") { d[d._dir || "destino"] = d._otra; d[d._dir === "origen" ? "destino" : "origen"] = ""; d.categoria = ""; } else { d.destino = d.origen = ""; } },
-    cargar: (d) => { d._dir = d.origen ? "origen" : "destino"; d._otra = d.destino || d.origen || ""; d.reembolsa = d.reembolsa ? String(d.reembolsa) : ""; } },
+    antes: (d) => {
+      if (d.clase === "transferencia") { d[d._dir || "destino"] = d._otra; d[d._dir === "origen" ? "destino" : "origen"] = ""; d.categoria = ""; } else { d.destino = d.origen = ""; }
+      if (!d._otra_divisa || d.clase === "transferencia") d.divisa = d.importe_divisa = "";  // sin marcar «otra moneda» (o en un traspaso), no se guarda
+    },
+    cargar: (d) => { d._dir = d.origen ? "origen" : "destino"; d._otra = d.destino || d.origen || ""; d.reembolsa = d.reembolsa ? String(d.reembolsa) : ""; d._otra_divisa = !!d.divisa; } },
   recurrente: { uno: "fijo", plural: "Fijos", ayuda: "Lo que se repite cada mes (o ciertos meses): nómina, alquiler, recibos, aportaciones. Sirven para la previsión y para saber lo que falta por pagar.",
     campos: [
       { k: "nombre", l: "Nombre", req: true, ph: "p. ej. Alquiler" },
@@ -74,7 +89,7 @@ const FORMS = {
       { k: "activo", l: "Activo (desmárcalo si ya no se repite)", t: "bool", defecto: () => true }],
     fila: (r) => [r.nombre, { gasto: "gasto", ingreso: "ingreso", aportacion: "aportación" }[r.clase], eur(r.importe), `día ${r.dia || 1}${r.meses ? " · meses " + r.meses.join(", ") : ""}${r.activo === false ? " · inactivo" : ""}`],
     cols: ["Nombre", "Tipo", "Importe", "Cuándo"] },
-  activo: { uno: "activo", plural: "Activos", ayuda: "Fondos, acciones, ETF o cripto. Actualiza su valor de vez en cuando (Inversión → Actualizar valores).",
+  activo: { uno: "activo", plural: "Activos", ayuda: "Fondos, acciones, ETF o cripto. Actualiza su valor de vez en cuando (Inversión → Anotar valores a mano).",
     campos: [
       { k: "nombre", l: "Nombre", req: true, ph: "p. ej. Fondo indexado MSCI World" },
       { k: "clase", l: "Tipo", t: "opc", opc: [["fondo", "Fondo"], ["etf", "ETF / ETC"], ["accion", "Acción"], ["cripto", "Cripto"], ["materia", "Materias primas (oro, cobre…)"], ["pension", "Plan de pensiones"], ["bono", "Bono / renta fija"], ["inmueble", "Inmueble (piso, local…)"], ["otro", "Otro"]] },
@@ -95,7 +110,7 @@ const FORMS = {
       { k: "objetivo", l: "Peso que quieres que tenga (%, opcional)", t: "num", ayuda: "El porcentaje de tu inversión que querrías en este activo. Con él, Inversión te dice a dónde llevar tu próxima aportación para acercarte (sin vender nada)." },
       { k: "ter", l: "Gastos corrientes (% al año, opcional)", t: "num", ayuda: "El TER del fondo o ETF (p. ej. 0,06). Con él verás cuánto te cuesta al año." },
       { k: "estado", l: "Estado", t: "opc", opc: [["activo", "Lo tengo"], ["vendido", "Vendido"]] }],
-    fila: (r) => [r.nombre, r.clase, r.valor != null ? eur(r.valor, 0) : "—", r.estado === "vendido" ? "vendido" : r.fecha_valor ? `a ${fechaCorta(r.fecha_valor)}` : ""], cols: ["Nombre", "Tipo", "Valor", ""] },
+    fila: (r) => [r.nombre, r.clase, r.valor != null ? eur(r.valor, 2) : "—", r.estado === "vendido" ? "vendido" : r.fecha_valor ? `a ${fechaCorta(r.fecha_valor)}` : ""], cols: ["Nombre", "Tipo", "Valor", ""] },
   aportacion: { uno: "aportación", plural: "Aportaciones", ayuda: "Compras (+) y ventas (−) de tus activos.",
     campos: [
       { k: "fecha", l: "Fecha", t: "fecha", req: true, defecto: () => hoy.toISODate() },
@@ -128,7 +143,7 @@ const FORMS = {
       { k: "otros", l: "Otros bienes (€)", t: "num" },
       { k: "deudas", l: "Deudas (€)", t: "num" },
       { k: "nota", l: "Nota" }],
-    fila: (r) => [fechaCorta(r.fecha), eur(sum(Object.values(r.saldos || {}).map(num)), 0), eur(sum(Object.values(r.valores || {}).map(num)), 0)], cols: ["Fecha", "Cuentas", "Inversión"],
+    fila: (r) => [fechaCorta(r.fecha), eur(sum(Object.values(r.saldos || {}).map(num)), 2), eur(sum(Object.values(r.valores || {}).map(num)), 2)], cols: ["Fecha", "Cuentas", "Inversión"],
     orden: (a, b) => String(b.fecha).localeCompare(String(a.fecha)) },
   objetivo: { uno: "objetivo", plural: "Objetivos", ayuda: "Metas de ahorro. Si eliges una cuenta, lo ahorrado es su saldo.",
     campos: [
@@ -140,7 +155,7 @@ const FORMS = {
       { k: "fecha_limite", l: "Para cuándo (opcional)", t: "fecha" },
       { k: "prioridad", l: "Prioridad", t: "opc", opc: [["alta", "Alta"], ["media", "Media"], ["baja", "Baja"]], defecto: () => "media" },
       { k: "estado", l: "Estado", t: "opc", opc: [["activo", "En marcha"], ["conseguido", "Conseguido"]] }],
-    fila: (r) => [r.nombre, r.meta_meses ? `${r.meta_meses} meses de gasto` : eur(r.meta, 0), r.cuenta || "", r.estado === "conseguido" ? "conseguido" : ""], cols: ["Nombre", "Meta", "Cuenta", ""] },
+    fila: (r) => [r.nombre, r.meta_meses ? `${r.meta_meses} meses de gasto` : eur(r.meta, 2), r.cuenta || "", r.estado === "conseguido" ? "conseguido" : ""], cols: ["Nombre", "Meta", "Cuenta", ""] },
   recordatorio: { uno: "recordatorio", plural: "Recordatorios", ayuda: "Cosas con fecha sin importe fijo (renta, ITV, seguro anual…). Salen en el Resumen unos días antes.",
     campos: [
       { k: "nombre", l: "Qué", req: true },
@@ -168,11 +183,11 @@ const FORMS = {
   perfil: { uno: "formato de archivo", plural: "Formatos de archivo", ayuda: "Cómo leer el Excel/CSV de cada banco o bróker. Se crean solos al importar un archivo nuevo.",
     campos: [
       { k: "nombre", l: "Nombre", req: true },
-      { k: "tipo", l: "Tipo", t: "opc", opc: [["banco", "Extracto del banco"], ["inversion", "Movimientos del bróker"]] },
+      { k: "tipo", l: "Tipo", t: "opc", opc: [["banco", "Banco"], ["inversion", "Inversión"]] },
       { k: "cuenta", l: "Se importa en la cuenta", t: "opc", opc: opcCuentas(), vacio: "— preguntar —" },
       { k: "columnas", l: "Columna (texto de la cabecera) para", t: "mapa", texto: true, claves: (d) => d.tipo === "inversion" ? ["fecha", "concepto", "importe"] : ["fecha", "fecha_valor", "concepto", "importe", "cargo", "abono", "saldo"] },
       { k: "compras_negativas", l: "Las compras aparecen en negativo", t: "bool", si: (d) => d.tipo === "inversion", defecto: () => true }],
-    fila: (r) => [r.nombre, r.tipo === "inversion" ? "bróker" : "banco", r.cuenta || "(pregunta)"], cols: ["Nombre", "Tipo", "Cuenta"] },
+    fila: (r) => [r.nombre, r.tipo === "inversion" ? "Inversión" : "Banco", r.cuenta || "(pregunta)"], cols: ["Nombre", "Tipo", "Cuenta"] },
   cierre: { uno: "cierre", plural: "Meses cerrados", campos: [{ k: "mes", l: "Mes (AAAA-MM)", req: true }, { k: "fecha", l: "Fecha", t: "fecha" }, { k: "notas", l: "Notas", t: "area" }],
     fila: (r) => [mesDT(r.mes).isValid ? mesLbl(r.mes) : r.mes, r.notas || ""], cols: ["Mes", "Notas"], orden: (a, b) => String(b.mes).localeCompare(String(a.mes)) },
 };
@@ -231,7 +246,11 @@ function formulario(padre, tipo, reg, opciones = {}) {
         el = l.createEl("input", { attr: { type: "checkbox" } });
         el.checked = !!d[c.k];
         l.appendText(" sí");
-        el.onchange = () => { d[c.k] = el.checked; };
+        el.dataset.k = c.k;
+        el.onchange = () => {
+          d[c.k] = el.checked;
+          if (c.redibuja) { dibujar(); const n = form.querySelector(`[data-k="${c.k}"]`); if (n) n.focus(); }  // los campos que dependen de esta casilla aparecen o se van; el foco se queda donde estaba
+        };
       } else if (c.t === "emoji") {
         // Un emoji: escribirlo o elegir uno de la lista
         el = form.createDiv({ cls: "fb-picker" });
@@ -257,7 +276,10 @@ function formulario(padre, tipo, reg, opciones = {}) {
         el = form.createEl("input", { attr: { type: tipoInput, placeholder: c.ph || "" } });
         if (tipoInput === "number") el.setAttribute("step", c.paso || (c.t === "int" ? "1" : "0.01"));
         el.value = Array.isArray(d[c.k]) ? d[c.k].join(", ") : d[c.k] ?? "";
-        el.oninput = () => { d[c.k] = el.value; };
+        const notaVida = c.nota && form.createDiv({ cls: "s" });  // una nota que se actualiza mientras escribes (p. ej. «Te deben 25,00 €»)
+        const pintaNota = () => { const t = c.nota(d); notaVida.textContent = t || ""; notaVida.hidden = !t; };
+        if (notaVida) pintaNota();
+        el.oninput = () => { d[c.k] = el.value; if (notaVida) pintaNota(); };
         if (c.t === "num") el.onblur = () => { if (["meta", "meta_meses", "cuenta"].includes(c.k)) dibujar(); };
         if (c.alSalir) el.onblur = () => c.alSalir(d, dibujar, form);
       }

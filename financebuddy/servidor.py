@@ -1,11 +1,11 @@
 # Servidor local de la app: sirve las pantallas (web/) y una API JSON sobre la base de datos.
 # Solo escucha en 127.0.0.1 y cada arranque genera una clave que la página envía en la cabecera X-FB-Token.
-import base64, calendar, datetime, http.server, io, json, mimetypes, os, re, secrets, socketserver, tempfile, threading, traceback, urllib.parse
+import base64, calendar, contextlib, datetime, http.server, io, json, mimetypes, os, re, secrets, socketserver, tempfile, threading, traceback, urllib.parse
 from . import VERSION, actualizaciones, autoarranque, bizums, cartera, clasificar as C, detectar, exportar, importar as IM, jev, modelo, ordenar, plantilla, precios, rutas, secreto
 from .almacen import Almacen, comprobar_copia
 
 mimetypes.add_type("font/woff2", ".woff2")
-MODULOS = ["datos", "calculos", "calculos_saldos", "calculos_avisos", "componentes", "graficos", "inicio", "inversion", "renta", "anual", "precios", "exportar", "formularios",
+MODULOS = ["datos", "calculos", "calculos_saldos", "calculos_avisos", "componentes", "graficos", "inicio", "inversion", "renta", "anual", "independencia", "precios", "exportar", "formularios",
            "bienvenida", "importar", "revisar", "fijos", "cierre", "ajustes", "gestionar", "pantallas"]  # el orden es el de la concatenación: no lo cambies
 MAX_SUBIDA = 25 * 1024 * 1024
 ACENTOS = ["salvia", "violeta", "azul", "verde", "coral", "rosa", "grafito"]  # colores de acento (estilos.css: body[data-acento])
@@ -32,11 +32,40 @@ CONSECUENCIA = {
     "activo": "Sus operaciones se quedarían sin activo y dejarían de contar en tu inversión.",
 }
 
+MAX_FILTROS_MOV = 20  # filtros guardados de Movimientos (config.filtros_movimientos)
+
+def filtros_movimientos_validos(lista):
+    """La lista de filtros guardados de Movimientos, limpia: cada uno con nombre único, y solo los campos que la vista sabe aplicar."""
+    if not isinstance(lista, list): raise ValueError("Los filtros guardados no son una lista.")
+    if len(lista) > MAX_FILTROS_MOV: raise ValueError(f"Puedes guardar hasta {MAX_FILTROS_MOV} filtros: quita alguno antes de guardar otro.")
+    texto = lambda v, n: re.sub(r"\s+", " ", v).strip()[:n] if isinstance(v, str) else ""
+    out, vistos = [], set()
+    for f in lista:
+        if not isinstance(f, dict): raise ValueError("Filtro guardado no válido.")
+        nombre = texto(f.get("nombre"), 60)
+        if not nombre: raise ValueError("Ponle un nombre al filtro.")
+        if nombre.casefold() in vistos: raise ValueError(f"Ya hay un filtro que se llama «{nombre}».")
+        vistos.add(nombre.casefold())
+        out.append({"nombre": nombre, "busqueda": texto(f.get("busqueda"), 120), "categoria": texto(f.get("categoria"), 80), "cuenta": texto(f.get("cuenta"), 80),
+                    "desde": texto(f.get("desde"), 20), "hasta": texto(f.get("hasta"), 20), "sinRevisar": f.get("sinRevisar") is True,
+                    "etiqueta": texto(f.get("etiqueta"), 60), "deben": f.get("deben") is True,
+                    "periodo": f.get("periodo") if f.get("periodo") in ("mes", "año", "todo") else "mes",
+                    "orden": f.get("orden") if f.get("orden") in ("fecha", "importe") else "fecha"})
+    return out
+
 # Rutas que no cambian nada tuyo (consultas, descargas, copias): tras ellas, lo último que se podía deshacer sigue valiendo.
 # Cualquier otra escritura lo anula: «Deshacer» repone la foto ENTERA de antes y se llevaría por delante lo hecho después.
 NO_ANULAN_DESHACER = {"/api/parecidos", "/api/detectar", "/api/jev/enviado", "/api/jev/probar", "/api/jev/categoria", "/api/categoria/uso",
                       "/api/plantilla", "/api/exportar_datos", "/api/regla/probar", "/api/abrir_carpeta", "/api/copia", "/api/arranque",
-                      "/api/actualizaciones/comprobar", "/api/precios/actualizar", "/api/precios/estado", "/api/precios/buscar", "/api/precios/comparar", "/api/config/visto"}
+                      "/api/actualizaciones/comprobar", "/api/precios/actualizar", "/api/precios/estado", "/api/precios/buscar", "/api/precios/comparar", "/api/config/visto", "/api/jev/repaso"}
+
+# Rutas que llaman a Jev: la red puede tardar lo que quiera, así que no esperan al cerrojo de la app. Si esperaran,
+# una importación o una consulta a Jev dejaría colgadas todas las demás peticiones.
+JEV_SIN_CERROJO = {"/api/jev/revisar", "/api/jev/auditar", "/api/jev/categoria", "/api/jev/probar", "/api/detectar", "/api/jev/repaso"}
+# Las rutas de importar sí esperan al cerrojo (escriben), pero lo que Jev propone para las columnas de un formato nuevo se
+# pregunta después, ya sin él (App.proponer_con_jev): con un Jev lento, importar un banco nuevo dejaría colgado todo lo demás.
+JEV_TRAS_EL_CERROJO = {"/api/importar/subir", "/api/importar/reintentar", "/api/importar/carpeta"}
+JEV_REPASANDO = "Jev ya está repasando lo que acabas de importar: espera a que termine para no preguntarle lo mismo dos veces."
 
 def _aviso_borrar(tipo, reg, usos):
     lista = " y ".join(", ".join(f"{n} {PLURAL.get(t, t)}" for t, n in usos).rsplit(", ", 1))
@@ -107,10 +136,11 @@ class App:
                         n = C.proponer_categoria_nueva(f.get("texto", ""), f["importe"], todas, fus) or (
                             C.consejo_de_jev(j["categoria_nueva"], todas, fus) if j.get("categoria_nueva") and not j.get("categoria") else None)
                         if n: p["categoria_nueva"] = n
-        regs.pop("ignorado", None)
+        ignorados = regs.pop("ignorado", [])
         cfg = self.alm.config(sin="precio_serie:")  # las series de precios (caché) se quedan en el servidor
         cfg["jev"] = jev.config_publica(self.alm)  # la clave nunca sale hacia la página
         cfg["precios"] = precios.para_la_pagina(self.alm)
+        cfg["importaciones"] = IM.lotes_recientes(self.alm, {**regs, "pendiente": pend, "ignorado": ignorados})  # las importaciones recientes y lo que queda de cada una (para «Quitar esta importación»)
         cfg["actualizaciones"] = actualizaciones.para_la_pagina(self.alm)
         return {"registros": regs, "pendientes": pend, "config": cfg,
                 "info": {"version": VERSION, "carpeta": self.carpeta.raiz, "hoy": self.hoy, "ejemplo": self.ejemplo,
@@ -168,30 +198,35 @@ class App:
             if r.get("ok") and r.get("tipo") == "banco":
                 bizums.enlazar(self.alm)
                 self._saldo_inicial(r.get("cuenta"))
-            c, fallo = jev.config(self.alm), None
-            if r.get("ok") and r.get("dudas") and c["activo"] and c["al_importar"]:  # el asistente Jev propone qué es lo que queda por revisar
-                if r.get("tipo") == "banco":
-                    n, total, error = jev.revisar(self.alm)
-                    if n: r["mensaje"] += f" · ✨ Jev propone categoría para {n} de {total} grupos por revisar"
-                    elif error: r["mensaje"] += f" · Jev no ha podido ayudar: {error}"; fallo = error
-                elif r.get("tipo") == "inversion" and jev.revisar_broker(self.alm):
-                    r["mensaje"] += " · ✨ Jev ha mirado lo que la app no reconocía"
-            if r.get("ok") and r.get("tipo") == "banco" and r.get("nuevas") and c["activo"] and c["al_importar"] and not fallo:
-                _, h, _ = jev.auditar(self.alm, limite=40)  # y repasa lo que se ha clasificado solo (lo nuevo)
-                if h: r.update(jev_hallazgos=h, mensaje=r["mensaje"] + f" · ✨ Jev cree que {h} comercio{'s' if h > 1 else ''} {'están' if h > 1 else 'está'} en otra categoría")
+            c = jev.config(self.alm)
+            tareas = []  # lo que Jev repasa en segundo plano (ver jev.repasar): la importación no espera a la red
+            if r.get("ok") and r.get("dudas") and c["activo"] and c["al_importar"]:  # lo que queda por revisar
+                if r.get("tipo") == "banco": tareas.append("revisar")
+                elif r.get("tipo") == "inversion": tareas.append("revisar_broker")
+            if r.get("ok") and r.get("tipo") == "banco" and r.get("nuevas") and c["activo"] and c["al_importar"]:
+                tareas.append("auditar")  # y repasa lo que se ha clasificado solo (lo nuevo)
+            if tareas:
+                jev.repasar(self.alm, *tareas)
+                r["mensaje"] += " · ✨ Jev repasa lo nuevo en segundo plano"
+                r["jev_en_marcha"] = True
             return {**r, "archivo": nombre}
         except IM.NecesitaPerfil as e:
-            # Qué columna es cada cosa: primero lo que se ve en el propio archivo (sin internet) y, si falta algo y Jev está
-            # activado, lo que él propone. Así un banco nuevo se importa en un clic aunque no haya asistente.
-            propuesta = dict(e.info.get("columnas_probables") or {})
-            if jev.config(self.alm)["activo"]:
-                for k, v in (jev.mapear_columnas(self.alm, e.info.get("cabecera") or [], e.info.get("ejemplos") or []) or {}).items():
-                    propuesta.setdefault(k, v)
-            return {"ok": False, "necesita": "perfil", "archivo": nombre, **e.info, "tipo": tipo or e.info.get("tipo"), "propuesta": propuesta}
+            # Qué columna es cada cosa: lo que se ve en el propio archivo (sin internet). Si Jev está activado, lo que falte lo añade
+            # `proponer_con_jev` al responder, sin el cerrojo. Así un banco nuevo se importa en un clic aunque no haya asistente.
+            return {"ok": False, "necesita": "perfil", "archivo": nombre, **e.info, "tipo": tipo or e.info.get("tipo"), "propuesta": dict(e.info.get("columnas_probables") or {})}
         except IM.NecesitaCuenta as e:
             return {"ok": False, "necesita": "cuenta", **e.info}
         except Exception as e:
             return {"ok": False, "archivo": nombre, "mensaje": f"{nombre}: {e}"}
+
+    def proponer_con_jev(self, r):
+        """A cada archivo de `r` con un formato que la app no conoce, le añade a la propuesta lo que Jev ve en sus columnas (solo lo que
+        el propio archivo no dejó claro). Va aparte de `_importar` porque la red tarda lo que quiera: se llama sin el cerrojo de la app."""
+        for x in r.get("resultados") or [r]:
+            if x.get("necesita") != "perfil": continue
+            for k, v in (jev.mapear_columnas(self.alm, x.get("cabecera") or [], x.get("ejemplos") or []) or {}).items():
+                x["propuesta"].setdefault(k, v)
+        return r
 
     def _saldo_inicial(self, cuenta):
         """Primer uso: si aún no hay ningún saldo anotado, el del extracto (lo que dice el banco) es el punto de partida."""
@@ -202,7 +237,7 @@ class App:
     def subir(self, d):
         nombre = os.path.basename(str(d.get("nombre") or "archivo.csv"))
         nombre = re.sub(r'[\\/:*?"<>|]', "_", nombre)
-        if not nombre.lower().endswith(IM.EXTENSIONES): return {"ok": False, "mensaje": "Solo se admiten archivos Excel (.xlsx, .xls) o CSV."}
+        if not nombre.lower().endswith(IM.EXTENSIONES): return {"ok": False, "mensaje": "Solo se admiten archivos Excel (.xlsx, .xls), CSV, Norma 43, OFX o QIF."}
         datos = base64.b64decode(d.get("contenido") or "")
         if len(datos) > MAX_SUBIDA: return {"ok": False, "mensaje": "El archivo es demasiado grande."}
         tipo = d.get("tipo") if d.get("tipo") in ("banco", "inversion", "operaciones") else None
@@ -282,7 +317,10 @@ class App:
                 if v is not None: self.alm.guardar("activo", {**a, "valor": v, "fecha_valor": fecha}, a["id"])
             if cierra:
                 c = next((r for r in self.alm.todos("cierre") if r["mes"] == mes), None)
-                self.alm.guardar("cierre", {"mes": mes, "fecha": fecha, "notas": d.get("notas") or ""}, c["id"] if c else None)
+                nuevo = {"mes": mes, "fecha": fecha, "notas": d.get("notas") or ""}
+                foto = d.get("foto") if isinstance(d.get("foto"), dict) else (c or {}).get("foto")  # sin foto nueva (cliente antiguo), se conserva la de antes
+                if foto: nuevo["foto"] = foto
+                self.alm.guardar("cierre", nuevo, c["id"] if c else None)
         return {"ok": True, "cerrado": cierra, "mensaje": f"Mes cerrado: registro de patrimonio del {IM.fmt(fecha)} guardado." if cierra else f"Saldos del {IM.fmt(fecha)} guardados."}
 
     def precios(self, accion, d):
@@ -441,6 +479,12 @@ class App:
                 elif k in ("guardar_sugeridos", "avisos_windows"): a.set_config(k, v in (True, 1, "1", "true", "on"))  # guardar ya lo dudoso con categoría sugerida · avisos de Windows (recordar.py)
                 elif k == "sugeridos_umbral": a.set_config(k, C.umbral_valido(v))
                 elif k == "acento": a.set_config(k, v if v in ACENTOS else ACENTOS[0])
+                elif k == "independencia":  # supuestos de la calculadora (en %, como se escriben): solo números de los campos conocidos
+                    sup = {}
+                    for c in ("gasto", "tasa", "rent", "apo", "edad", "pension", "edadPension"):
+                        x = modelo.numero(v.get(c)) if isinstance(v, dict) else None
+                        if x is not None and abs(x) < 1e9: sup[c] = x
+                    a.set_config(k, sup)
                 elif k in ("inicio", "inicio_ocultos"):  # paneles de Inicio visibles (en orden) y ocultos
                     a.set_config(k, [x for x in (v if isinstance(v, list) else []) if isinstance(x, str) and re.fullmatch(r"[a-z]{2,20}", x)][:20])
             return {"ok": True}
@@ -470,6 +514,11 @@ class App:
             self.deshacer, self.deshacer_que = foto, "Vuelto a juntar"
             return {"ok": True, "mensaje": "Vuelto a juntar ✓", "id": id}
         if ruta == "/api/importar/carpeta": return self.importar_carpeta(bool(d.get("previa")))
+        if ruta == "/api/importar/deshacer":  # quita de golpe todo lo que trajo una importación (se puede deshacer con «Deshacer»)
+            foto = a.instantanea()
+            msg, n = IM.deshacer_lote(a, d.get("lote"))
+            if n: self.deshacer, self.deshacer_que = foto, msg
+            return {"ok": True, "mensaje": msg, "quitados": n}
         if ruta == "/api/importar/descartar": return self.descartar_archivo(d)
         if ruta == "/api/importar/subir": return self.subir(d)
         if ruta == "/api/importar/reintentar": return self.reintentar(d)
@@ -499,9 +548,10 @@ class App:
             except jev.ErrorJev as e: return {"ok": False, "mensaje": str(e)}
         if ruta == "/api/jev/revisar":
             if not jev.config(a)["activo"]: return {"ok": False, "mensaje": "Activa el asistente Jev en Ajustes (con tu clave)."}
+            if jev.estado_repaso()["en_marcha"]: return {"ok": False, "mensaje": JEV_REPASANDO}
             n, total, error = jev.revisar(a)
-            nb = jev.revisar_broker(a)
-            if error: return {"ok": False, "mensaje": error}
+            nb, errb = jev.revisar_broker(a)
+            if error or errb: return {"ok": False, "mensaje": error or errb}
             partes = [f"categoría para {n} de {total} grupos"] if total else []
             if nb: partes.append(f"qué son {nb} textos del bróker")
             return {"ok": True, "n": n + nb, "mensaje": "✨ Jev propone " + " y ".join(partes) if partes else "No queda nada sin sugerencia"}
@@ -509,11 +559,13 @@ class App:
         if ruta == "/api/jev/categoria": return {"ok": True, **jev.sugerir_categoria(a, d.get("texto"), modelo.numero(d.get("importe")) or 0)}
         if ruta == "/api/jev/auditar":
             if not jev.config(a)["activo"]: return {"ok": False, "mensaje": "Activa el asistente Jev en Ajustes (con tu clave)."}
+            if jev.estado_repaso()["en_marcha"]: return {"ok": False, "mensaje": JEV_REPASANDO}
             n, h, error = jev.auditar(a)
             if error: return {"ok": False, "mensaje": error}
             if not n: return {"ok": True, "mensaje": f"Jev ya lo había repasado todo: {h} para revisar" if h else "Jev ya lo había repasado todo: está en orden"}
             return {"ok": True, "mensaje": f"Jev ha repasado {n} comercios: {h} para revisar" if h else f"Jev ha repasado {n} comercios: todo en orden"}
         if ruta == "/api/jev/hallazgo": return {"ok": True, "mensaje": jev.resolver_hallazgo(a, str(d.get("clave") or ""), d.get("accion"))}
+        if ruta == "/api/jev/repaso": return {"ok": True, **jev.estado_repaso()}
         if ruta == "/api/actualizaciones/config":
             actualizaciones.guardar_config(a, d); return {"ok": True, "actualizaciones": actualizaciones.para_la_pagina(a)}
         if ruta == "/api/actualizaciones/comprobar":
@@ -542,6 +594,9 @@ class App:
             k = str(d.get("clave") or "")[:120]
             ya = a.config("avisos_descartados") or []
             if k: a.set_config("avisos_descartados", [x for x in ya if x != k] if d.get("volver") else list(dict.fromkeys(ya + [k]))[-200:])
+            return {"ok": True}
+        if ruta == "/api/config/filtros_movimientos":  # filtros guardados de Movimientos: la lista entera (guardar, renombrar y borrar los hace la página)
+            a.set_config("filtros_movimientos", filtros_movimientos_validos(d.get("lista")))
             return {"ok": True}
         if ruta == "/api/config/visto":  # «lo que cambió desde la última vez» del Inicio: solo anota hasta dónde llegaba lo que ya viste
             try: mx, neto = max(0, int(d.get("max_id"))), d.get("neto")
@@ -655,9 +710,12 @@ class Manejador(http.server.BaseHTTPRequestHandler):
                 self._json({"ok": True})
                 threading.Thread(target=self.server.shutdown, daemon=True).start()
                 return
-            with self.app.lock:
+            # Jev tarda lo que tarde la red: sus rutas no esperan al cerrojo de la app (ver JEV_SIN_CERROJO)
+            cerrojo = contextlib.nullcontext() if u.path in JEV_SIN_CERROJO else self.app.lock
+            with cerrojo:
                 r = self.app.manejar(u.path, d)
             if r is None: return self._json({"error": "no existe"}, 404)
+            if u.path in JEV_TRAS_EL_CERROJO: r = self.app.proponer_con_jev(r)
             return self._json(r)
         except ValueError as e:
             return self._json({"ok": False, "mensaje": str(e)}, 400)

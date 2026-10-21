@@ -47,6 +47,8 @@ function vistaCerrar() {
       const i = form.createEl("input", { attr: { type: "number", step: "0.01" } });
       const prefill = ext && ext.fecha === fecha.toISODate() ? ext.saldo : est != null ? Math.round(est * 100) / 100 : "";
       i.value = campos["s:" + c.nombre] ?? prefill;
+      // Un saldo que no has escrito tú ni trae el extracto de ese día es la estimación de tus movimientos: al guardar se pide confirmar (B-111)
+      i.dataset.estimada = est != null && campos["s:" + c.nombre] == null && !(ext && ext.fecha === fecha.toISODate()) ? "1" : "";
       i.oninput = () => (campos["s:" + c.nombre] = i.value);
       refs.s[c.nombre] = i;
       const sinLlegar = est != null && pInicio ? Math.abs(pInicio.cuentas.saldos[c.nombre] - est) : 0;
@@ -115,8 +117,13 @@ function vistaCerrar() {
     const saldos = {}, valores = {};
     for (const [n, i] of Object.entries(refs.s)) if (i.value !== "") saldos[n] = i.value;
     for (const [n, i] of Object.entries(refs.v)) if (i.value !== "") valores[n] = i.value;
+    // Lo que sale de la estimación no es el saldo del banco: se confirma antes de guardarlo (B-111)
+    const estimados = Object.entries(refs.s).filter(([n, i]) => i.dataset.estimada === "1" && campos["s:" + n] == null && i.value !== "");
+    if (estimados.length && !(await confirmar(`Estos saldos no los has escrito tú: son lo que suman tus movimientos (${estimados.map(([n, i]) => `${n} ${eur(Number(i.value))}`).join(", ")}).\n\nGuárdalos solo si coinciden con lo que dice tu banco. Si no, escribe el saldo de tu banco antes de guardar.`, { titulo: "¿Guardar saldos estimados?", si: "Guardarlos igualmente", no: "Revisarlos" }))) return;
     b.disabled = true;
-    const r = await FB.api("/api/cierre", { fecha: fecha.toISODate(), mes: mesDe(), saldos, valores,
+    // Al cerrar el mes se guarda su foto: lo que dicen hoy los datos de ese mes, que ya no cambia aunque luego edites movimientos
+    const foto = cierra() ? fotoCierre(mesDe(), saldos, valores, refs.otros.value, refs.deudas.value, hoy.toISODate()) : undefined;
+    const r = await FB.api("/api/cierre", { fecha: fecha.toISODate(), mes: mesDe(), saldos, valores, foto,
       otros: refs.otros.value, deudas: refs.deudas.value, notas: refs.notas ? refs.notas.value : "" });
     b.disabled = false;
     if (!r.ok) { res.innerHTML = ""; mensaje(res, r.mensaje || "Error", "err"); return; }
@@ -127,7 +134,23 @@ function vistaCerrar() {
   const C = [...cierres()].sort((a, b) => String(b.mes).localeCompare(String(a.mes)));
   if (C.length) plegable(root, "Meses cerrados", (c) => {
     tabla(c, [{ t: "Mes" }, { t: "Ingresos", num: true }, { t: "Gastos", num: true }, { t: "Ahorro", num: true }, { t: "Tasa", num: true, opt: true }, { t: "Notas", opt: true }],
-      C.filter((x) => mesDT(x.mes).isValid).map((x) => { const M = finMes(x.mes); return [{ text: mesLbl(x.mes), ruta: x.file.path }, eur(M.ingresos, 0), eur(M.gastos, 0), { text: eurS(M.ahorro, 0), cls: tone(M.ahorro) }, pct(M.tasa), x.notas || ""]; }));
+      C.filter((x) => mesDT(x.mes).isValid).map((x) => { const M = finMes(x.mes); return [{ text: mesLbl(x.mes), ruta: x.file.path }, eur(M.ingresos), eur(M.gastos), { text: eurS(M.ahorro), cls: tone(M.ahorro) }, pct(M.tasa), x.notas || ""]; }));
+    const conFoto = C.filter((x) => mesDT(x.mes).isValid && x.foto);
+    for (const x of conFoto) plegable(c, `Foto de ${mesLbl(x.mes).toLowerCase()}`, (d) => fotoDelCierre(d, x));
+    if (conFoto.length < C.length) c.createDiv({ cls: "fin-note", text: "Los meses cerrados antes de que existiera la foto no la tienen: se guarda al cerrar un mes." });
   }, { extra: `${C.length}` });
+}
+
+// La foto de un mes cerrado: lo que decían los datos al cerrarlo y lo que dicen hoy, con lo que ha cambiado desde entonces.
+function fotoDelCierre(c, x) {
+  const f = x.foto, H = fotoHoy(x), D = cambiosFoto(f, H);
+  c.createDiv({ cls: "fin-note", text: `Así estaban tus datos de ${mesLbl(x.mes).toLowerCase()} al cerrarlo${f.hecha && mesDT(f.hecha.slice(0, 7)).isValid ? ` (el ${DateTime.fromISO(f.hecha).toFormat("dd/MM/yyyy")})` : ""}. La foto no cambia aunque edites movimientos; la columna «Hoy» sí.` });
+  const fila = (nombre, antes, ahora) => [nombre, eur(antes), eur(ahora ?? antes)];
+  tabla(c, [{ t: "Cifra" }, { t: "Al cerrar", num: true }, { t: "Hoy", num: true }], FOTO_CIFRAS.filter(([k]) => f[k] != null).map(([k, l]) => fila(l, f[k], H[k])));
+  const nombres = D.cifras.map((y) => `${y.etiqueta.toLowerCase()}: ${eur(y.antes)} → ${eur(y.ahora)}`);
+  c.createDiv({ cls: "fin-note fb-frase", text: nombres.length ? `Desde entonces ha cambiado: ${nombres.join("; ")}.` : "Desde entonces no ha cambiado nada." });
+  if (D.categorias.length) plegable(c, "Gasto por categoría que ha cambiado", (e) => {
+    tabla(e, [{ t: "Categoría" }, { t: "Al cerrar", num: true }, { t: "Hoy", num: true }], D.categorias.map((y) => fila(y.nombre, y.antes, y.ahora)));
+  }, { extra: `${D.categorias.length}` });
 }
 

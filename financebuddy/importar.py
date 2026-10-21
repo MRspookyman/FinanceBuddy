@@ -3,9 +3,9 @@
 # Flujo de un archivo: reconocer su formato (perfil) → leer las filas → (banco) comprobar la cadena de saldos →
 # clasificar → descartar lo ya importado (huella del extracto) → guardar lo claro y dejar lo dudoso «por revisar».
 # Si el formato no se reconoce, devuelve lo necesario para que el usuario diga qué columna es cada cosa.
-import datetime, os, re, shutil
+import datetime, os, re, shutil, uuid
 from collections import Counter
-from . import bizums, clasificar as C, lectura as L, modelo, operaciones as OP
+from . import bizums, clasificar as C, extractos as X, lectura as L, modelo, operaciones as OP
 
 class NecesitaPerfil(Exception):
     def __init__(self, info): super().__init__("formato desconocido"); self.info = info
@@ -13,13 +13,18 @@ class NecesitaPerfil(Exception):
 class NecesitaCuenta(Exception):
     def __init__(self, info): super().__init__("falta la cuenta"); self.info = info
 
-EXTENSIONES = (".xlsx", ".xls", ".xlsm", ".csv", ".txt")
+EXTENSIONES = (".xlsx", ".xls", ".xlsm", ".csv", ".txt", ".n43", ".ofx", ".qfx", ".qif")
 
 # ───────────── lectura con perfil ─────────────
 def leer(ruta, alm, tipo=None, perfil_nombre=None, info=None):
     """→ (perfil, filas normalizadas). tipo: banco | inversion | None (se deduce del formato).
     info (dict): se rellena con lo que dice la cabecera del archivo (iban, titular) y con las filas que parecían un movimiento
     y no se han podido leer (`ilegibles`: [{fila, que, valor, texto}]), para avisarlo en vez de saltárselas en silencio."""
+    fmt = X.formato(ruta)  # Norma 43, OFX o QIF: extractos de texto que no son hojas; no tienen perfil que configurar
+    if fmt and tipo in (None, "banco"):
+        filas, datos = X.leer(ruta, fmt)
+        if info is not None: info.update(datos)
+        return {"nombre": X.NOMBRES[fmt], "tipo": "banco", "cuenta": None}, filas
     crudas = L.filas_crudas(ruta)
     perfiles = alm.todos("perfil")
     if perfil_nombre: perfiles = [p for p in perfiles if p["nombre"] == perfil_nombre]
@@ -223,10 +228,11 @@ def importar_banco(alm, ruta, cuenta=None, perfil_nombre=None):
             f.setdefault("patron", C.patron_sugerido(f["texto"]))
             alm.insertar_crudo("pendiente", {"tipo_import": "banco", "cuenta": cuenta, "archivo": os.path.basename(ruta),
                                              "perfil": perfil["nombre"], "fila": f, "duda": f.get("duda", "")})
-        if "saldo" in filas[0]:
+        saldo = {"fecha": filas[0]["op"], "saldo": filas[0]["saldo"]} if "saldo" in filas[0] else info.get("saldo_final")
+        if saldo:
             prev = alm.config(f"saldo_extracto:{cuenta}") or {}
-            if filas[0]["op"] >= prev.get("fecha", ""): alm.set_config(f"saldo_extracto:{cuenta}", {"fecha": filas[0]["op"], "saldo": filas[0]["saldo"]})
-        if not perfil.get("cuenta"):  # recordar la cuenta de este formato
+            if saldo["fecha"] >= prev.get("fecha", ""): alm.set_config(f"saldo_extracto:{cuenta}", saldo)
+        if not perfil.get("cuenta") and perfil.get("id"):  # recordar la cuenta de este formato (Norma 43, OFX y QIF no tienen)
             alm.guardar("perfil", {**perfil, "cuenta": cuenta}, perfil["id"])
         recordar_cabecera(alm, info, cuenta)
     aprendidas = sum(1 for f in nuevas if f.get("aprendido"))
@@ -262,6 +268,12 @@ def movimiento_de(f, cuenta, **cambios):
     for k in ("recurrente", "destino", "origen", "reembolsa", "sugerido"):
         if f.get(k): d[k] = f[k]
     return modelo.limpiar("movimiento", d)
+
+def plan_de(recs, activo, fecha, importe):
+    """El plan de aportación fijo (de `recs`) al que corresponde una compra de `activo`: mismo activo, ya en marcha ese día y de un
+    importe parecido (±10 € o ±5 %). Con ese enlace la compra es su aportación y no se suma además a la automática del mismo mes."""
+    return next((r for r in recs if r.get("activo_inversion") == activo and r.get("activo") is not False and (r.get("desde") or "") <= fecha
+                 and importe > 0 and abs(importe - float(r.get("importe") or 0)) <= max(10, 0.05 * float(r.get("importe") or 0))), None)
 
 # ───────────── inversión ─────────────
 def importar_inversion(alm, ruta, cuenta=None, perfil_nombre=None):
@@ -301,8 +313,7 @@ def importar_inversion(alm, ruta, cuenta=None, perfil_nombre=None):
             if OP.casar_movimiento(alm, f, cuenta, activo["nombre"], signo): existentes += 1; continue  # ya vino en el archivo de órdenes
             d = {"fecha": f["op"], "activo": activo["nombre"], "importe": imp, "cuenta": cuenta, "participaciones": participaciones(f["texto"], imp),
                  "ext_texto": f["texto"], "ext_importe": f["importe"], "ext_fecha": f["op"]}
-            rec = next((r for r in recs if r.get("activo_inversion") == activo["nombre"] and r.get("activo") is not False
-                        and (r.get("desde") or "") <= f["op"] and imp > 0 and abs(imp - float(r.get("importe") or 0)) <= max(10, 0.05 * float(r.get("importe") or 0))), None)
+            rec = plan_de(recs, activo["nombre"], f["op"], imp)
             if rec: d["recurrente"] = rec["nombre"]
             nuevas_ap.append(modelo.limpiar("aportacion", d))
         elif accion == "interes":
@@ -397,20 +408,34 @@ def tipo_de(ruta, alm, carpeta):
 def importar_archivo(alm, carpeta, ruta, tipo=None, cuenta=None, perfil_nombre=None, simulando=False):
     """Importa un archivo y, si va bien, lo mueve a Importar\\Procesados. Lanza NecesitaPerfil / NecesitaCuenta.
     simulando: dentro de alm.simular() (vista previa): ni copia de seguridad ni mover el archivo."""
+    fmt = X.formato(ruta)  # Norma 43, OFX o QIF: siempre extractos del banco; no pasan por el reconocimiento de hojas
+    if fmt and tipo not in (None, "banco"):
+        raise ValueError(f"Este archivo es un extracto del banco ({X.NOMBRES[fmt]}): impórtalo como extracto del banco, no como movimientos del bróker o de inversión.")
+    if fmt: tipo = "banco"
     if tipo == "inversion" and L.reconocer(L.filas_crudas(ruta), alm.todos("perfil"), "operaciones"): tipo = "operaciones"
     tipo = tipo or tipo_de(ruta, alm, carpeta)
     if tipo is None:
         raise NecesitaPerfil({"archivo": os.path.basename(ruta), "tipo": None, **L.muestra_para_configurar(L.filas_crudas(ruta))})
     if not simulando: alm.copia(carpeta.copias, extra=alm.config("copia_extra"))
-    r = {"banco": importar_banco, "inversion": importar_inversion, "operaciones": OP.importar}[tipo](alm, ruta, cuenta, perfil_nombre)
-    if r.get("ok") and r.get("tipo") != "operaciones":
-        t = emparejar_traspasos(alm)
-        if t:
-            antes = r.get("dudas", 0)
-            r["traspasos"] = t
-            r["dudas"] = sum(1 for p in alm.todos("pendiente") if p.get("archivo") == os.path.basename(ruta) and p.get("cuenta") == r.get("cuenta"))
-            if antes: r["mensaje"] = r["mensaje"].replace(f", {antes} por revisar", f", {r['dudas']} por revisar" if r["dudas"] else "")
-            r["mensaje"] += f" · {t} traspaso{'s' if t > 1 else ''} entre tus cuentas reconocido{'s' if t > 1 else ''}"
+    lote = None if simulando else uuid.uuid4().hex[:10]  # la vista previa no deja lote: no hay nada que quitar
+    with alm.con_lote(lote):
+        r = {"banco": importar_banco, "inversion": importar_inversion, "operaciones": OP.importar}[tipo](alm, ruta, cuenta, perfil_nombre)
+        if r.get("ok") and r.get("tipo") != "operaciones":
+            t = emparejar_traspasos(alm)
+            if t:
+                antes = r.get("dudas", 0)
+                r["traspasos"] = t
+                r["dudas"] = sum(1 for p in alm.todos("pendiente") if p.get("archivo") == os.path.basename(ruta) and p.get("cuenta") == r.get("cuenta"))
+                if antes: r["mensaje"] = r["mensaje"].replace(f", {antes} por revisar", f", {r['dudas']} por revisar" if r["dudas"] else "")
+                r["mensaje"] += f" · {t} traspaso{'s' if t > 1 else ''} entre tus cuentas reconocido{'s' if t > 1 else ''}"
+    if r.get("ok") and lote:
+        registros = contar_lote(alm, lote)
+        if registros:  # una importación que no trae nada nuevo no deja lote que quitar
+            r["lote"], r["registros"] = lote, registros
+            lista = alm.config("importaciones") or []
+            lista.append({"id": lote, "cuando": datetime.datetime.now().isoformat(timespec="seconds"), "archivo": os.path.basename(ruta),
+                          "tipo": r.get("tipo"), "cuenta": r.get("cuenta") or "", "registros": registros})
+            alm.set_config("importaciones", lista[-LOTES_MAX:])
     if r.get("ok") and not simulando:
         destino = os.path.join(carpeta.procesados, f"{datetime.date.today().isoformat()} {os.path.basename(ruta)}")
         n = 2
@@ -420,6 +445,60 @@ def importar_archivo(alm, carpeta, ruta, tipo=None, cuenta=None, perfil_nombre=N
         try: shutil.move(ruta, destino)
         except OSError: pass
     return r
+
+# ───────────── quitar una importación entera ─────────────
+LOTES_MAX = 20  # las importaciones recientes que se recuerdan (config.importaciones)
+PLURAL_LOTE = {"movimiento": ("movimiento", "movimientos"), "aportacion": ("compra o venta", "compras y ventas"), "cobro": ("cobro", "cobros"),
+               "pendiente": ("fila por revisar", "filas por revisar"), "operacion": ("orden en espera", "órdenes en espera"),
+               "ignorado": ("fila descartada", "filas descartadas")}
+
+def contar_lote(alm, lote):
+    """Cuántos registros de cada clase lleva este lote → {tipo: n} (solo los que tienen alguno)."""
+    out = {}
+    for t in modelo.CON_LOTE:
+        n = sum(1 for r in alm.todos(t) if r.get("lote") == lote)
+        if n: out[t] = n
+    return out
+
+def texto_registros(registros):
+    """«34 movimientos, 2 compras y ventas y 3 filas por revisar»."""
+    partes = [f"{n} {PLURAL_LOTE[t][0 if n == 1 else 1]}" for t, n in registros.items() if n and t in PLURAL_LOTE]
+    return " y ".join(", ".join(partes).rsplit(", ", 1))
+
+def lotes_recientes(alm, regs=None):
+    """Las importaciones recientes con lo que queda de cada una (cuenta viva, no la de cuando se importó): las que ya no tienen nada se omiten.
+    `regs`: {tipo: [registros]} que quien llama ya tiene leídos (App.datos); sin él se leen de la base. Sin importaciones apuntadas, ni se mira."""
+    lista = alm.config("importaciones") or []
+    if not lista: return []
+    por_lote = {}
+    for t in modelo.CON_LOTE:
+        for r in (regs[t] if regs is not None and t in regs else alm.todos(t)):
+            if r.get("lote"): por_lote.setdefault(r["lote"], Counter())[t] += 1
+    return [{**e, "registros": dict(por_lote[e["id"]])} for e in reversed(lista) if e.get("id") in por_lote]
+
+def deshacer_lote(alm, lote):
+    """Quita todo lo que trajo una importación: sus movimientos, compras y ventas, cobros, filas por revisar y descartadas, y las órdenes
+    en espera. Lo apuntado a mano y lo de otras importaciones no se toca, aunque lo hayas cambiado después (un movimiento casado con una
+    fila del extracto sigue siendo tuyo; el saldo inicial y los saldos del extracto tampoco se quitan).
+    Los Bizums de otra importación que devolvían un gasto quitado se quedan sin enlace (vuelven a enlazarse solos si el gasto reaparece).
+    → (mensaje, nº de registros quitados)."""
+    lote = str(lote or "")
+    lista = alm.config("importaciones") or []
+    info = next((e for e in lista if e.get("id") == lote), None)
+    regs = {t: [r for r in alm.todos(t) if lote and r.get("lote") == lote] for t in modelo.CON_LOTE}
+    n = sum(len(v) for v in regs.values())
+    if not n:
+        if info: alm.set_config("importaciones", [e for e in lista if e.get("id") != lote])
+        return "Esa importación ya no tiene nada que quitar: todo lo que trajo ya se había borrado.", 0
+    quitados = {m["id"] for m in regs["movimiento"]}
+    with alm.transaccion():
+        for t, rs in regs.items():
+            for r in rs: alm.borrar(t, r["id"])
+        for m in alm.todos("movimiento"):  # un Bizum de otra importación que devolvía un gasto que acaba de irse
+            if m.get("reembolsa") in quitados: alm.guardar("movimiento", {**m, "reembolsa": None}, m["id"])
+        if info: alm.set_config("importaciones", [e for e in lista if e.get("id") != lote])
+    archivo = (info or {}).get("archivo") or next((p["archivo"] for p in regs["pendiente"] if p.get("archivo")), "")
+    return f"Quitada la importación{f' de «{archivo}»' if archivo else ''}: {texto_registros({t: len(v) for t, v in regs.items()})}.", n
 
 def archivos_pendientes(carpeta):
     out = []
@@ -566,6 +645,10 @@ def _categoria_nueva(alm, c):
     return nombre
 
 def _resolver_uno(alm, p, d):
+    """Lo que sale de resolver una duda lleva el lote de la duda (el archivo de donde vino la fila), no el de la importación en curso."""
+    with alm.con_lote(p.get("lote")): return _resolver_sin_lote(alm, p, d)
+
+def _resolver_sin_lote(alm, p, d):
     f, cuenta = p["fila"], p["cuenta"]
     accion = d.get("accion", "guardar")
     if accion == "ignorar":
@@ -596,9 +679,11 @@ def _resolver_uno(alm, p, d):
         if OP.casar_movimiento(alm, f, cuenta, nombre, signo):
             alm.borrar("pendiente", p["id"])
             return f"Ya estaba en tus órdenes: {nombre}"
-        alm.insertar_crudo("aportacion", modelo.limpiar("aportacion", {"fecha": f["op"], "activo": nombre, "importe": round(signo * f["importe"], 2),
-                           "participaciones": participaciones(f["texto"], signo * f["importe"]),
-                           "cuenta": cuenta, "ext_texto": f["texto"], "ext_importe": f["importe"], "ext_fecha": f["op"]}))
+        ap = {"fecha": f["op"], "activo": nombre, "importe": round(signo * f["importe"], 2), "participaciones": participaciones(f["texto"], signo * f["importe"]),
+              "cuenta": cuenta, "ext_texto": f["texto"], "ext_importe": f["importe"], "ext_fecha": f["op"]}
+        rec = plan_de([r for r in alm.todos("recurrente") if r.get("clase") == "aportacion"], nombre, f["op"], ap["importe"])
+        if rec: ap["recurrente"] = rec["nombre"]  # como al importar: su aportación fija deja de salir además como automática
+        alm.insertar_crudo("aportacion", modelo.limpiar("aportacion", ap))
         msg = f"Guardado: {'compra' if signo * f['importe'] > 0 else 'venta'} de {nombre}"
     elif accion == "dividendo":
         nombre = d.get("activo")
@@ -734,6 +819,7 @@ def dividir(alm, mid, partes):
     if m.get("clase") not in ("gasto", "ingreso"): raise ValueError("Solo se pueden dividir gastos e ingresos.")
     if m.get("parte_de"): raise ValueError("Este movimiento ya es una parte: vuelve a juntarlo para dividirlo de otra forma.")
     if m.get("recurrente"): raise ValueError("Es el pago de un fijo: quítale antes el enlace con el fijo.")
+    if m.get("a_medias"): raise ValueError("Este gasto va a medias: quítale antes «a medias» para dividirlo en categorías.")
     if any(x.get("reembolsa") == m["id"] for x in alm.todos("movimiento")):
         raise ValueError("Te han devuelto parte de este gasto (tiene Bizums enlazados): quita antes esos enlaces.")
     cats = {c["nombre"] for c in alm.todos("categoria")}
