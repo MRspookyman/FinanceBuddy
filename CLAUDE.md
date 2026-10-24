@@ -30,9 +30,9 @@ Python (biblioteca estándar + `openpyxl`/`xlrd`/`pystray`) · SQLite · interfa
 
 ```bat
 python -m financebuddy --ejemplo --sin-navegador --puerto 8830 --hoy 2026-09-30   :: app con datos inventados
-python -m unittest discover -s pruebas -p "test_*.py" -t .     :: 247 pruebas de Python
-python pruebas\run.py --tests                                  :: 21 pantallas sin errores + 225 pruebas de cálculos
-python pruebas\run.py --flujos                                 :: 35 flujos con clics de verdad
+python -m unittest discover -s pruebas -p "test_*.py" -t .     :: 330 pruebas de Python
+python pruebas\run.py --tests                                  :: 22 pantallas sin errores + 281 pruebas de cálculos
+python pruebas\run.py --flujos                                 :: 55 flujos con clics de verdad
 python pruebas\run.py --capturas                               :: capturas en claro y oscuro (%TEMP%\fb-pruebas)
 python pruebas\run.py anual --guion=clics.js --shot             :: unos clics sueltos y la captura de después (skill fb-probar)
 python pruebas\evaluar_jev.py / evaluar_precios.py             :: contra los servicios reales (lo ejecuta el usuario)
@@ -118,6 +118,12 @@ Para añadir algo: `modelo.CAMPOS` **y** `FORMS` (`web/paneles/formularios.js`) 
   Las aportaciones fijas siguen enlazándose por su fecha (`aportacionesSinLlegar` mira lo mismo).
 - «Deshacer» repone la foto **entera** de antes, así que cualquier otra escritura la anula (`App.manejar`). Una ruta nueva
   que solo consulte va en `servidor.NO_ANULAN_DESHACER`; si no, el «Deshacer» desaparece al llamarla.
+- Quitar una importación (`deshacer_lote`) quita también los activos que creó: la importación los apunta en
+  `config.importaciones[].activos` (de `activos_nuevos` del resultado) y se borran si ya nada los nombra (`activo_en_uso`) y no
+  tienen ajustes tuyos (valor, precio, TER, objetivo). Un importador nuevo que cree activos tiene que devolverlos en `activos_nuevos`.
+  Una duda del bróker con `fila.tipo_op` (un tipo de operación de Revolut que no se sabe leer) no la resuelve sola `resolver_conocidos`.
+  La huella de una orden (`operaciones.huella`) lleva el ISIN o el activo **tal como lo nombra el archivo** (el ticker), no el nombre
+  en la app: renombrar no duplica. Las órdenes de antes llevan el nombre (`huella_por_nombre`): al buscar duplicados se miran las dos.
 - Si cambia el formato de los datos (también un campo nuevo: una app anterior lo borraría al editar), **sube `almacen.VERSION_ESQUEMA`**:
   al abrir, la base se marca con la versión de ahora y una versión anterior de la app se negará a abrirla.
 - Las copias se ordenan por `almacen.copias_de()` (por su fecha, no alfabéticamente: el mismo día puede haber varias).

@@ -7,6 +7,7 @@ Lo cerrado: lo hecho y lo descartado. **No se lee entero**: se busca con
 
 | Id | Qué | Cuándo |
 |---|---|---|
+| B-107 | Reconocer de serie tres formatos: BBVA (Excel de movimientos), Revolut cuenta «Actual» (CSV) y Revolut inversión (CSV con ticker, USD y cambio): compras/ventas/dividendos en € con el cambio del archivo, activo creado solo por ticker | 23/10/2026 · revisor: pasa (3 vueltas) · importar los 3 archivos dos veces: 2ª vez 0 nuevos · sin commit |
 | B-066 | Franja «lo que cambió desde la última vez» en el Inicio | 14/10/2026 · revisor opus: vuelve (Infinity daba 500; avisos como texto se guardaba troceado) → corregido a mano + pruebas · franja «Desde la última vez» con config.ultima_vista, no anula Deshacer, no sube VERSION_ESQUEMA (clave suelta de config) · si se borra el último movimiento y se reutiliza su id, ese no cuenta como nuevo (aceptado) · sin commit |
 | B-014 | Cambiar de carpeta con una ruta errónea crea base vacía (hay `isdir` en `servidor.py:324`; falta ver si basta) | 14/10/2026 · revisor opus: vuelve (confirmado debe ser true, no cualquier valor) → corregido a mano + prueba · carpeta sin datos pide confirmar con «Crear base nueva» · sin commit |
 | B-013 | Restaurar una copia sin validar (hay `integrity_check` en `almacen.py`; falta ver si cubre «esquema más nuevo» y el límite de copias) | 14/10/2026 · revisor opus: pasa · restaurar copia con el límite de 30: copia el origen a un temporal antes de la copia de seguridad (ya no pisa datos con una base vacía) · sin commit |

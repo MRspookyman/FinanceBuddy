@@ -1244,14 +1244,16 @@ class TestLotes(Base):
                "04/03/2026;FR0000989626;1000 EUR;0,022;Finalizada\n")
     CUENTA = "Fecha de operación;Fecha valor;Concepto;Importe\n06/03/2026;06/03/2026;GROUPAMA TRESORERIE I ACC EUR;-999,50\n"
 
-    def test_el_archivo_de_ordenes_deja_lote_y_se_quita_sin_borrar_los_activos(self):
+    def test_el_archivo_de_ordenes_deja_lote_y_al_quitarlo_solo_se_quedan_los_activos_con_ajustes(self):
         ruta = os.path.join(self.c.inversion, "ordenes.csv"); escribir(ruta, "cp1252", self.ORDENES)
         r = IM.importar_archivo(self.a, self.c, ruta, None, "Bróker")
         self.assertEqual(r["tipo"], "operaciones")
         self.assertEqual(({x.get("lote") for x in self.a.todos("aportacion")}, r["registros"]), ({r["lote"]}, {"aportacion": 2}))
-        activos = len(self.a.todos("activo"))
-        self.assertEqual(IM.deshacer_lote(self.a, r["lote"])[1], 2)
-        self.assertEqual((self.a.todos("aportacion"), len(self.a.todos("activo"))), ([], activos))  # los activos que creó se quedan: tienen sus ajustes
+        g = next(x for x in self.a.todos("activo") if x["nombre"] == "Groupama Trésorerie")
+        self.a.guardar("activo", {**g, "ter": 0.1}, g["id"])  # algo tuyo: se queda
+        msg, n = IM.deshacer_lote(self.a, r["lote"])
+        self.assertEqual(n, 2); self.assertIn("y 1 activo que había creado (Fidelity S&P 500)", msg)
+        self.assertEqual((self.a.todos("aportacion"), sorted(x["nombre"] for x in self.a.todos("activo"))), ([], ["Fondo MSCI", "Groupama Trésorerie"]))
         ruta = os.path.join(self.c.inversion, "ordenes2.csv"); escribir(ruta, "cp1252", self.ORDENES)
         self.assertEqual(IM.importar_archivo(self.a, self.c, ruta, None, "Bróker")["nuevas"], 2)
 
@@ -1279,6 +1281,173 @@ class TestLotes(Base):
         self.assertEqual((self.a.config("version_esquema"), almacen.VERSION_ESQUEMA), (4, 4))
         self.assertEqual([m["concepto"] for m in self.movs()], ["Antiguo"])  # sin lote: nunca se quita con una importación
         self.assertEqual(IM.deshacer_lote(self.a, "cualquiera")[1], 0)
+
+class TestFormatosDeSerie(Base):
+    """B-107: BBVA (Excel), la cuenta «Actual» de Revolut (CSV) y la cuenta de inversión de Revolut (CSV) se reconocen y se
+    importan solos. Todo inventado, con la misma forma que los archivos de verdad."""
+    def bbva(self, filas, nombre="bbva.xlsx", saldo=1000.0):
+        """filas: [(fecha valor, fecha, concepto, movimiento, importe)] en orden cronológico → Excel de BBVA (lo más reciente arriba)."""
+        import openpyxl
+        wb = openpyxl.Workbook(); ws = wb.active; ws.title = "Informe BBVA"
+        for _ in range(2): ws.append([None])
+        ws.append([None, None, "Movimientos"]); ws.append([None, None, "Fecha de generación del informe: 30/09/2026"])
+        ws.append([None, "Fecha valor", "Fecha", "Concepto", "Movimiento", "Importe", "Divisa", "Disponible", "Divisa", "Observaciones"])
+        con_saldo = []
+        for val, op, conc, mov, imp in filas:
+            saldo = round(saldo + imp, 2); con_saldo.append([None, "/".join(reversed(val.split("-"))), "/".join(reversed(op.split("-"))), conc, mov, imp, "EUR", saldo, "EUR", ""])
+        for f in reversed(con_saldo): ws.append(f)
+        ruta = os.path.join(self.c.banco, nombre); wb.save(ruta); return ruta
+    BBVA = [("2026-08-31", "2026-09-01", "Mercadona valencia", "Pago con tarjeta", -40.0),
+            ("2026-09-01", "2026-09-01", "Bizum", "Recibido: cena", 15.0),
+            ("2026-09-02", "2026-09-02", "Bizum", "ENVIADO: Sin concepto", -10.0),
+            ("2026-09-03", "2026-09-03", "Transferencia recibida", "De Ana Prueba Inventada", 200.0),
+            ("2026-09-04", "2026-09-04", "Ret. efectivo a debito con tarj. en cajero. aut.", "Otros", -20.0),
+            ("2026-09-05", "2026-09-05", "Revolut**0000*", "Pago con tarjeta", -150.0)]
+    ACTUAL = ("Tipo,Producto,Fecha de inicio,Fecha de finalización,Descripción,Importe,Comisión,Divisa,State,Saldo\n"
+              "Recargas,Actual,2026-09-05 10:00:00,2026-09-05 10:00:02,Una recarga de Apple Pay con *0000,150.00,0.00,EUR,COMPLETADO,150.00\n"
+              "Pago con tarjeta,Actual,2026-09-06 12:00:00,2026-09-08 09:00:00,Lidl,-20.00,0.50,EUR,COMPLETADO,129.50\n"
+              "Transferir,Actual,2026-09-07 09:00:00,2026-09-07 09:00:01,A cuenta de inversión,-100.00,0.00,EUR,COMPLETADO,29.50\n"
+              "Pago con tarjeta,Actual,2026-09-09 09:00:00,,Amazon,-5.00,0.00,EUR,PENDIENTE,\n")
+    INVERSION = ("Date,Ticker,Type,Quantity,Price per share,Total Amount,Currency,FX Rate\n"
+                 "2026-03-02T09:00:00.474680Z,,CASH TOP-UP,,,USD 110,USD,1.1000\n"
+                 "2026-03-02T14:30:00.123Z,ACME,BUY - MARKET,2,USD 55,USD 110,USD,1.1000\n"
+                 "2026-03-10T14:30:00Z,ACME,BUY - MARKET,1,USD 60,USD 60,USD,1.2000\n"
+                 "2026-04-01T10:00:00Z,ACME,DIVIDEND,,,USD 1.10,USD,1.1000\n"
+                 "2026-05-04T14:30:00Z,ACME,SELL - MARKET,1.5,USD 80,USD 120,USD,1.2000\n"
+                 "2026-05-05T09:00:00Z,,CASH WITHDRAWAL,,,USD -120,USD,1.2000\n"
+                 "2026-05-06T09:00:00Z,ZETA,BUY - LIMIT,3,EUR 10,EUR 30,EUR,1.0000\n"
+                 "2026-06-01T09:00:00Z,ACME,STOCK SPLIT,2,,USD 0,USD,1.1000\n"
+                 "2026-06-02T09:00:00Z,,CUSTODY FEE,,,USD -2.20,USD,1.1000\n")
+    def csv(self, carpeta, nombre, texto):
+        ruta = os.path.join(carpeta, nombre); escribir(ruta, "utf-8", texto); return ruta
+
+    def test_texto_con_el_detalle(self):
+        self.assertEqual(L.con_detalle("Bizum", "Recibido: cena"), "Bizum · Recibido: cena")
+        self.assertEqual(L.con_detalle("Bizum", "Recibido: bizum de Ana"), "Bizum · Recibido: bizum de Ana")
+        self.assertEqual(L.con_detalle("Transferencia recibida", "De Ana Prueba"), "Transferencia recibida · De Ana Prueba")
+        self.assertEqual(L.con_detalle("Mercadona valencia", "Pago con tarjeta"), "Mercadona valencia")  # genérico: no se añade
+        self.assertEqual(L.con_detalle("Cajero", "Otros"), "Cajero")
+        self.assertEqual(L.con_detalle("Bizum recibido de Ana", "Recibido"), "Bizum recibido de Ana")  # ya lo dice el concepto
+        self.assertEqual(L.con_detalle("", "Recibido: cena"), "Recibido: cena")
+
+    def test_importes_con_la_moneda_delante(self):
+        for txt, n in [("USD 108", 108.0), ("USD -0.03", -0.03), ("EUR -50", -50.0), ("12,30 EUR", 12.3), ("GBP 1,234.50", 1234.5), ("USD", None), ("ACME", None)]:
+            self.assertEqual(L.numero(txt), n, txt)
+
+    def test_se_reconocen_los_tres(self):
+        perfiles = self.a.todos("perfil")
+        self.assertEqual(L.reconocer(L.filas_crudas(self.bbva(self.BBVA)), perfiles)[0]["nombre"], "BBVA")
+        self.assertEqual(L.reconocer(L.filas_crudas(self.csv(self.c.banco, "actual.csv", self.ACTUAL)), perfiles)[0]["nombre"], "Revolut (cuenta)")
+        # Gana aunque haya un formato hecho a mano con menos columnas para el mismo archivo
+        self.a.guardar("perfil", {"nombre": "Mi Revolut", "tipo": "inversion", "columnas": {"fecha": "date", "concepto": "ticker", "importe": "quantity"}})
+        ruta = self.csv(self.c.inversion, "inversion.csv", self.INVERSION)
+        self.assertEqual(L.reconocer(L.filas_crudas(ruta), self.a.todos("perfil"))[0]["nombre"], "Revolut (inversión)")
+        self.assertEqual(IM.tipo_de(ruta, self.a, self.c), "operaciones")
+
+    def test_bbva(self):
+        r = self.importar(self.bbva(self.BBVA))
+        self.assertTrue(r["ok"], r); self.assertEqual((r["perfil"], r["filas"]), ("BBVA", 6))
+        textos = {m["ext_texto"]: m for m in self.movs()} | {p["fila"]["texto"]: p["fila"] for p in self.a.todos("pendiente")}
+        self.assertEqual(sorted(textos), sorted(["Mercadona valencia", "Bizum · Recibido: cena", "Bizum · ENVIADO: Sin concepto",
+                                                 "Transferencia recibida · De Ana Prueba Inventada", "Ret. efectivo a debito con tarj. en cajero. aut.", "Revolut**0000*"]))
+        merc = textos["Mercadona valencia"]
+        self.assertEqual((merc["fecha"], merc["ext_fecha"], merc["categoria"]), ("2026-08-31", "2026-09-01", "Supermercado"))  # fecha valor y fecha
+        cena = textos["Bizum · Recibido: cena"]
+        self.assertEqual((cena["clase"], cena["categoria"]), ("reembolso", "Comer fuera"))  # un Bizum aunque no traiga el nombre
+        self.assertEqual(textos["Bizum · ENVIADO: Sin concepto"]["concepto"], "Bizum enviado")
+        self.assertEqual(textos["Revolut**0000*"]["clase"], "transferencia")  # recargar Revolut con la tarjeta: dinero entre tus cuentas
+        self.assertEqual(self.a.config("saldo_extracto:Nómina"), {"fecha": "2026-09-05", "saldo": 995.0})
+        r = self.importar(self.bbva(self.BBVA, nombre="bbva2.xlsx"))
+        self.assertEqual((r["nuevas"], r["existentes"], r["dudas"]), (0, 6, 0))
+
+    def test_revolut_cuenta(self):
+        self.a.guardar("cuenta", {"nombre": "Revolut", "tipo": "corriente", "extracto": True})
+        self.importar(self.bbva(self.BBVA))
+        r = self.importar(self.csv(self.c.banco, "actual.csv", self.ACTUAL), cuenta="Revolut")
+        self.assertTrue(r["ok"], r); self.assertEqual((r["perfil"], r["filas"]), ("Revolut (cuenta)", 3))
+        self.assertIn("1 sin completar (pendiente o anulada): no se importa", r["mensaje"])  # la compra pendiente no ha tocado el saldo
+        self.assertEqual(r["traspasos"], 1)  # la recarga es el pago a Revolut del extracto de BBVA
+        m = {x["ext_texto"]: x for x in self.movs() if x["cuenta"] == "Revolut"}
+        self.assertEqual((m["Lidl"]["importe"], m["Lidl"]["fecha"], m["Lidl"]["ext_fecha"]), (20.5, "2026-09-06", "2026-09-08"))  # con la comisión
+        self.assertEqual(m["Una recarga de Apple Pay con *0000"]["origen"], "Nómina")
+        self.assertEqual([p["fila"]["clase"] for p in self.a.todos("pendiente") if p["cuenta"] == "Revolut"], ["transferencia"])  # «A cuenta de inversión»
+        r = self.importar(self.csv(self.c.banco, "actual2.csv", self.ACTUAL), cuenta="Revolut")
+        self.assertEqual((r["nuevas"], r["existentes"]), (0, 3))
+
+    def test_revolut_inversion(self):
+        self.a.guardar("activo", {"nombre": "Zeta Corp", "clase": "accion", "cuenta": "Bróker", "fuente_precio": "yahoo", "codigo_precio": "ZETA"})
+        ruta = self.csv(self.c.inversion, "inversion.csv", self.INVERSION)
+        with self.a.simular():  # la vista previa no deja nada
+            self.assertEqual(IM.importar_archivo(self.a, self.c, ruta, None, "Bróker", simulando=True)["nuevas"], 6)  # 4 órdenes, 1 dividendo, 1 comisión
+        self.assertEqual((self.a.todos("aportacion"), len(self.a.todos("activo"))), ([], 2))
+        r = IM.importar_archivo(self.a, self.c, ruta, None, "Bróker")
+        self.assertEqual((r["tipo"], r["perfil"], r["nuevas"], r["dudas"]), ("operaciones", "Revolut (inversión)", 6, 1))
+        self.assertIn("2 ingresos o retiradas de efectivo ignorados", r["mensaje"])
+        # Importes en euros (moneda ÷ cambio); una venta, con importe y participaciones en negativo
+        self.assertEqual(sorted((a["fecha"], a["activo"], a["importe"], a["participaciones"]) for a in self.a.todos("aportacion")),
+                         [("2026-03-02", "ACME", 100.0, 2.0), ("2026-03-10", "ACME", 50.0, 1.0), ("2026-05-04", "ACME", -100.0, -1.5),
+                          ("2026-05-06", "Zeta Corp", 30.0, 3.0)])
+        acme = next(a for a in self.a.todos("activo") if a["nombre"] == "ACME")  # creado solo; ZETA era «Zeta Corp» por su ticker
+        self.assertEqual((acme["clase"], acme["cuenta"], acme["patrones"], acme.get("fuente_precio", "")), ("accion", "Bróker", ["acme"], ""))
+        self.assertEqual([(c["fecha"], c["activo"], c["tipo"], c["importe"]) for c in self.a.todos("cobro")], [("2026-04-01", "ACME", "dividendo", 1.0)])
+        self.assertEqual([(m["clase"], m["categoria"], m["importe"]) for m in self.movs()], [("gasto", "Comisiones", 2.0)])
+        self.assertEqual([p["fila"]["texto"] for p in self.a.todos("pendiente")], ["STOCK SPLIT ACME · 2 títulos"])  # lo que no sé leer no se pierde
+        # Otra vez el mismo archivo: nada nuevo
+        r2 = IM.importar_archivo(self.a, self.c, self.csv(self.c.inversion, "inversion2.csv", self.INVERSION), None, "Bróker")
+        self.assertEqual((r2["nuevas"], r2["existentes"], r2["dudas"]), (0, 7, 0))
+        self.assertEqual((len(self.a.todos("aportacion")), len(self.a.todos("cobro")), len(self.a.todos("pendiente"))), (4, 1, 1))
+        # Quitar la importación quita también el activo que creó (el que ya tenías se queda)
+        msg, n = IM.deshacer_lote(self.a, r["lote"])
+        self.assertIn("y 1 activo que había creado (ACME)", msg)
+        self.assertEqual(sorted(a["nombre"] for a in self.a.todos("activo")), ["Fondo MSCI", "Zeta Corp"])
+        self.assertEqual((self.a.todos("aportacion"), self.a.todos("cobro")), ([], []))
+
+    def test_renombrar_el_activo_no_duplica_al_reimportar(self):
+        IM.importar_archivo(self.a, self.c, self.csv(self.c.inversion, "inversion.csv", self.INVERSION), None, "Bróker")
+        acme = next(a for a in self.a.todos("activo") if a["nombre"] == "ACME")
+        self.a.guardar("activo", {**acme, "nombre": "Acme Corporation"}, acme["id"])  # la huella es el ticker del archivo, no el nombre
+        r = IM.importar_archivo(self.a, self.c, self.csv(self.c.inversion, "inversion2.csv", self.INVERSION), None, "Bróker")
+        self.assertEqual((r["nuevas"], r["dudas"], r["activos_nuevos"]), (0, 0, []))
+        self.assertEqual(sorted(a["activo"] for a in self.a.todos("aportacion")), ["Acme Corporation"] * 3 + ["ZETA"])
+
+    RARO = ("Date,Ticker,Type,Quantity,Price per share,Total Amount,Currency,FX Rate\n"
+            "2026-07-01T09:00:00Z,ACME,DIVIDEND TAX (CORRECTION),,,USD -0.40,USD,1.2500\n"  # un dividendo que resta
+            "2026-07-02T09:00:00Z,ACME,STOCK SPLIT,3,,,USD,1.1000\n"  # sin importe: no es una compra en espera
+            "2026-07-03T09:00:00Z,ACME,TRANSFER FROM REVOLUT TRADING LTD TO REVOLUT SECURITIES EUROPE UAB,2.5,,,USD,1.1000\n"
+            "2026-07-04T14:30:00Z,ACME,BUY - MARKET,2,USD 50,USD 100,USD,1.2500\n"
+            "2026-07-05T09:00:00Z,,DIVIDEND,,,USD 1.25,USD,1.2500\n")  # sin ticker: ¿de qué activo?
+
+    def test_lo_que_no_cuadra_con_su_tipo_va_a_revisar(self):
+        r = IM.importar_archivo(self.a, self.c, self.csv(self.c.inversion, "raro.csv", self.RARO), None, "Bróker")
+        self.assertEqual((r["nuevas"], r["dudas"]), (1, 4))
+        P = {p["fila"]["texto"][:16]: p for p in self.a.todos("pendiente")}
+        self.assertEqual(sorted(P), ["DIVIDEND", "DIVIDEND TAX (CO", "STOCK SPLIT ACME", "TRANSFER FROM RE"])
+        # Con sus títulos y su ticker: es lo que hace falta para ajustar las participaciones
+        self.assertEqual(P["STOCK SPLIT ACME"]["fila"]["texto"], "STOCK SPLIT ACME · 3 títulos")
+        self.assertIn("de ACME (2,5 títulos)", P["TRANSFER FROM RE"]["duda"])
+        self.assertEqual((self.a.todos("operacion"), self.a.todos("cobro")), ([], []))
+        self.assertEqual([(a["importe"], a["participaciones"]) for a in self.a.todos("aportacion")], [(80.0, 2.0)])
+        r = IM.importar_archivo(self.a, self.c, self.csv(self.c.inversion, "raro2.csv", self.RARO), None, "Bróker")
+        self.assertEqual((r["nuevas"], r["dudas"], len(self.a.todos("pendiente"))), (0, 0, 4))
+
+    def test_lo_resuelto_desde_por_revisar_no_vuelve_al_reimportar(self):
+        IM.importar_archivo(self.a, self.c, self.csv(self.c.inversion, "raro.csv", self.RARO), None, "Bróker")
+        for p in self.a.todos("pendiente"):
+            d = {"accion": "dividendo", "activo": "ACME"} if p["fila"]["texto"] == "DIVIDEND" else {"accion": "activo", "activo": "ACME"}
+            IM.resolver(self.a, p["id"], d)
+        self.assertEqual((self.a.todos("pendiente"), len(self.a.todos("aportacion")), len(self.a.todos("cobro"))), ([], 4, 1))
+        r = IM.importar_archivo(self.a, self.c, self.csv(self.c.inversion, "raro2.csv", self.RARO), None, "Bróker")
+        self.assertEqual((r["nuevas"], r["dudas"]), (0, 0))
+        self.assertEqual((self.a.todos("pendiente"), len(self.a.todos("aportacion")), len(self.a.todos("cobro"))), ([], 4, 1))
+
+    def test_bizum_con_nombre_y_sin_el(self):
+        from financebuddy import clasificar as C
+        conc = lambda t, imp: C.clasificar_fila({"op": "2026-09-01", "texto": t, "importe": imp}, [], [], [], [], "Nómina")["concepto"]
+        self.assertEqual(conc("BIZUM ENVIADO A ANA LOPEZ CONCEPTO cena", -10.0), "Cena")
+        self.assertEqual(conc("Bizum recibido de Ana Lopez concepto cena", 10.0), "Parte de Ana")
+        self.assertEqual(conc("Bizum · Enviado: cena", -10.0), "Cena")  # BBVA: el nombre no viene
+        self.assertEqual(conc("Bizum · Recibido: cena", 10.0), "Parte de un Bizum")
+        self.assertEqual(conc("Bizum · ENVIADO: Sin concepto", -10.0), "Bizum enviado")
 
 
 

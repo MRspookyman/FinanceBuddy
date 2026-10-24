@@ -101,12 +101,14 @@ def _miles_bien(s, sep):
     return re.fullmatch(r"[1-9]?\d{1,2}(?:" + re.escape(sep) + r"\d{3})+", s) is not None
 
 def numero(v, miles=True):
-    """1.234,56 · -12,30 · 1,234.56 · 1234.5 · «12,30 €» → float. None si no es un número.
+    """1.234,56 · -12,30 · 1,234.56 · 1234.5 · «12,30 €» · «USD -0.03» → float. None si no es un número.
     «1.234» (un solo punto, sin coma y tres cifras detrás) es 1234, con el punto de miles español; con miles=False (columnas
-    de participaciones, o un archivo que usa el punto como coma decimal: ver punto_decimal) es 1,234."""
+    de participaciones, o un archivo que usa el punto como coma decimal: ver punto_decimal) es 1,234.
+    Un código de moneda delante o detrás («USD 108», «12,30 EUR») se quita: la moneda la dice otra columna."""
     if isinstance(v, bool) or v is None: return None
     if isinstance(v, (int, float)): return float(v)
-    s = str(v).strip().replace("€", "").replace("EUR", "").replace("\xa0", "").replace(" ", "")
+    s = re.sub(r"^[A-Z]{3}(?=[\s\d(+\-−–.,])|(?<=[\d)\s])[A-Z]{3}$", "", str(v).strip())
+    s = s.replace("€", "").replace("EUR", "").replace("\xa0", "").replace(" ", "")
     s = s.replace("−", "-").replace("–", "-")  # el menos tipográfico («−») y la raya corta, al copiar de la web del banco
     neg = s.startswith("(") and s.endswith(")")
     s = s.strip("()")
@@ -141,6 +143,18 @@ def texto(v):
     if v is None: return ""
     if isinstance(v, float) and v.is_integer(): v = int(v)
     return re.sub(r"\s+", " ", str(v)).strip()
+
+# Lo que pone la columna de detalle (columna `detalle` del formato: «Movimiento» en BBVA) cuando no añade nada al concepto
+DETALLES_GENERICOS = {"pago con tarjeta", "compra con tarjeta", "pago tarjeta", "compra tarjeta", "otros", "otro", "varios", "movimiento"}
+
+def con_detalle(concepto, detalle):
+    """El concepto con lo que añade la columna de detalle: «Bizum» + «Recibido: cena» → «Bizum · Recibido: cena»;
+    «Transferencia recibida» + «De Ana» → «Transferencia recibida · De Ana». Una etiqueta genérica («Pago con tarjeta»)
+    o algo que el concepto ya dice no se añade: el comercio se queda solo y las reglas siguen casando igual."""
+    c, d = texto(concepto), texto(detalle)
+    if not d or norm(d) in DETALLES_GENERICOS or norm(d) in norm(c): return c
+    if not c or norm(d).startswith(norm(c)): return d
+    return f"{c} · {d}"
 
 # ───────────── cabecera y perfiles ─────────────
 def buscar_cabecera(filas, columnas):

@@ -60,6 +60,12 @@ participaciones) añade las participaciones de cada compra y los **traspasos ent
 no cuentan como dinero nuevo), que no salen en la cuenta de efectivo. Un Excel de **operaciones con títulos** (Fecha,
 Tipo, Activo, Estado, Títulos) completa las participaciones de ETF y cripto. Nada se duplica con el extracto de la
 cuenta, se importe antes uno u otro. Con las participaciones, en *Actualizar valores* basta con poner el precio.
+El CSV de la **cuenta de inversión de Revolut** (Date, Ticker, Type, Quantity, Total Amount, FX Rate) entra entero: cada
+compra y venta en euros (el importe en dólares ÷ el cambio de ese día que trae el archivo), los dividendos y las comisiones.
+La primera vez que sale un ticker se crea su activo (como acción, con el ticker de nombre: lo puedes renombrar o cambiar de
+tipo en *Ajustes → Inversión*); si ya lo tenías con ese ticker como código del precio, se usa el tuyo. Los ingresos y
+retiradas de efectivo no se importan ahí: ese dinero ya lo cuenta, en euros, el extracto de tu banco. Un tipo de operación
+que la app no conoce (un *split*, por ejemplo) va a «Por revisar», no se pierde.
 Sin valor anotado, un activo con participaciones se estima con el precio de su última compra o venta (marcado «≈»).
 
 **Reparto ideal** (*Inversión*): dices qué porcentaje quieres en cada activo y la app te enseña en cuánto te has desviado y
@@ -215,7 +221,15 @@ Importar dos veces el mismo periodo **no duplica nada**: cada movimiento se reco
 
 ## Bancos y brókers
 
-- **De serie** reconoce los extractos de **Santander** y la cuenta de efectivo de **MyInvestor**.
+- **De serie** reconoce los extractos de **Santander**, **BBVA** (el Excel de *Movimientos*), la cuenta **Actual de
+  Revolut** (CSV) y su **cuenta de inversión**, y la cuenta de efectivo y las órdenes de **MyInvestor**.
+  - En BBVA, lo que dice la columna «Movimiento» se añade al concepto cuando aporta algo: «Bizum · Recibido: cena»,
+    «Transferencia recibida · De …». En un pago con tarjeta se queda solo el comercio.
+  - En Revolut, la fecha es la de finalización (cuando el dinero sale del saldo), la comisión se suma al movimiento y lo
+    que aún está pendiente no se importa (llegará completado en el siguiente extracto).
+  - Recargar Revolut con la tarjeta del banco o pasar dinero a su cuenta de inversión es dinero entre tus cuentas: si
+    importas los dos extractos, la app empareja la recarga sola; lo demás te pregunta a qué cuenta va (una vez).
+  - Para la cuenta Actual de Revolut crea una cuenta corriente propia (p. ej. «Revolut cuenta»): la de tipo bróker es para la de inversión.
 - **Cualquier otro** banco o bróker que exporte Excel o CSV funciona:
   - la primera vez la app **reconoce sola las columnas** (fecha, concepto, importe, saldo…) por su nombre y por lo que
     hay dentro, y solo tienes que comprobarlas y dar a guardar; si algo no lo ve claro, lo eliges tú;
@@ -285,7 +299,7 @@ financebuddy/
   lectura.py       lectura de Excel/CSV, fechas, importes y reconocimiento del formato
   clasificar.py    clasificación automática (reglas, traspasos, Bizum, recurrentes, lo aprendido de tu historial)
   detectar.py      fijos que se repiten cada mes y de dónde viene el dinero
-  operaciones.py   órdenes y operaciones del bróker con participaciones (ISIN, traspasos entre fondos)
+  operaciones.py   órdenes y operaciones del bróker con participaciones (ISIN, traspasos entre fondos; Revolut: tickers, dividendos, cambio a euros)
   cartera.py       arreglos a mano: unir activos, deshacer un traspaso tomado por venta, cuadrar participaciones
   precios.py       precios por internet (opcional): Yahoo, Morningstar, CoinGecko, caché, cambio de moneda, buscador y comparador
   actualizaciones.py  aviso de versión nueva (opcional)
