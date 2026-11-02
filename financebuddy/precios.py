@@ -157,6 +157,12 @@ def _fx(moneda):
     m = m.upper()
     return (None, 1.0) if m == "EUR" else (f"{m}EUR=X", 1.0)
 
+def moneda_de(alm, a):
+    """La moneda del precio de un activo: la que dijo la fuente al descargarlo (Yahoo da la de cada cotización: NVDA en dólares;
+    Morningstar y CoinGecko, en euros). La de la ficha solo cuenta mientras no se ha descargado: se queda en EUR si no se elige,
+    y un precio en dólares se tomaba por euros."""
+    return (alm.config(_k(a["fuente_precio"], a["codigo_precio"])) or {}).get("moneda") or a.get("moneda") or "EUR"
+
 def valor_en(serie, fecha, margen=10):
     """Último valor conocido en o antes de `fecha` (ISO o date)."""
     f = fecha if isinstance(fecha, datetime.date) else datetime.date.fromisoformat(fecha)
@@ -187,7 +193,7 @@ def _tareas(alm):
         fechas = [x["fecha"] for x in aportaciones if x.get("activo") == a["nombre"]] + ([a["fecha_inicio"]] if a.get("fecha_inicio") else [])
         clave = (a["fuente_precio"], a["codigo_precio"])
         d = t.setdefault(clave, {"desde": min(fechas + [hoy]), "monedas": set(), "activos": []})
-        d["desde"] = min(d["desde"], min(fechas + [hoy])); d["monedas"].add(a.get("moneda") or "EUR"); d["activos"].append(a["nombre"])
+        d["desde"] = min(d["desde"], min(fechas + [hoy])); d["monedas"].add(moneda_de(alm, a)); d["activos"].append(a["nombre"])
     return t
 
 def _al_dia(alm, fuente, codigo):
@@ -227,6 +233,11 @@ def actualizar(alm, forzar=False):
         except ErrorPrecios as e: return tipo, x, str(e)
         finally: _trabajo["progreso"]["hechos"] += 1
     with ThreadPoolExecutor(HILOS) as ex: res = list(ex.map(uno, trabajos))
+    # Un código nuevo dice su moneda al descargarlo: el cambio que aún falta, ahora (si no, ese precio no se vería hasta la próxima)
+    nuevas = sorted({m for (f, c) in tareas for m in [(alm.config(_k(f, c)) or {}).get("moneda")] if m and _fx(m)[0]} - set(monedas))
+    if nuevas:
+        _trabajo["progreso"]["total"] += len(nuevas)
+        with ThreadPoolExecutor(HILOS) as ex: res += list(ex.map(uno, [("cambio", m) for m in nuevas]))
     fallos, ok = [], 0
     for tipo, x, motivo in res:
         if tipo == "precio": ok += motivo is None
@@ -243,12 +254,13 @@ def guardar_ultimos(alm, tareas=None):
     for a in alm.todos("activo"):
         f, c = a.get("fuente_precio"), a.get("codigo_precio")
         if not f or not c: continue
-        serie = a_euros(alm, leer_serie(alm, f, c), a.get("moneda") or "EUR")
+        moneda = moneda_de(alm, a)
+        serie = a_euros(alm, leer_serie(alm, f, c), moneda)
         if not serie: continue
         ultimo = max(serie)
         mensual = {}
         for k in sorted(serie): mensual[k[:7]] = round(serie[k], 6)   # el último día de cada mes con dato
-        out[a["nombre"]] = {"precio": round(serie[ultimo], 6), "fecha": ultimo, "fuente": f, "codigo": c, "moneda": a.get("moneda") or "EUR",
+        out[a["nombre"]] = {"precio": round(serie[ultimo], 6), "fecha": ultimo, "fuente": f, "codigo": c, "moneda": moneda,
                             "mensual": dict(list(mensual.items())[-48:])}
     alm.set_config("precio_ultimos", out)
     return out

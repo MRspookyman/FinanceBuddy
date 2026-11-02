@@ -34,7 +34,23 @@ function vistaImportar() {
   const pC = panel(g, "O déjalo en la carpeta Importar");
   pC.createDiv({ cls: "fin-note", text: "Guarda los extractos en «Importar\\Banco» o «Importar\\Inversión» (dentro de tu carpeta de datos) y pulsa el botón. Los archivos importados pasan a «Procesados»." });
   const arch = (DB.info || {}).archivos || [];
-  if (arch.length) filasDato(pC, arch.map((a) => ({ l: a.nombre, s: a.tipo === "banco" ? "banco" : a.tipo === "inversion" ? "inversión" : "se detectará el tipo", v: "" })));
+  if (arch.length) {
+    const filas = filasDato(pC, arch.map((a) => ({ l: a.nombre, s: a.tipo === "banco" ? "banco" : a.tipo === "inversion" ? "inversión" : "se detectará el tipo", v: "" })));
+    // Un archivo que se dejó ahí por error (o uno subido que se quedó a medias): se quita sin pasar por el Explorador
+    arch.forEach((a, i) => {
+      const b = filas.children[i].querySelector(".v").createEl("button", { cls: "fb-btn sec peligro", text: "Quitar", attr: { "aria-label": `Quitar ${a.nombre} de la carpeta Importar` } });
+      b.onclick = async () => {
+        if (!(await confirmar(`Se borra «${a.nombre}» de la carpeta Importar y no se importa nada.\n\nSi es un extracto del banco, lo puedes volver a descargar cuando quieras.`,
+          { titulo: "¿Quitar este archivo?", si: "Quitar el archivo", no: "Cancelar", peligro: true }))) return;
+        b.disabled = true;
+        const x = await FB.api("/api/importar/descartar", { archivo: a.nombre, carpeta: a.tipo || "" });
+        FB.aviso(x.mensaje || "Hecho", !x.ok);
+        // y su tarjeta (vista previa o a medias), si la había: sus botones ya no encontrarían el archivo
+        guardarImport(resultadosImport.filter((y) => (y.ok && !y.previa) || y.archivo !== a.nombre || (y.carpeta ?? "") !== (a.tipo || "")));
+        await FB.refrescar();
+      };
+    });
+  }
   const fb = pC.createDiv({ cls: "fb-fila" });
   // Relleno solo si hay archivos esperando: entonces sí es lo que toca hacer. Vacío, es un camino más entre otros.
   const bI = fb.createEl("button", { cls: arch.length ? "fb-btn" : "fb-btn sec", text: arch.length ? `Importar ${arch.length} archivo${arch.length > 1 ? "s" : ""}` : "Importar la carpeta" });
@@ -135,14 +151,20 @@ function botonesPrevia(card, r, texto) {
   const bOk = f.createEl("button", { cls: "fb-btn", text: texto });
   bOk.onclick = async () => {
     bOk.disabled = true;
-    const x = await FB.api("/api/importar/reintentar", { ...(r.peticion || { archivo: r.archivo, tipo: r.tipo, cuenta: r.cuenta, perfil: r.perfil }), previa: false });
+    const x = await FB.api("/api/importar/reintentar", { ...(r.peticion || { archivo: r.archivo, carpeta: r.carpeta, tipo: r.tipo, cuenta: r.cuenta, perfil: r.perfil }), previa: false });
     reemplazar(r, x);
   };
-  const bNo = f.createEl("button", { cls: "fb-btn sec", text: r.subido ? "No importar (descartar el archivo)" : "Cerrar" });
-  bNo.onclick = async () => {
-    if (r.subido) { const x = await FB.api("/api/importar/descartar", { archivo: r.archivo }); FB.aviso(x.mensaje || "Hecho", !x.ok); }
+  botonNoImportar(f, r);
+}
+// Lo que aún no se ha importado (vista previa, falta la cuenta o el formato, o un error): «No importar» borra la copia que se subió
+// a la carpeta Importar (el archivo original sigue donde estaba); uno que ya estaba en la carpeta solo se cierra (se quita desde la lista).
+function botonNoImportar(padre, r) {
+  const b = padre.createEl("button", { cls: "fb-btn sec", text: r.subido && r.archivo ? "No importar (descartar el archivo)" : "Cerrar" });
+  b.onclick = async () => {
+    if (r.subido && r.archivo) { const x = await FB.api("/api/importar/descartar", { archivo: r.archivo, carpeta: r.carpeta }); FB.aviso(x.mensaje || "Hecho", !x.ok); }
     guardarImport(resultadosImport.filter((y) => y !== r)); await FB.refrescar();
   };
+  return b;
 }
 function resultadoImport(padre, r) {
   const card = padre.createDiv({ cls: "fb-card" });
@@ -163,7 +185,7 @@ function resultadoImport(padre, r) {
     card.createDiv({ cls: "top", text: `${r.archivo}: ¿de qué cuenta es este extracto?` });
     card.createDiv({ cls: "txt", text: `Formato reconocido: ${r.perfil}. Elige la cuenta; se recordará para la próxima vez.` });
     const f = card.createDiv({ cls: "fb-fila" });
-    const importarEn = async (cuenta, b) => { b.disabled = true; const x = await FB.api("/api/importar/reintentar", { archivo: r.archivo, tipo: r.tipo, cuenta, perfil: r.perfil, previa: quierePrevia(), subido: !!r.subido }); reemplazar(r, x); };
+    const importarEn = async (cuenta, b) => { b.disabled = true; const x = await FB.api("/api/importar/reintentar", { archivo: r.archivo, carpeta: r.carpeta, tipo: r.tipo, cuenta, perfil: r.perfil, previa: quierePrevia(), subido: !!r.subido }); reemplazar(r, x); };
     if (!(r.cuentas || []).length) {
       const esBroker = r.tipo === "inversion";
       f.appendText(esBroker ? "Aún no tienes una cuenta de bróker. Créala:" : "Aún no tienes esa cuenta. Créala:");
@@ -175,16 +197,19 @@ function resultadoImport(padre, r) {
         if (!x.ok) { mensaje(card, x.mensaje || "Error", "err"); return; }
         importarEn(iN.value.trim(), bC);
       };
+      botonNoImportar(f, r);
       return;
     }
     const s = f.createEl("select");
     for (const c of r.cuentas || []) { const o = s.createEl("option", { text: c }); o.value = c; }
     const b = f.createEl("button", { cls: "fb-btn", text: "Importar" });
     b.onclick = () => importarEn(s.value, b);
+    botonNoImportar(f, r);
     return;
   }
   if (r.necesita === "perfil") { configurarFormato(card, r); return; }
   mensaje(card, r.mensaje || "No se ha podido importar", "err");
+  botonNoImportar(card.createDiv({ cls: "fb-fila" }), r);
 }
 // Tras importar: ¿el saldo que dice el banco coincide con el que calcula la app? (si no, autoCuadre lo iguala al del banco)
 function cuadreExtracto(card, r) {
@@ -254,7 +279,8 @@ async function autoCuadre() {
   await FB.refrescar();
   return true;
 }
-const reemplazar = async (viejo, nuevo) => { guardarImport(resultadosImport.map((x) => (x === viejo ? nuevo : x))); await FB.refrescar(); };
+// La tarjeta nueva sigue sabiendo si el archivo se subió desde aquí (para poder descartarlo): reintentar no lo devuelve siempre
+const reemplazar = async (viejo, nuevo) => { guardarImport(resultadosImport.map((x) => (x === viejo ? { ...nuevo, subido: nuevo.subido ?? viejo.subido } : x))); await FB.refrescar(); };
 // Formato nuevo: el usuario dice qué columna es cada cosa (se guarda como «formato» y se reconoce solo la próxima vez).
 function configurarFormato(card, r) {
   card.createDiv({ cls: "top", text: `${r.archivo}: formato nuevo` });
@@ -300,12 +326,14 @@ function configurarFormato(card, r) {
     }
   };
   pintar();
-  const b = card.createEl("button", { cls: "fb-btn", text: "Guardar formato e importar" });
+  const fB = card.createDiv({ cls: "fb-fila" });
+  const b = fB.createEl("button", { cls: "fb-btn", text: "Guardar formato e importar" });
+  botonNoImportar(fB, r);
   const m = card.createDiv();
   b.onclick = async () => {
     const columnas = {}; for (const [k] of campos()) if (sel[k]) columnas[k] = sel[k];
     b.disabled = true;
-    const x = await FB.api("/api/importar/reintentar", { archivo: r.archivo, tipo, columnas, perfil: iN.value, cuenta: sC.value, compras_negativas: cNeg ? cNeg.checked : true, previa: quierePrevia(), subido: !!r.subido });
+    const x = await FB.api("/api/importar/reintentar", { archivo: r.archivo, carpeta: r.carpeta, tipo, columnas, perfil: iN.value, cuenta: sC.value, compras_negativas: cNeg ? cNeg.checked : true, previa: quierePrevia(), subido: !!r.subido });
     b.disabled = false;
     if (!x.ok && !x.necesita) { m.innerHTML = ""; mensaje(m, x.mensaje || "Error", "err"); return; }
     reemplazar(r, x);

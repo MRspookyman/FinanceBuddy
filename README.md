@@ -31,6 +31,9 @@ Solo para **Windows**. Todo en español y en euros.
      Si no hay nada raro (ni filas que no se pueden leer, ni dudas por revisar, ni activos nuevos), se resume en una línea con
      el saldo del extracto y se confirma con un solo botón, **Importar**; el detalle queda plegado. Si queda algo por revisar,
      el resultado lleva un botón **Revisar las N dudas →**.
+   - ¿Te has equivocado de archivo? Mientras no esté importado, su tarjeta lleva **No importar (descartar el archivo)**: no se
+     guarda nada y la copia subida se borra (tu archivo original sigue donde estaba). Los que esperan en la carpeta Importar se
+     quitan con **Quitar**, en su fila. Si ya lo importaste, *Importaciones recientes → Quitar* deshace todo lo que trajo.
    - ¿Sin extracto? *Importar → Descargar la plantilla de Excel*: fecha, concepto, importe y un desplegable con tus categorías.
 4. **Por revisar**: lo que la app no sabe clasificar sola te lo pregunta, agrupado por comercio.
    - Un clic en la categoría (la más probable sale la primera, marcada con ✨) resuelve el grupo entero y lo recuerda.
@@ -102,7 +105,8 @@ se restan), y lo que suman las compras de menos de 10 €. Pulsa un comercio par
 fondo, ETF o cripto, la app lo consulta a **Yahoo Finance, Morningstar o CoinGecko**. Solo sale el identificador del producto
 (ISIN, ticker o nombre de la cripto): **nunca importes, cuentas ni movimientos**. En cada activo, *Buscar el precio por internet*
 encuentra el producto por ISIN, ticker o nombre (con su TER y riesgo si es un fondo) y comprueba su precio al momento; con ISIN,
-un botón los configura todos de una vez. Las monedas que no son euros se pasan a euros con el cambio del día. El valor de un
+un botón los configura todos de una vez. Las monedas que no son euros se pasan a euros con el cambio del día; la moneda es la que
+dice la fuente (NVDA cotiza en dólares aunque en la ficha ponga euros). El valor de un
 activo usa el precio de mercado si conoce sus participaciones y es más nuevo que lo que anotaste. Se actualiza al abrir la app
 (si hace más de 6 h) y con un botón; sin conexión, sigue con el último precio guardado y si algo falla lo cuenta **una sola vez**.
 Son servicios gratuitos no oficiales: pueden fallar o cambiar;
