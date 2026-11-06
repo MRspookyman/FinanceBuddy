@@ -1,5 +1,5 @@
 # Lo que trae una instalación nueva: categorías, reglas de comercios habituales en España y los formatos
-# de archivo que se reconocen de serie (Santander y MyInvestor). El usuario puede cambiarlo todo desde la app.
+# de archivo que se reconocen de serie (Santander, BBVA, Revolut y MyInvestor). El usuario puede cambiarlo todo desde la app.
 
 CATEGORIAS = [
     ("Vivienda", "fijo"), ("Suministros", "fijo"), ("Seguros", "fijo"), ("Suscripciones", "fijo"),
@@ -83,6 +83,9 @@ REGLAS = [
     ("g2a", "Ocio", "gasto"), ("instant gaming", "Ocio", "gasto"), ("eneba", "Ocio", "gasto"), ("nintendo", "Ocio", "gasto"), ("comics", "Ocio", "gasto"),
     ("pull and", "Compras", "gasto"), ("bershka", "Compras", "gasto"), ("stradivarius", "Compras", "gasto"), ("mango", "Compras", "gasto"),
     ("lefties", "Compras", "gasto"), ("sprinter", "Compras", "gasto"), ("druni", "Cuidado personal", "gasto"), ("primor", "Cuidado personal", "gasto"),
+] + [  # v5: dinero entre tu banco y Revolut (recarga con la tarjeta del banco; paso a la cuenta de inversión): a qué cuenta va lo dice
+    # el cruce de extractos (importar.emparejar_traspasos) o el usuario, la primera vez
+    ("revolut", "", "transferencia"), ("una recarga de", "", "transferencia"), ("a cuenta de inversion", "", "transferencia"),
 ]
 # Categorías «típicas» que se pueden ACONSEJAR (nunca se crean solas) cuando un pago no encaja en ninguna de las tuyas
 # (clasificar.proponer_categoria_nueva). nombre/icono/grupo: lo que se crearía; alias: nombres que ya cuentan como esa categoría
@@ -144,18 +147,27 @@ DESCRIPCIONES = {
     "Apuestas": "apuestas deportivas, casinos, loterías", "Otros": "lo que no encaja en ninguna otra",
     "Nómina": "sueldo o pensión", "Intereses": "intereses o dividendos", "Otros ingresos": "ventas, premios, ayudas y otros ingresos",
 }
-VERSION = 4  # sube al cambiar CATEGORIAS, REGLAS o PERFILES: las instalaciones existentes reciben lo nuevo (sin tocar lo del usuario)
+VERSION = 6  # sube al cambiar CATEGORIAS, REGLAS o PERFILES: las instalaciones existentes reciben lo nuevo (sin tocar lo del usuario)
 
 # Formatos de archivo reconocidos de serie. columnas: {campo: texto de la cabecera (sin tildes, en minúsculas)}.
-#   banco: fecha, fecha_valor?, concepto, importe | cargo+abono, saldo?
+#   banco: fecha, fecha_valor?, concepto, importe | cargo+abono, saldo?, detalle? (se añade al concepto: lectura.con_detalle),
+#          comision? (se resta del importe), estado? (solo entra lo completado)
 #   inversión: fecha, concepto, importe (compras en negativo si compras_negativas)
-#   operaciones: fecha, isin | activo, importe?, participaciones, tipo? (compra/venta), estado? (ver operaciones.py)
+#   operaciones: fecha, isin | activo, importe?, participaciones, tipo? (compra/venta; dividendo, efectivo, comisión… ver operaciones.leer),
+#                estado?, cambio? (moneda por euro: el importe se divide entre él)
 PERFILES = [
     # La plantilla de Excel que descarga la propia app (exportar.plantilla_excel): fecha, concepto, importe y la categoría que eliges
     {"nombre": "Plantilla de FinanceBuddy", "tipo": "banco",
      "columnas": {"fecha": "fecha", "concepto": "concepto", "importe": "importe", "categoria": "categoria"}},
     {"nombre": "Santander", "tipo": "banco",
      "columnas": {"fecha": "fecha operacion", "fecha_valor": "fecha valor", "concepto": "concepto", "importe": "importe", "saldo": "saldo"}},
+    # «Movimiento» dice lo que el concepto calla en un Bizum («Recibido: cena») o una transferencia («De Ana López»)
+    {"nombre": "BBVA", "tipo": "banco",
+     "columnas": {"fecha": "fecha", "fecha_valor": "fecha valor", "concepto": "concepto", "detalle": "movimiento", "importe": "importe", "saldo": "disponible"}},
+    # La cuenta «Actual» de Revolut: la fecha es la de finalización (cuando el dinero entra o sale del saldo); la de inicio, la del pago
+    {"nombre": "Revolut (cuenta)", "tipo": "banco",
+     "columnas": {"fecha": "fecha de finalizacion", "fecha_valor": "fecha de inicio", "concepto": "descripcion", "importe": "importe",
+                  "comision": "comision", "saldo": "saldo", "estado": "state"}},
     {"nombre": "MyInvestor (cuenta de efectivo)", "tipo": "inversion", "compras_negativas": True,
      "columnas": {"fecha": "fecha de operacion", "concepto": "concepto", "importe": "importe"},
      "acciones": [{"patron": "periodo", "accion": "interes"}]},
@@ -163,6 +175,9 @@ PERFILES = [
      "columnas": {"fecha": "fecha de la orden", "isin": "isin", "importe": "importe estimado", "participaciones": "nº de participaciones", "estado": "estado"}},
     {"nombre": "Operaciones del bróker (títulos)", "tipo": "operaciones",
      "columnas": {"fecha": "fecha", "tipo": "tipo", "activo": "activo", "estado": "estado", "participaciones": "titulos"}},
+    # La cuenta de inversión de Revolut: importes en la moneda de la acción («USD 108») y el cambio a euros de ese día
+    {"nombre": "Revolut (inversión)", "tipo": "operaciones",
+     "columnas": {"fecha": "date", "activo": "ticker", "tipo": "type", "participaciones": "quantity", "importe": "total amount", "cambio": "fx rate"}},
 ]
 
 # Fondos y ETF conocidos por su ISIN: nombre, tipo y textos con los que aparecen en el extracto de la cuenta del bróker.

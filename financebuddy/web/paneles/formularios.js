@@ -110,11 +110,13 @@ const FORMS = {
         opc: [["", "— lo anoto yo —"], ["morningstar", "Morningstar (fondos, por su ISIN)"], ["yahoo", "Yahoo Finance (ETF, acciones, materias primas)"], ["coingecko", "CoinGecko (cripto)"]],
         ayuda: "De dónde sale su precio si activas «Precios por internet» (Ajustes). Lo más fácil: «Buscar el precio por internet», justo encima." },
       { k: "codigo_precio", l: "Código para consultar el precio", ph: "p. ej. IWDA.AS · 0P0000YXQE · bitcoin", si: (d) => d.fuente_precio, ayuda: "Solo este código sale de tu ordenador." },
-      { k: "moneda", l: "Moneda del precio", t: "opc", opc: MONEDAS_PRECIO, si: (d) => d.fuente_precio, defecto: () => "EUR", ayuda: "Si no es el euro, se pasa a euros con el cambio de cada día." },
+      { k: "moneda", l: "Moneda del precio", t: "opc", opc: MONEDAS_PRECIO, si: (d) => d.fuente_precio, defecto: () => "EUR", ayuda: "Si no es el euro, se pasa a euros con el cambio de cada día. Al consultar el precio manda la que diga la fuente (Yahoo da la de cada valor)." },
       { k: "largo_plazo", l: "Inversión a largo plazo", t: "bool", ayuda: "Desmárcalo para lo que no es inversión a largo plazo (un colchón en un fondo monetario, una apuesta…): el botón «Solo largo plazo» de Inversión lo deja fuera de las cifras." },
       { k: "objetivo", l: "Peso que quieres que tenga (%, opcional)", t: "num", ayuda: "El porcentaje de tu inversión que querrías en este activo. Con él, Inversión te dice a dónde llevar tu próxima aportación para acercarte (sin vender nada)." },
       { k: "ter", l: "Gastos corrientes (% al año, opcional)", t: "num", ayuda: "El TER del fondo o ETF (p. ej. 0,06). Con él verás cuánto te cuesta al año." },
       { k: "estado", l: "Estado", t: "opc", opc: [["activo", "Lo tengo"], ["vendido", "Vendido"]] }],
+    // La moneda que dijo la fuente al consultar el precio, no la que quedó en la ficha (EUR si no se eligió): es la que se usa
+    cargar: (d) => { const p = d.nombre && ((cfg.precios || {}).activos || {})[d.nombre]; if (p && p.moneda && p.codigo === d.codigo_precio) d.moneda = p.moneda; },
     fila: (r) => [r.nombre, r.clase, r.valor != null ? eur(r.valor, 2) : "—", r.estado === "vendido" ? "vendido" : r.fecha_valor ? `a ${fechaCorta(r.fecha_valor)}` : ""], cols: ["Nombre", "Tipo", "Valor", ""] },
   aportacion: { uno: "aportación", plural: "Aportaciones", ayuda: "Compras (+) y ventas (−) de tus activos.",
     campos: [

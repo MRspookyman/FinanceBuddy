@@ -59,7 +59,8 @@ def filtros_movimientos_validos(lista):
 DESHACER_AL_EDITAR = {"cuenta": "Cambios en la cuenta", "movimiento": "Cambios en el movimiento", "recurrente": "Cambios en el fijo"}
 NO_ANULAN_DESHACER = {"/api/parecidos", "/api/detectar", "/api/categoria/sugerir", "/api/categoria/uso",
                       "/api/plantilla", "/api/exportar_datos", "/api/regla/probar", "/api/abrir_carpeta", "/api/copia", "/api/arranque",
-                      "/api/actualizaciones/comprobar", "/api/precios/actualizar", "/api/precios/estado", "/api/precios/buscar", "/api/precios/comparar", "/api/config/visto"}
+                      "/api/actualizaciones/comprobar", "/api/precios/actualizar", "/api/precios/estado", "/api/precios/buscar", "/api/precios/comparar", "/api/config/visto",
+                      "/api/importar/descartar"}  # quitar un archivo de la carpeta Importar no toca la base
 
 
 def _aviso_borrar(tipo, reg, usos):
@@ -184,6 +185,7 @@ class App:
     def _importar(self, ruta, tipo=None, cuenta=None, perfil=None, previa=False, antes=None):
         """previa: no guarda nada, enseña el informe de lo que pasaría (`antes`: algo que hacer dentro de la simulación, p. ej. crear el formato)."""
         nombre = os.path.basename(ruta)
+        donde = {"archivo": nombre, "carpeta": self._carpeta_de(ruta)}  # la pantalla lo nombra así: puede haber dos iguales en Banco e Inversión
         try:
             if previa:
                 with self.alm.simular():
@@ -194,7 +196,7 @@ class App:
                 if r.get("ok") and r.get("ya_importado"):
                     # No hay cambios que confirmar: archivar también con «Ver antes de importar».
                     IM.archivar(self.carpeta, ruta)
-                return {**r, "archivo": nombre}
+                return {**r, **donde}
             foto = self.alm.instantanea()
             r = IM.importar_archivo(self.alm, self.carpeta, ruta, tipo, cuenta, perfil)
             if r.get("ok") and r.get("tipo") == "banco":
@@ -202,14 +204,23 @@ class App:
             if r.get("ok") and r.get("saldo_igualado"):
                 self.deshacer, self.deshacer_que = foto, "Importación y saldo del banco"
                 r["deshacer"] = True
-            return {**r, "archivo": nombre}
+            return {**r, **donde}
         except IM.NecesitaPerfil as e:
             # Qué columna es cada cosa: lo que se ve en el propio archivo, sin internet.
-            return {"ok": False, "necesita": "perfil", "archivo": nombre, **e.info, "tipo": tipo or e.info.get("tipo"), "propuesta": dict(e.info.get("columnas_probables") or {})}
+            return {"ok": False, "necesita": "perfil", **e.info, **donde, "tipo": tipo or e.info.get("tipo"), "propuesta": dict(e.info.get("columnas_probables") or {})}
         except IM.NecesitaCuenta as e:
-            return {"ok": False, "necesita": "cuenta", **e.info}
+            return {"ok": False, "necesita": "cuenta", **e.info, **donde}
         except Exception as e:
-            return {"ok": False, "archivo": nombre, "mensaje": f"{nombre}: {e}"}
+            return {"ok": False, **donde, "mensaje": f"{nombre}: {e}"}
+
+    def _carpeta_de(self, ruta):
+        """En qué carpeta de Importar está un archivo: «banco», «inversion» o «» (la raíz). Es el `tipo` de `IM.archivos_pendientes`."""
+        d = os.path.dirname(os.path.abspath(ruta))
+        return "banco" if d == os.path.abspath(self.carpeta.banco) else "inversion" if d == os.path.abspath(self.carpeta.inversion) else ""
+
+    def _pendiente(self, nombre, carpeta=None):
+        """La ruta del archivo `nombre` que espera en Importar (en `carpeta`, si se dice: «banco», «inversion» o «»), o None."""
+        return next((p for p, t in IM.archivos_pendientes(self.carpeta) if os.path.basename(p) == nombre and (carpeta is None or (t or "") == carpeta)), None)
 
 
 
@@ -227,21 +238,22 @@ class App:
     def reintentar(self, d):
         """Tras configurar el formato o elegir la cuenta: vuelve a importar el archivo."""
         nombre = os.path.basename(d["archivo"])
-        ruta = next((p for p, t in IM.archivos_pendientes(self.carpeta) if os.path.basename(p) == nombre), None)
+        ruta = self._pendiente(nombre, d.get("carpeta"))
         if not ruta: return {"ok": False, "mensaje": f"No encuentro «{nombre}» en la carpeta Importar."}
         tipo = d.get("tipo") if d.get("tipo") in ("banco", "inversion", "operaciones") else None
         crear = (lambda: IM.crear_perfil(self.alm, d.get("perfil") or os.path.splitext(nombre)[0], tipo or "banco", d["columnas"], d.get("cuenta"),
                                          d.get("compras_negativas", True))) if d.get("columnas") else None
         if d.get("previa"):  # el formato nuevo también se crea solo dentro de la simulación
             r = self._importar(ruta, tipo, d.get("cuenta"), d.get("perfil"), previa=True, antes=crear)
-            return {**r, "subido": bool(d.get("subido")), "peticion": {k: d.get(k) for k in ("archivo", "tipo", "cuenta", "perfil", "columnas", "compras_negativas") if d.get(k) is not None}} if r.get("previa") else r
+            return {**r, "subido": bool(d.get("subido")), "peticion": {k: d.get(k) for k in ("archivo", "carpeta", "tipo", "cuenta", "perfil", "columnas", "compras_negativas") if d.get(k) is not None}} if r.get("previa") else r
         if crear: crear()
         return self._importar(ruta, tipo, d.get("cuenta"), d.get("perfil"))
 
     def descartar_archivo(self, d):
-        """Quita de la carpeta Importar un archivo subido que al ver la vista previa no se quiere importar."""
+        """Quita de la carpeta Importar un archivo que no se quiere importar: uno subido que se ha quedado a medias (vista previa, falta
+        la cuenta o el formato, o un error) o uno de la lista de la carpeta (la pantalla lo confirma antes)."""
         nombre = os.path.basename(d.get("archivo") or "")
-        ruta = next((p for p, t in IM.archivos_pendientes(self.carpeta) if os.path.basename(p) == nombre), None)
+        ruta = self._pendiente(nombre, d.get("carpeta"))
         if not ruta: return {"ok": False, "mensaje": f"No encuentro «{nombre}» en la carpeta Importar."}
         os.remove(ruta)
         return {"ok": True, "mensaje": f"«{nombre}» descartado: no se ha importado nada."}

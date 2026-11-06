@@ -2,8 +2,8 @@
 // Resultados de la última importación: se guardan en FB.estado para que sigan ahí al refrescar la pantalla.
 const resultadosImport = FB.estado.imp ||= [];
 const guardarImport = (lista) => { resultadosImport.splice(0, resultadosImport.length, ...lista); };
-const peticionImport = (r) => ({ ...(r.peticion || { archivo: r.archivo, tipo: r.tipo, cuenta: r.cuenta, perfil: r.perfil }), subido: !!r.subido });
-const claveArchivoImport = (r) => r.archivo;
+const peticionImport = (r) => ({ ...(r.peticion || { archivo: r.archivo, carpeta: r.carpeta, tipo: r.tipo, cuenta: r.cuenta, perfil: r.perfil }), subido: !!r.subido });
+const claveArchivoImport = (r) => `${r.carpeta || ""}|${r.archivo}`;
 const empezarImport = () => { FB.estado.impLote = []; };
 const añadirImport = (r) => {
   guardarImport([r, ...resultadosImport.filter((x) => claveArchivoImport(x) !== claveArchivoImport(r))]);
@@ -72,7 +72,28 @@ function vistaImportar() {
   const pC = panel(g, "O déjalo en la carpeta Importar");
   pC.createDiv({ cls: "fin-note", text: "Guarda los extractos en «Importar\\Banco» o «Importar\\Inversión» (dentro de tu carpeta de datos) y pulsa el botón. Los archivos importados pasan a «Procesados»." });
   const arch = (DB.info || {}).archivos || [];
-  if (arch.length) plegable(pC, `Ver los ${arch.length} archivos pendientes`, (c) => filasDato(c, arch.map((a) => ({ l: a.nombre, s: a.tipo === "banco" ? "banco" : a.tipo === "inversion" ? "inversión" : "se detectará el tipo", v: "" }))));
+  if (arch.length) plegable(pC, `Ver los ${arch.length} archivos pendientes`, (c) => {
+    const filas = filasDato(c, arch.map((a) => ({ l: a.nombre, s: a.tipo === "banco" ? "banco" : a.tipo === "inversion" ? "inversión" : "se detectará el tipo", v: "" })));
+    // Un archivo que se dejó ahí por error (o uno subido que se quedó a medias): se quita sin pasar por el Explorador
+    arch.forEach((a, i) => {
+      const b = filas.children[i].querySelector(".v").createEl("button", { cls: "fb-btn sec peligro", text: "Quitar", attr: { "aria-label": `Quitar ${a.nombre} de la carpeta Importar` } });
+      b.disabled = !!FB.estado.impEnCurso;
+      b.onclick = () => ejecutarImportacion(async () => {
+        if (!(await confirmar(`Se borra «${a.nombre}» de la carpeta Importar y no se importa nada.\n\nSi es un extracto del banco, lo puedes volver a descargar cuando quieras.`,
+          { titulo: "¿Quitar este archivo?", si: "Quitar el archivo", no: "Cancelar", peligro: true }))) return;
+        b.disabled = true;
+        const x = await FB.api("/api/importar/descartar", { archivo: a.nombre, carpeta: a.tipo || "" });
+        FB.aviso(x.mensaje || "Hecho", !x.ok);
+        // y su tarjeta (vista previa o a medias), si la había: sus botones ya no encontrarían el archivo
+        if (x.ok) {
+          const conservar = (y) => (y.ok && !y.previa) || claveArchivoImport(y) !== claveArchivoImport({ archivo: a.nombre, carpeta: a.tipo });
+          guardarImport(resultadosImport.filter(conservar));
+          FB.estado.impLote = (FB.estado.impLote || []).filter(conservar);
+        }
+        await FB.refrescar();
+      });
+    });
+  });
   const fb = pC.createDiv({ cls: "fb-fila" });
   // Relleno solo si hay archivos esperando: entonces sí es lo que toca hacer. Vacío, es un camino más entre otros.
   const bI = fb.createEl("button", { cls: arch.length ? "fb-btn" : "fb-btn sec", text: arch.length ? `Importar ${arch.length} archivo${arch.length > 1 ? "s" : ""}` : "Importar la carpeta" });
@@ -181,14 +202,23 @@ function botonesPrevia(card, r, texto) {
     const x = await FB.api("/api/importar/reintentar", { ...peticionImport(r), previa: false });
     await reemplazar(r, x);
   });
-  const bNo = f.createEl("button", { cls: "fb-btn sec", text: r.subido ? "No importar (descartar el archivo)" : "Cerrar" });
-  bNo.disabled = !!FB.estado.impEnCurso;
-  bNo.onclick = () => ejecutarImportacion(async () => {
-    if (r.subido) { const x = await FB.api("/api/importar/descartar", { archivo: r.archivo }); FB.aviso(x.mensaje || "Hecho", !x.ok); }
+  botonNoImportar(f, r);
+}
+// Cerrar una tarjeta no importa nada; descartar solo borra la copia subida a Importar.
+function botonNoImportar(padre, r) {
+  const b = padre.createEl("button", { cls: "fb-btn sec", text: r.subido && r.archivo ? "No importar (descartar el archivo)" : "Cerrar" });
+  b.disabled = !!FB.estado.impEnCurso;
+  b.onclick = () => ejecutarImportacion(async () => {
+    if (r.subido && r.archivo) {
+      const x = await FB.api("/api/importar/descartar", { archivo: r.archivo, carpeta: r.carpeta });
+      FB.aviso(x.mensaje || "Hecho", !x.ok);
+      if (!x.ok) return;
+    }
     guardarImport(resultadosImport.filter((y) => y !== r));
     FB.estado.impLote = (FB.estado.impLote || []).filter((y) => y !== r);
     await finalizarImportacion([]);
   });
+  return b;
 }
 function resultadoImport(padre, r) {
   const card = padre.createDiv({ cls: "fb-card" });
@@ -212,6 +242,7 @@ function resultadoImport(padre, r) {
   if (r.necesita === "cuenta") { preguntaCuentaImport(card, r); return; }
   if (r.necesita === "perfil") { configurarFormato(card, r); return; }
   mensaje(card, r.mensaje || "No se ha podido importar", "err");
+  botonNoImportar(card.createDiv({ cls: "fb-fila" }), r);
 }
 // Solo agrupamos una identidad reconocida; sin número de cuenta cada archivo necesita una decisión propia.
 const claveCuentaImport = (r) => JSON.stringify([r.tipo, r.perfil, r.iban || claveArchivoImport(r)]);
@@ -221,7 +252,11 @@ function preguntaCuentaImport(card, r) {
   card.createDiv({ cls: "top", text: grupo.length > 1 ? `¿De qué cuenta son estos ${grupo.length} extractos?` : `${r.archivo}: ¿de qué cuenta es este extracto?` });
   card.createDiv({ cls: "txt", text: `Formato reconocido: ${r.perfil}${r.iban ? ` · cuenta terminada en ${r.iban}` : ""}. Tu elección se aplicará ${grupo.length > 1 ? "a todos estos archivos" : "a este archivo"}.` });
   plegable(card, `Ver ${grupo.length === 1 ? "el archivo" : `los ${grupo.length} archivos`}`, (c) => {
-    for (const x of grupo) c.createDiv({ text: x.archivo });
+    for (const x of grupo) {
+      const fila = c.createDiv({ cls: "fb-fila" });
+      fila.createSpan({ text: x.archivo });
+      botonNoImportar(fila, x);
+    }
   });
   const disponibles = cuentas().filter((c) => (c.tipo === "broker") === esBroker && (!r.iban || !c.p.iban || c.p.iban === r.iban));
   const f = card.createDiv({ cls: "fb-fila" });
@@ -349,6 +384,7 @@ async function finalizarImportacion(lista) {
 }
 function sustituirImport(viejo, nuevo) {
   nuevo.archivo ||= viejo.archivo;
+  nuevo.carpeta ??= viejo.carpeta;
   nuevo.subido = !!viejo.subido;
   guardarImport(resultadosImport.map((x) => claveArchivoImport(x) === claveArchivoImport(viejo) ? nuevo : x));
   FB.estado.impLote = (FB.estado.impLote || []).map((x) => claveArchivoImport(x) === claveArchivoImport(viejo) ? nuevo : x);
@@ -398,13 +434,15 @@ function configurarFormato(card, r) {
     }
   };
   pintar();
-  const b = card.createEl("button", { cls: "fb-btn", text: "Guardar formato e importar" });
+  const fB = card.createDiv({ cls: "fb-fila" });
+  const b = fB.createEl("button", { cls: "fb-btn", text: "Guardar formato e importar" });
+  botonNoImportar(fB, r);
   const m = card.createDiv();
   b.disabled = !!FB.estado.impEnCurso;
   b.onclick = () => ejecutarImportacion(async () => {
     const columnas = {}; for (const [k] of campos()) if (sel[k]) columnas[k] = sel[k];
     b.disabled = true;
-    const x = await FB.api("/api/importar/reintentar", { archivo: r.archivo, tipo, columnas, perfil: iN.value, cuenta: sC.value, compras_negativas: cNeg ? cNeg.checked : true, previa: quierePrevia(), subido: !!r.subido });
+    const x = await FB.api("/api/importar/reintentar", { archivo: r.archivo, carpeta: r.carpeta, tipo, columnas, perfil: iN.value, cuenta: sC.value, compras_negativas: cNeg ? cNeg.checked : true, previa: quierePrevia(), subido: !!r.subido });
     b.disabled = false;
     if (!x.ok && !x.necesita) { m.innerHTML = ""; mensaje(m, x.mensaje || "Error", "err"); return; }
     await reemplazar(r, x);

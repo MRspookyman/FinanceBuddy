@@ -303,6 +303,20 @@ class TestFlujo(unittest.TestCase):
         self.assertTrue(self.api("/api/importar/descartar", {"archivo": r["archivo"]})["ok"])
         self.assertEqual(self.app.datos()["info"]["archivos"], [])
 
+    def test_descartar_quita_el_de_su_carpeta_aunque_haya_otro_igual_y_no_anula_deshacer(self):
+        # Dos «movimientos.csv», uno en Banco y otro en Inversión: quitar el de Inversión no puede borrar el extracto del banco
+        self.api("/api/bienvenida", {"cuentas": [{"nombre": "Nómina", "tipo": "corriente", "saldo": 1000}]})
+        c = self.app.carpeta
+        for d in (c.banco, c.inversion):
+            with open(os.path.join(d, "movimientos.csv"), "w", encoding="utf-8") as fh: fh.write("Col A;Col B\nuno;dos\n")
+        r = self.api("/api/importar/carpeta", {"previa": True})
+        self.assertEqual(sorted(x["carpeta"] for x in r["resultados"]), ["banco", "inversion"])   # cada tarjeta sabe de dónde es
+        foto = self.app.deshacer = object(); self.app.deshacer_que = "algo"
+        self.assertTrue(self.api("/api/importar/descartar", {"archivo": "movimientos.csv", "carpeta": "inversion"})["ok"])
+        self.assertIs(self.app.deshacer, foto)   # no toca la base: el «Deshacer» de antes sigue ahí
+        self.assertEqual(self.app.datos()["info"]["archivos"], [{"nombre": "movimientos.csv", "tipo": "banco"}])
+        self.assertFalse(self.api("/api/importar/descartar", {"archivo": "movimientos.csv", "carpeta": "inversion"})["ok"])
+
     def test_simular_deshace_aunque_falle(self):
         alm = self.app.alm
         with alm.simular(): alm.guardar("cuenta", {"nombre": "Fantasma", "tipo": "corriente"})

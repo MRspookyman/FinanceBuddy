@@ -254,17 +254,19 @@ def clasificar_fila(f, todas, reglas, cuentas, recurrentes, cuenta_propia, categ
             return con(clase="transferencia", **({"destino": c["nombre"]} if imp < 0 else {"origen": c["nombre"]}), concepto=f"{'A' if imp < 0 else 'Desde'} {c['nombre']}")
     if re.match(r"(traspaso|transferencia (interna|entre cuentas))", tn):
         return con(clase="transferencia", concepto=titulo(t), duda="Traspaso: ¿a qué cuenta tuya va (o de cuál viene), o es un gasto/ingreso?")
-    # 3) Bizum enviado: categoría según el concepto
-    m = re.search(r"bizum (?:a favor de|enviado a|a)\s+(.+?)(?:\s+concepto:?\s*(.*))?$", t, re.I)
+    # 3) Bizum enviado: categoría según el concepto. Sin el nombre de la otra persona, como en BBVA («Bizum · Enviado: cena»:
+    #    el sentido y el concepto vienen en la columna «Movimiento»), vale igual.
+    sin_nombre = re.match(r"bizum\W+(?:enviado|recibido)\s*(?::\s*(.*))?$", t, re.I)  # no «Bizum enviado a Ana…», que trae el nombre
+    m = sin_nombre or re.search(r"bizum (?:a favor de|enviado a|a)\s+(.+?)(?:\s+concepto:?\s*(.*))?$", t, re.I)
     if m and imp < 0:
-        quien, conc = titulo(m.group(1)), (m.group(2) or "").strip()
-        base = titulo(conc) if conc and "sin concepto" not in norm(conc) else f"Bizum a {quien.split(' ')[0]}"
+        quien, conc = ("", (m.group(1) or "").strip()) if sin_nombre else (titulo(m.group(1)), (m.group(2) or "").strip())
+        base = titulo(conc) if conc and "sin concepto" not in norm(conc) else (f"Bizum a {quien.split(' ')[0]}" if quien else "Bizum enviado")
         cat = cat_por_palabras(conc)
-        return con(cat=cat or "Otros", concepto=base, duda=f"Bizum a {quien} «{conc or 'sin concepto'}»: ¿de qué es?")
+        return con(cat=cat or "Otros", concepto=base, duda=f"Bizum{' a ' + quien if quien else ' enviado'} «{conc or 'sin concepto'}»: ¿de qué es?")
     # 4) Bizum recibido: la parte de un gasto compartido de ese día o el anterior → te lo devuelven
-    m = re.search(r"bizum (?:de|recibido de)\s+(.+?)(?:\s+concepto:?\s*(.*))?$", t, re.I)
+    m = sin_nombre or re.search(r"bizum (?:de|recibido de)\s+(.+?)(?:\s+concepto:?\s*(.*))?$", t, re.I)
     if m and imp > 0:
-        quien, conc = titulo(m.group(1)), (m.group(2) or "").strip()
+        quien, conc = ("", (m.group(1) or "").strip()) if sin_nombre else (titulo(m.group(1)), (m.group(2) or "").strip())
         nombre = quien.split(" ")[0]
         from . import bizums
         cat = cat_por_palabras(conc)
@@ -275,11 +277,11 @@ def clasificar_fila(f, todas, reglas, cuentas, recurrentes, cuenta_propia, categ
                       if g is not f and g.get("clase") == "gasto" and g.get("cat") and not g.get("duda")] + (previos or {}).get("gastos", [])
             c = bizums.casar(imp, f["op"], gastos, recibidos, fijas)
             if c: cat = c["gasto"]["cat"]
-        if cat: return con(clase="reembolso", cat=cat, concepto=f"Parte de {nombre}")
+        if cat: return con(clase="reembolso", cat=cat, concepto=f"Parte de {nombre}" if nombre else "Parte de un Bizum")
         n = bizums.iguales(imp, f["op"], recibidos)
-        return con(clase="ingreso", cat="Otros ingresos", concepto=f"Bizum de {nombre}",
-                   duda=f"Bizum de {quien} «{conc or 'sin concepto'}»: " + (f"{n} Bizums iguales a la vez, parece un reparto, pero no encuentro el gasto. ¿De qué era?" if n >= 2
-                                                                         else "sin un gasto cercano: ¿te devuelve algo o es un ingreso?"))
+        return con(clase="ingreso", cat="Otros ingresos", concepto=f"Bizum de {nombre}" if nombre else "Bizum recibido",
+                   duda=f"Bizum{' de ' + quien if quien else ' recibido'} «{conc or 'sin concepto'}»: " + (f"{n} Bizums iguales a la vez, parece un reparto, pero no encuentro el gasto. ¿De qué era?" if n >= 2
+                                                                                                           else "sin un gasto cercano: ¿te devuelve algo o es un ingreso?"))
     # 5) Devolución de una compra
     if tn.startswith("devolucion") or " devolucion" in tn:
         return con(clase="reembolso", cat="Compras", concepto=f"Devolución {comercio(t) or ''}".strip(), duda="Devolución: ¿de qué categoría era la compra?")

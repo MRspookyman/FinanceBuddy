@@ -34,7 +34,11 @@ Solo para **Windows**. Todo en español y en euros.
    - **Vista previa**: antes de guardar nada te enseña lo que va a importar (movimientos nuevos, los que ya estaban, dudas, ingresos y
      gastos, saldo final y una muestra) para compararlo con tu banco. No se guarda hasta que lo confirmas (se puede desactivar).
      Si no hay nada raro (ni filas que no se pueden leer, ni dudas por revisar, ni activos nuevos), se resume en una línea con
-     el saldo del extracto y se confirma con un solo botón, **Importar**; el detalle queda plegado.
+     el saldo del extracto y se confirma con un solo botón, **Importar**; el detalle queda plegado. Si queda algo por revisar,
+     el resultado lleva un botón **Revisar las N dudas →**.
+   - ¿Te has equivocado de archivo? Mientras no esté importado, su tarjeta lleva **No importar (descartar el archivo)**: no se
+     guarda nada y la copia subida se borra (tu archivo original sigue donde estaba). Los que esperan en la carpeta Importar se
+     quitan con **Quitar**, en su fila. Si ya lo importaste, *Importaciones recientes → Quitar* deshace todo lo que trajo.
    - ¿Sin extracto? *Importar → Descargar la plantilla de Excel*: fecha, concepto, importe y un desplegable con tus categorías.
 4. **Revisión del extracto**: al confirmar una importación, Nubo te lleva por tres pasos que puedes dejar a medias y retomar
    («Seguir donde lo dejaste»): **qué ha entrado** (nuevos, los que ya estaban, entradas y salidas, y la lista plegada),
@@ -97,6 +101,12 @@ participaciones) añade las participaciones de cada compra y los **traspasos ent
 no cuentan como dinero nuevo), que no salen en la cuenta de efectivo. Un Excel de **operaciones con títulos** (Fecha,
 Tipo, Activo, Estado, Títulos) completa las participaciones de ETF y cripto. Nada se duplica con el extracto de la
 cuenta, se importe antes uno u otro. Con las participaciones, en *Inversión → Anotar valores a mano* basta con poner el precio.
+El CSV de la **cuenta de inversión de Revolut** (Date, Ticker, Type, Quantity, Total Amount, FX Rate) entra entero: cada
+compra y venta en euros (el importe en dólares ÷ el cambio de ese día que trae el archivo), los dividendos y las comisiones.
+La primera vez que sale un ticker se crea su activo (como acción, con el ticker de nombre: lo puedes renombrar o cambiar de
+tipo en *Ajustes → Inversión*); si ya lo tenías con ese ticker como código del precio, se usa el tuyo. Los ingresos y
+retiradas de efectivo no se importan ahí: ese dinero ya lo cuenta, en euros, el extracto de tu banco. Un tipo de operación
+que la app no conoce (un *split*, por ejemplo) va a «Por revisar», no se pierde.
 Sin valor anotado, un activo con participaciones se estima con el precio de su última compra o venta (marcado «≈»).
 
 **Reparto ideal** (*Inversión*): dices qué porcentaje quieres en cada activo y la app te enseña en cuánto te has desviado y
@@ -133,7 +143,8 @@ se restan), y lo que suman las compras de menos de 10 €. Pulsa un comercio par
 fondo, ETF o cripto, la app lo consulta a **Yahoo Finance, Morningstar o CoinGecko**. Solo sale el identificador del producto
 (ISIN, ticker o nombre de la cripto): **nunca importes, cuentas ni movimientos**. En cada activo, *Buscar el precio por internet*
 encuentra el producto por ISIN, ticker o nombre (con su TER y riesgo si es un fondo) y comprueba su precio al momento; con ISIN,
-un botón los configura todos de una vez. Las monedas que no son euros se pasan a euros con el cambio del día. El valor de un
+un botón los configura todos de una vez. Las monedas que no son euros se pasan a euros con el cambio del día; la moneda es la que
+dice la fuente (NVDA cotiza en dólares aunque en la ficha ponga euros). El valor de un
 activo usa el precio de mercado si conoce sus participaciones y es más nuevo que lo que anotaste. Se actualiza al abrir la app
 (si hace más de 6 h) y con un botón; sin conexión, sigue con el último precio guardado y si algo falla lo cuenta **una sola vez**.
 Son servicios gratuitos no oficiales: pueden fallar o cambiar;
@@ -253,7 +264,15 @@ dice «Sin saldo anotado» (con un enlace para anotarlo), no 0,00 €. Si solo c
 
 ## Bancos y brókers
 
-- **De serie** reconoce los extractos de **Santander** y la cuenta de efectivo de **MyInvestor**.
+- **De serie** reconoce los extractos de **Santander**, **BBVA** (el Excel de *Movimientos*), la cuenta **Actual de
+  Revolut** (CSV) y su **cuenta de inversión**, y la cuenta de efectivo y las órdenes de **MyInvestor**.
+  - En BBVA, lo que dice la columna «Movimiento» se añade al concepto cuando aporta algo: «Bizum · Recibido: cena»,
+    «Transferencia recibida · De …». En un pago con tarjeta se queda solo el comercio.
+  - En Revolut, la fecha es la de finalización (cuando el dinero sale del saldo), la comisión se suma al movimiento y lo
+    que aún está pendiente no se importa (llegará completado en el siguiente extracto).
+  - Recargar Revolut con la tarjeta del banco o pasar dinero a su cuenta de inversión es dinero entre tus cuentas: si
+    importas los dos extractos, la app empareja la recarga sola; lo demás te pregunta a qué cuenta va (una vez).
+  - Para la cuenta Actual de Revolut crea una cuenta corriente propia (p. ej. «Revolut cuenta»): la de tipo bróker es para la de inversión.
 - **Cualquier otro** banco o bróker que exporte Excel o CSV funciona:
   - la primera vez la app **reconoce sola las columnas** (fecha, concepto, importe, saldo…) por su nombre y por lo que
     hay dentro, y solo tienes que comprobarlas y dar a guardar; si algo no lo ve claro, lo eliges tú;
@@ -323,7 +342,7 @@ financebuddy/
   lectura.py       lectura de Excel/CSV, fechas, importes y reconocimiento del formato
   clasificar.py    reglas, traspasos, Bizum, recurrentes y sugerencias locales del historial
   detectar.py      fijos que se repiten cada mes y de dónde viene el dinero
-  operaciones.py   órdenes y operaciones del bróker con participaciones (ISIN, traspasos entre fondos)
+  operaciones.py   órdenes y operaciones del bróker con participaciones (ISIN, traspasos entre fondos; Revolut: tickers, dividendos, cambio a euros)
   cartera.py       arreglos a mano: unir activos, deshacer un traspaso tomado por venta, cuadrar participaciones
   precios.py       precios por internet (opcional): Yahoo, Morningstar, CoinGecko, caché, cambio de moneda, buscador y comparador
   actualizaciones.py  aviso de versión nueva (opcional)

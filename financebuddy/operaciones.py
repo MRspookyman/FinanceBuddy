@@ -1,5 +1,6 @@
 # Órdenes y operaciones del bróker con participaciones: el CSV de «Órdenes» de fondos de MyInvestor (ISIN, importe,
-# participaciones, estado) o un Excel de operaciones (fecha, compra/venta, activo, títulos).
+# participaciones, estado), un Excel de operaciones (fecha, compra/venta, activo, títulos) o el CSV de la cuenta de
+# inversión de Revolut (ticker, tipo, cantidad, importe en su moneda y el cambio a euros).
 #
 # Completan lo que no dice el extracto de la cuenta de efectivo: cuántas participaciones compras o vendes y los
 # traspasos entre fondos (que no pasan por la cuenta). Nunca duplican lo que ya trae ese extracto: una orden y un
@@ -11,7 +12,11 @@ from . import clasificar as C, lectura as L, modelo, plantilla
 
 DIAS = 6
 RE_ISIN = re.compile(r"\b[A-Z]{2}[A-Z0-9]{9}\d\b")
-ESTADOS_OK = ("finalizad", "ejecutad", "completad", "liquidad", "realizad", "confirmad")
+ESTADOS_OK = ("finalizad", "ejecutad", "completad", "completed", "liquidad", "realizad", "confirmad")
+# Lo que no es una compra ni una venta, por el texto de la columna `tipo` (Revolut: «DIVIDEND», «CASH TOP-UP», «CUSTODY FEE»)
+RE_DIVIDENDO = re.compile(r"dividend|cupon|coupon")
+RE_COMISION = re.compile(r"\bfee\b|comision|custodia|custody")
+RE_EFECTIVO = re.compile(r"cash|top.?up|withdraw|deposit|ingreso de efectivo|retirada de efectivo")
 
 def cerca(a, b):
     return abs(abs(a) - abs(b)) <= max(1.0, 0.01 * max(abs(a), abs(b)))
@@ -24,7 +29,11 @@ def clave(o): return o["isin"] or L.norm(o["texto"])
 # ───────────── leer el archivo ─────────────
 def leer(ruta, alm, perfil_nombre=None, info=None):
     """→ (perfil, operaciones, descartadas). Operación: {fecha, isin, texto, importe (≥0 o None), part (≥0 o None),
-    signo (+1 compra, −1 venta, None si el archivo no lo dice)}. Se descartan las órdenes canceladas o rechazadas.
+    signo (+1 compra, −1 venta, None si el archivo no lo dice), que}. Se descartan las órdenes canceladas o rechazadas.
+    que: None en una compra o venta; si la columna `tipo` dice otra cosa, «dividendo», «comision», «efectivo» (dinero que
+    entra o sale de la cuenta del bróker) u «otra» (un tipo que no sé leer: va a «Por revisar»). Estas llevan además
+    `tipo` (el texto del archivo) y `cifra` (el importe con su signo, en euros).
+    Con columna `cambio` (unidades de la moneda por euro, como en Revolut), el importe se pasa a euros: importe / cambio.
     info (dict): recibe en `ilegibles` las filas con una fecha que no se entiende (como importar.leer), para avisarlo."""
     crudas = L.filas_crudas(ruta)
     perfiles = [p for p in alm.todos("perfil") if p.get("tipo") == "operaciones" and (not perfil_nombre or p["nombre"] == perfil_nombre)]
@@ -45,12 +54,22 @@ def leer(ruta, alm, perfil_nombre=None, info=None):
             continue
         if "estado" in idx and not L.norm(cel("estado")).startswith(ESTADOS_OK): descartadas += 1; continue
         imp, part = L.numero(cel("importe"), miles), L.numero(cel("participaciones"), miles=False)
-        if not imp and not part: descartadas += 1; continue
-        tipo = L.norm(cel("tipo"))
-        signo = -1 if re.match(r"venta|vender|reembolso|sell", tipo) else 1 if re.match(r"compra|comprar|suscripcion|buy", tipo) else None
+        cambio = L.numero(cel("cambio"), miles=False) if "cambio" in idx else None
+        if imp is not None and cambio: imp = round(imp / cambio, 2)
+        tipo_txt, tipo = L.texto(cel("tipo")), L.norm(cel("tipo"))
         m = RE_ISIN.search(L.texto(cel("isin")).upper() + " " + L.texto(cel("activo")).upper())
-        ops.append({"fecha": fecha, "isin": m.group(0) if m else "", "texto": L.texto(cel("activo")) or (m.group(0) if m else ""),
-                    "importe": round(abs(imp), 2) if imp else None, "part": abs(part) if part else None, "signo": signo})
+        o = {"fecha": fecha, "isin": m.group(0) if m else "", "texto": L.texto(cel("activo")) or (m.group(0) if m else "")}
+        signo = -1 if re.match(r"venta|vender|reembolso|sell", tipo) else 1 if re.match(r"compra|comprar|suscripcion|buy", tipo) else None
+        que = None if signo or not tipo else ("dividendo" if RE_DIVIDENDO.search(tipo) else "comision" if RE_COMISION.search(tipo)
+                                              else "efectivo" if RE_EFECTIVO.search(tipo) else "otra")
+        # Lo que no se puede guardar tal cual va a «Por revisar»: sin importe (un «STOCK SPLIT» con solo títulos: nunca una
+        # compra supuesta en espera), o con el signo al revés de su tipo (un dividendo que resta, una comisión que suma)
+        if que and que != "efectivo" and (imp is None or (que == "dividendo" and imp < 0) or (que == "comision" and imp > 0)): que = "otra"
+        if que:
+            ops.append({**o, "importe": round(abs(imp or 0), 2), "part": part, "signo": None, "que": que, "tipo": tipo_txt, "cifra": round(imp or 0, 2)})
+            continue
+        if not imp and not part: descartadas += 1; continue
+        ops.append({**o, "importe": round(abs(imp), 2) if imp else None, "part": abs(part) if part else None, "signo": signo})
     if not ops and not descartadas and raras:
         raise ValueError(f"No se ha podido leer ninguna fila: no entiendo la fecha «{raras[0]['valor']}» (fila {raras[0]['fila']}).")
     if not ops and not descartadas: raise ValueError("El archivo no tiene operaciones.")
@@ -93,10 +112,13 @@ def activo_de(alm, o, cuenta):
     else:
         from .importar import nombre_activo, clase_activo
         nombre, clase = nombre_activo(o["texto"]), clase_activo(o["texto"])
-        # Por sus patrones, por el mismo nombre o por un nombre de varias palabras que aparece en el texto (uno de una sola
-        # palabra, como «Bitcoin», casaría con cualquier producto que la lleve)
+        es_ticker = re.fullmatch(r"[A-Z][A-Z0-9.]{0,5}", o["texto"]) is not None  # «NVDA», «VUAA»: Revolut solo da el ticker
+        if es_ticker and clase == "otro": clase = "accion"
+        # Por sus patrones, por el mismo nombre, por un nombre de varias palabras que aparece en el texto (uno de una sola
+        # palabra, como «Bitcoin», casaría con cualquier producto que la lleve) o por el ticker con el que consultas su precio
         a = next((a for a in activos if any(C.casa(p, tn) for p in a.get("patrones") or []) or L.norm(a["nombre"]) == L.norm(nombre)
-                  or (len(a["nombre"].split()) >= 2 and C.casa(a["nombre"], tn))), None)
+                  or (len(a["nombre"].split()) >= 2 and C.casa(a["nombre"], tn))
+                  or (es_ticker and (a.get("codigo_precio") or "").upper() == o["texto"])), None)
         if a: return a["nombre"], False
         patrones = [L.norm(nombre)]
     # Ya existe con ese nombre o lo reconocen sus patrones (creado desde el extracto de la cuenta): se le pone el ISIN
@@ -113,16 +135,22 @@ def activo_de(alm, o, cuenta):
 
 # ───────────── casar una orden con lo ya importado ─────────────
 def huella(o, activo):
+    """Lo que identifica una orden: fecha, ISIN o el activo tal como lo nombra el archivo (el ticker: renombrar el activo no la cambia),
+    importe y participaciones."""
+    return "|".join(str(x) for x in (o["fecha"], o["isin"] or o["texto"] or activo, o["importe"] or "", o["part"] or ""))
+
+def huella_por_nombre(o, activo):
+    """La huella de antes, con el nombre del activo en la app en vez del texto del archivo: la llevan las órdenes ya importadas."""
     return "|".join(str(x) for x in (o["fecha"], o["isin"] or activo, o["importe"] or "", o["part"] or ""))
 
 def _part(o, signo):
     return round(signo * o["part"], 6) if o["part"] else None
 
 def casar_orden(alm, o, activo, cuenta):
-    """Intenta que la orden complete algo ya importado. → 'existente' | 'completada' | 'desde_revisar' | None."""
+    """Intenta que la orden complete algo ya importado. → 'completada' | 'desde_revisar' | None.
+    (Que la misma orden ya esté importada lo mira antes `importar`, contando huellas: dos órdenes iguales el mismo día son dos.)"""
     h = huella(o, activo)
     aps = alm.todos("aportacion")
-    if any(a.get("orden") == h for a in aps): return "existente"
     # Una aportación del extracto de la cuenta (u otra orden de otro archivo) del mismo activo, fecha e importe
     cand = [a for a in aps if a["activo"] == activo and not a.get("orden") and dias(a["fecha"], o["fecha"]) <= DIAS
             and (o.get("supuesta") or (float(a["importe"]) > 0) == (o["signo"] > 0))
@@ -225,14 +253,14 @@ def resolver_conocidos(alm):
     from .importar import _resolver_uno
     activos, n = alm.todos("activo"), 0
     for p in alm.todos("pendiente"):
-        if p.get("tipo_import") != "inversion": continue
+        if p.get("tipo_import") != "inversion" or p["fila"].get("tipo_op"): continue  # un tipo de operación que no sé leer: lo decide el usuario
         a = next((a for a in activos if any(C.casa(x, L.norm(p["fila"]["texto"])) for x in a.get("patrones") or [])), None)
         if a: _resolver_uno(alm, p, {"accion": "activo", "activo": a["nombre"]}); n += 1
     return n
 
 # ───────────── importar ─────────────
 def importar(alm, ruta, cuenta=None, perfil_nombre=None):
-    from .importar import aviso_ilegibles
+    from .importar import aviso_ilegibles, huellas_existentes
     info = {}
     perfil, ops, descartadas = leer(ruta, alm, perfil_nombre, info)
     cuentas = alm.todos("cuenta")
@@ -242,18 +270,26 @@ def importar(alm, ruta, cuenta=None, perfil_nombre=None):
         from .importar import NecesitaCuenta as NC
         raise NC({"archivo": os.path.basename(ruta), "tipo": "operaciones", "perfil": perfil["nombre"],
                   "cuentas": brokers or [c["nombre"] for c in cuentas]})
-    traspasos = deducir_signos(ops)
+    ordenes = [o for o in ops if not o.get("que")]
+    traspasos = deducir_signos(ordenes)
     n = Counter()
     nuevos_activos = []
+    ya = Counter(a.get("orden") for a in alm.todos("aportacion") if a.get("orden"))  # órdenes de otra importación de este archivo (o de otro)
+    huellas_cobro, huellas_mov = huellas_existentes(alm, cuenta, "cobro"), huellas_existentes(alm, cuenta, "movimiento")
+    # Lo de «Por revisar» que ya resolviste como compra/venta o dividendo (lleva la huella de su fila): tampoco vuelve
+    huellas_rev = huellas_mov + Counter((r["ext_fecha"], round(float(r.get("ext_importe") or 0), 2)) for t in ("aportacion", "cobro")
+                                        for r in alm.todos(t) if r.get("cuenta") == cuenta and r.get("ext_fecha"))
     with alm.transaccion():
-        for o in ops:
+        for o in ordenes:
             activo, nuevo = activo_de(alm, o, cuenta)
             if nuevo: nuevos_activos.append(activo)
+            h, antes = huella(o, activo), huella_por_nombre(o, activo)
+            k = h if ya[h] > 0 else antes if ya[antes] > 0 else None
+            if k: ya[k] -= 1; n["existente"] += 1; continue
             r = casar_orden(alm, o, activo, cuenta)
             if r: n[r] += 1; continue
-            h = huella(o, activo)
             if o["importe"] is None:  # sin importe: espera a su movimiento de la cuenta
-                if not any(x.get("orden") == h for x in alm.todos("operacion")):
+                if not any(x.get("orden") in (h, antes) for x in alm.todos("operacion")):
                     alm.insertar_crudo("operacion", modelo.limpiar("operacion", {"fecha": o["fecha"], "activo": activo,
                                                                                 "participaciones": _part(o, o["signo"]), "orden": h}))
                     n["espera"] += 1
@@ -263,20 +299,52 @@ def importar(alm, ruta, cuenta=None, perfil_nombre=None):
                 "fecha": o["fecha"], "activo": activo, "importe": o["signo"] * o["importe"], "participaciones": _part(o, o["signo"]),
                 "cuenta": cuenta, "orden": h, "supuesta": "si" if o.get("supuesta") else "", "traspaso": "si" if o.get("traspaso") else ""}))
             n["nueva"] += 1
+        for o in ops:
+            if not o.get("que"): continue
+            texto, k = " ".join(x for x in (o["tipo"], o["texto"]) if x), (o["fecha"], o["cifra"])
+            ext = {"ext_texto": texto, "ext_importe": o["cifra"], "ext_fecha": o["fecha"]}
+            if o["que"] == "efectivo": n["efectivo"] += 1; continue  # dinero entre tus cuentas: se ve (en euros) en el extracto del banco
+            if o["que"] in ("dividendo", "comision") and not o["importe"]: n["cero"] += 1; continue  # menos de medio céntimo en euros
+            if o["que"] in ("dividendo", "comision") and o["texto"]:  # de un activo: cuenta en su rentabilidad
+                if huellas_cobro[k] > 0: huellas_cobro[k] -= 1; n["existente"] += 1; continue
+                activo, nuevo = activo_de(alm, o, cuenta)
+                if nuevo: nuevos_activos.append(activo)
+                alm.insertar_crudo("cobro", modelo.limpiar("cobro", {"fecha": o["fecha"], "activo": activo, "tipo": o["que"], "importe": o["importe"],
+                                                                     "cuenta": cuenta, **ext}))
+                n[o["que"]] += 1; continue
+            if huellas_rev[k] > 0: huellas_rev[k] -= 1; n["existente"] += 1; continue
+            if o["que"] == "comision":  # de la cuenta, sin activo: un gasto
+                from .importar import movimiento_de
+                alm.insertar_crudo("movimiento", movimiento_de({"op": o["fecha"], "texto": texto, "importe": o["cifra"], "clase": "gasto",
+                                                               "cat": "Comisiones", "concepto": f"Comisión {cuenta}"}, cuenta))
+                n["comision"] += 1; continue
+            # Un tipo que no sé leer (o un dividendo sin activo): a «Por revisar», nunca se pierde en silencio. Con sus títulos
+            # (un «STOCK SPLIT» o un traspaso de acciones son justo eso): hacen falta para ajustar las participaciones
+            titulos = f"{('%.8f' % o['part']).rstrip('0').rstrip('.').replace('.', ',')} títulos" if o["part"] else ""
+            alm.insertar_crudo("pendiente", {"tipo_import": "inversion", "cuenta": cuenta, "archivo": os.path.basename(ruta), "perfil": perfil["nombre"],
+                                             "fila": {"op": o["fecha"], "texto": " · ".join(x for x in (texto, titulos) if x), "importe": o["cifra"],
+                                                      "tipo_op": o["tipo"], "participaciones": o["part"], "patron": C.patron_sugerido(texto)},
+                                             "duda": f"Operación «{o['tipo']}»{' de ' + o['texto'] if o['texto'] else ''}{f' ({titulos})' if titulos else ''} que no sé leer: ¿qué es?"})
+            n["revisar"] += 1
         if not perfil.get("cuenta"): alm.guardar("perfil", {**perfil, "cuenta": cuenta}, perfil["id"])
         n["revisadas"] = resolver_conocidos(alm)
         n["espera"] -= aplicar_en_espera(alm)
     partes = [f"{n['nueva']} operaciones nuevas" if n["nueva"] else "",
               f"{n['completada'] + n['desde_revisar']} ya importadas completadas con sus participaciones" if n["completada"] + n["desde_revisar"] else "",
               f"{traspasos} traspasos entre fondos" if traspasos else "",
+              f"{n['dividendo']} dividendo{'s' if n['dividendo'] > 1 else ''}" if n["dividendo"] else "",
+              f"{n['comision']} comisi{'ones' if n['comision'] > 1 else 'ón'}" if n["comision"] else "",
+              f"{n['cero']} de menos de un céntimo de euro (no cuentan)" if n["cero"] else "",
+              f"{n['revisar']} por revisar" if n["revisar"] else "",
               f"{n['revisadas']} de «Por revisar» ya reconocidas" if n["revisadas"] else "",
               f"{n['espera']} esperando al extracto de la cuenta" if n["espera"] > 0 else "",
               f"{n['existente']} ya estaban" if n["existente"] else "",
               f"{descartadas} canceladas o rechazadas" if descartadas else "",
+              f"{n['efectivo']} ingresos o retiradas de efectivo ignorados (ese dinero se ve en el extracto de tu banco)" if n["efectivo"] else "",
               f"activos nuevos: {', '.join(nuevos_activos)}" if nuevos_activos else ""]
     fechas = [o["fecha"] for o in ops] or ["", ""]
     return {"ok": True, "tipo": "operaciones", "cuenta": cuenta, "perfil": perfil["nombre"], "filas": len(ops) + descartadas,
-            "nuevas": n["nueva"], "existentes": n["existente"], "dudas": 0, "desde": min(fechas), "hasta": max(fechas),
+            "nuevas": n["nueva"] + n["dividendo"] + n["comision"], "existentes": n["existente"], "dudas": n["revisar"], "desde": min(fechas), "hasta": max(fechas),
             "ya_importado": bool(ops) and n["existente"] == len(ops) and not n["completada"] and not n["desde_revisar"] and not n["revisadas"],
             "activos_nuevos": nuevos_activos, "ilegibles": info["ilegibles"],
             "mensaje": f"Operaciones ({cuenta}): " + " · ".join(p for p in partes if p) + aviso_ilegibles(info["ilegibles"], primera=True)}

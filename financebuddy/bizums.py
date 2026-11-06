@@ -98,8 +98,8 @@ def propagar(filas):
         sib = next((g for g in bz if g is not f and not g.get("duda") and g.get("clase") == "reembolso" and g.get("cat")
                     and abs(g["importe"] - f["importe"]) <= tolerancia(f["importe"]) and abs((_dia(g["op"]) - d).days) <= 1), None)
         if not sib: continue
-        nombre = (re.search(r"bizum (?:de|recibido de)\s+(\S+)", f["texto"], re.I) or [None, "Bizum"])[1]
-        f.update(clase="reembolso", cat=sib["cat"], concepto=f"Parte de {C.titulo(nombre)}", aprendido=False)
+        nombre = re.search(r"bizum (?:de|recibido de)\s+(\S+)", f["texto"], re.I)
+        f.update(clase="reembolso", cat=sib["cat"], concepto=f"Parte de {C.titulo(nombre[1])}" if nombre else "Parte de un Bizum")
         f.pop("duda", None)
         n += 1
     return n

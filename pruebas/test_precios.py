@@ -170,6 +170,16 @@ class TestActualizar(Base):
         self.assertAlmostEqual(ult["Vanguard UK"]["precio"], sv[f] * 0.01 * precios.valor_en(fx_gbp, f), 3)   # peniques → libras → euros
         self.assertLess(ult["Vanguard UK"]["precio"], 200)
 
+    def test_manda_la_moneda_de_la_fuente_aunque_la_ficha_diga_euros(self):
+        # La ficha se queda en EUR si no se elige la moneda: un precio en dólares se tomaba por euros (con el símbolo €)
+        self.activar()
+        self.activo("Apple", clase="accion", fuente_precio="yahoo", codigo_precio="AAPL", moneda="EUR")
+        self.assertEqual(precios.actualizar(self.alm)["fallos"], [])   # la primera vez: el cambio se baja en la misma actualización
+        u = self.alm.config("precio_ultimos")["Apple"]
+        sa, fx = precios.leer_serie(self.alm, "yahoo", "AAPL"), precios.leer_serie(self.alm, "yahoo", "USDEUR=X")
+        self.assertEqual(u["moneda"], "USD")
+        self.assertAlmostEqual(u["precio"], sa[u["fecha"]] * precios.valor_en(fx, u["fecha"]), 3)
+
     def test_morningstar_y_coingecko(self):
         self.activar()
         self.activo("Indexado", fuente_precio="morningstar", codigo_precio="0P0000YXQE")

@@ -728,6 +728,40 @@ return (async () => {
     if (!(await hasta(() => !tarjeta()))) return "al descartar, la tarjeta sigue ahí";
   });
 
+  // 18 b. Un archivo subido por error se puede quitar antes de importarlo: desde su tarjeta (aquí, un formato que la app no conoce y
+  // pide configurar) y, si se quedó en la carpeta Importar, desde la lista de la carpeta (con confirmación). No se importa nada.
+  await caso("Importar: un archivo subido por error se quita sin importarlo", async () => {
+    const nombre = (f) => (FB.DB.info.archivos || []).some((a) => a.nombre === f);
+    const raro = "Col A;Col B;Col C\nuno;dos;tres\ncuatro;cinco;seis\n";
+    const antes = regs("movimiento").length;
+    FB.soltados = [new File([raro], "equivocado-1.csv", { type: "text/csv" })];
+    if (!(await ir("#importar"))) return "no se abre Importar";
+    const tarjeta = () => porTexto(".fb-card", "equivocado-1.csv");
+    const no = await hasta(() => tarjeta() && porTexto("button", "No importar", tarjeta()));
+    if (!no) return "la tarjeta del archivo subido no tiene «No importar»: " + plano(tarjeta() || app()).slice(0, 300);
+    if (!nombre("equivocado-1.csv")) return "el archivo subido no está en la carpeta Importar";
+    no.click();
+    if (!(await hasta(() => !tarjeta() && !nombre("equivocado-1.csv")))) return "al descartarlo, la tarjeta o el archivo siguen ahí";
+    // El que se quedó en la carpeta: se sube y se cierra su tarjeta sin descartar (como si se hubiera ido de la pantalla)
+    FB.soltados = [new File([raro], "equivocado-2.csv", { type: "text/csv" })];
+    if (!(await ir("#importar"))) return "no se abre Importar (2)";
+    if (!(await hasta(() => nombre("equivocado-2.csv")))) return "el segundo archivo no llega a la carpeta Importar";
+    FB.estado.imp = []; await FB.refrescar();
+    const pendientes = porTexto("summary", "archivos pendientes");
+    if (!pendientes) return "no se ofrece abrir la lista de archivos pendientes";
+    pendientes.click();
+    const fila = await hasta(() => todos(".fin-rows .r").find((r) => plano(r).includes("equivocado-2.csv")));
+    if (!fila) return "el archivo no sale en la lista de la carpeta Importar";
+    const quitar = porTexto("button", "Quitar", fila);
+    if (!quitar) return "la fila del archivo no tiene «Quitar»";
+    quitar.click();
+    const d = await hasta(() => document.querySelector("dialog.fb-dialogo[open]"));
+    if (!d) return "no pide confirmación antes de borrar el archivo";
+    porTexto("button", "Quitar el archivo", d).click();
+    if (!(await hasta(() => !nombre("equivocado-2.csv") && !todos(".fin-rows .r").some((r) => plano(r).includes("equivocado-2.csv"))))) return "el archivo sigue en la carpeta o en la lista";
+    if (regs("movimiento").length !== antes) return "se han guardado movimientos";
+  });
+
   // 19. Un activo que ya no tienes: se marca como vendido desde su ficha (no hace falta borrarlo), deja de salir y se puede volver atrás
   await caso("Inversión: marcar un activo como vendido lo quita de la vista sin borrar sus operaciones", async () => {
     const a = regs("activo").find((x) => x.nombre === "Bitcoin");
