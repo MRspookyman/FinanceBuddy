@@ -5,16 +5,23 @@ function vistaGestionar() {
   if (!F) { FB.ir("#ajustes"); return; }
   titulo(F.plural, F.ayuda || "");
   const barra = root.createDiv({ cls: "fin-filtros" });
-  enlace(barra, "← Ajustes", "#ajustes").className += " fin-link";
+  enlace(barra, "← Ajustes", rutaAjustesDe(tipo)).className += " fin-link";
   const inp = barra.createEl("input", { cls: "fin-search", attr: { type: "search", placeholder: "Buscar…", "aria-label": `Buscar en ${F.plural.toLowerCase()}` } });
   if (!["cierre"].includes(tipo)) enlace(barra, `+ Nuevo`, `#editar/${tipo}/nuevo`).className = "fb-btn";
-  if (tipo === "recurrente") enlace(barra, "Detectar en mis movimientos", "#fijos").className = "fb-btn sec";
   if (tipo === "categoria") { panelPresupuestosSugeridos(root); panelOrdenarCategorias(root); }
   if (tipo === "recurrente") {  // lo que suman tus fijos: al mes y al año
     const T = totalesFijos(DB.registros.recurrente || [], hoy.toISODate()), cada = (t) => (t.noMensual ? "al mes de media" : "al mes");
     const partes = [T.gasto.n ? `Gastos fijos: ${eur(T.gasto.mes, 2)} ${cada(T.gasto)} · ${eur(T.gasto.año, 2)} al año` : "", T.ingreso.n ? `Ingresos fijos: ${eur(T.ingreso.mes, 2)} ${cada(T.ingreso)}` : "",
       T.aportacion.n ? `Aportaciones: ${eur(T.aportacion.mes, 2)} ${cada(T.aportacion)} · ${eur(T.aportacion.año, 2)} al año` : ""].filter(Boolean);
     if (partes.length) { const box = root.createDiv({ cls: "fb-sumas" }); for (const t of partes) box.createDiv({ text: t }); }
+    // Los que la app ve en tus movimientos y aún no tienes, aquí mismo (plegado): revisas, marcas y creas sin cambiar de pantalla.
+    const det = root.createEl("details", { cls: "fin-more fb-posibles" });
+    det.open = !!FB.estado.posiblesFijos;
+    det.createEl("summary", { text: "Posibles fijos en tus movimientos" });
+    const cuerpo = det.createDiv({ cls: "cuerpo" });
+    const cargar = () => { if (cuerpo.dataset.cargado) return; cuerpo.dataset.cargado = "1"; cuerpo.createDiv({ cls: "fin-note", text: "Buscando en tus movimientos…" }); FB.api("/api/detectar", {}).then((r) => { cuerpo.innerHTML = ""; if (!r.ok) { mensaje(cuerpo, r.mensaje || "Error", "err"); return; } tarjetasFijos(cuerpo, r); }); };
+    det.addEventListener("toggle", () => { FB.estado.posiblesFijos = det.open; if (det.open) cargar(); });
+    if (det.open) cargar();
   }
   const cont = root.createDiv({ cls: "fin-panel" });
   let todos = [...(DB.registros[tipo] || [])];
@@ -160,13 +167,17 @@ function vistaEditar() {
   titulo(reg && reg.id ? `Editar ${F.uno}` : `Nuevo: ${F.uno}`, F.ayuda || "");
   if (id !== "nuevo" && !reg) { vacio(root, "Ese registro ya no existe"); return; }
   const volver = FB.anterior && !FB.anterior.startsWith("#editar") ? FB.anterior : `#gestionar/${tipo}`;
-  if (tipo === "movimiento" && reg && ["gasto", "ingreso", "reembolso"].includes(reg.clase)) cambioCategoria(root, reg, volver);
+  // La ficha de un movimiento empieza por lo que se suele corregir: la categoría (a un clic, con Deshacer) y sus datos;
+  // dividirlo, lo que te devolvieron y lo compartido van debajo.
+  const enFicha = tipo === "movimiento" && reg && reg.id && ["gasto", "ingreso", "reembolso"].includes(reg.clase);
+  if (enFicha) cambioCategoria(root, reg, volver);
+  // Una parte de un movimiento dividido es un trozo de un cargo del banco: lo que es del cargo entero no se cambia aquí ni se borra
+  const datosFicha = enFicha ? { ...reg, _enFicha: true, _claseFicha: reg.clase } : reg;
+  formulario(root, tipo, datosFicha, tipo === "movimiento" && reg && reg.parte_de
+    ? { volver, fijos: ["fecha", "clase", "importe", "cuenta"], motivoFijos: "Es del cargo entero: para cambiarlo, vuelve a juntar el movimiento", sinBorrar: true } : { volver });
+  if (tipo === "movimiento" && reg && reg.id) panelDividir(root, reg);
   if (tipo === "movimiento" && reg && reg.id) panelReembolsos(root, reg);
   if (tipo === "movimiento" && reg && reg.id) panelMedias(root, reg);
-  if (tipo === "movimiento" && reg && reg.id) panelDividir(root, reg);
-  // Una parte de un movimiento dividido es un trozo de un cargo del banco: lo que es del cargo entero no se cambia aquí ni se borra
-  formulario(root, tipo, reg, tipo === "movimiento" && reg && reg.parte_de
-    ? { volver, fijos: ["fecha", "clase", "importe", "cuenta"], motivoFijos: "Es del cargo entero: para cambiarlo, vuelve a juntar el movimiento", sinBorrar: true } : { volver });
   if (tipo === "aportacion" && reg && reg.id) {
     const x = [reg.supuesta ? "La orden no decía si era compra o venta: se tomó como compra. Si fue una venta, pon el importe y las participaciones en negativo." : "",
       reg.ext_texto ? `Del extracto: «${reg.ext_texto}» (${eurS(num(reg.ext_importe))}, ${fmtISO(reg.ext_fecha)}).` : "", reg.orden ? "Viene del archivo de órdenes del bróker." : "",
@@ -305,56 +316,45 @@ function panelMedias(padre, reg) {
   };
   accion(p, M.manual ? "Ya no está cobrado" : "Marcar como cobrado", () => cambiar(!M.manual));
 }
+// Cambiar la categoría a un clic. Por defecto cambia **solo este movimiento** y se puede deshacer, igual que en la lista de
+// Movimientos. Si viene del extracto, una casilla (sin marcar) cambia también los demás de ese comercio y lo recuerda como
+// regla para los próximos; con una regla tuya de ese comercio no se ofrece: lo que manda es la regla.
 function cambioCategoria(padre, reg, volver) {
-  const p = panel(padre, "Cambiar la categoría");
-  let parecidos = false, recordar = false;
+  const p = panel(padre, "Cambiar la categoría", null, "Pulsa la categoría correcta. Se cambia este movimiento y puedes deshacerlo.");
+  let comercio = false;
   const conExtracto = !!reg.ext_texto;
-  // Qué va a pasar al pulsar una categoría, delante y a la vista: un clic puede cambiar decenas de movimientos y dejar una
-  // regla para siempre, y eso estaba en dos casillas pequeñas debajo de los botones. Se marcan solas **la primera vez**;
-  // si ya tienes una regla tuya de ese comercio salen desactivadas, porque entonces lo que manda es la regla.
   if (conExtracto) {
     const caja = p.createDiv({ cls: "fb-aplicar" });
-    caja.createDiv({ cls: "et", text: "Al elegir una categoría" });
-    const opcion = (texto) => {
-      const l = caja.createEl("label");
-      const c = l.createEl("input", { attr: { type: "checkbox" } });
-      c.disabled = true;  // hasta saber si ya hay regla no se promete nada
-      const t = l.createSpan({ text: texto });
-      return { l, c, t };
-    };
-    const o1 = opcion("Cambiar también los demás movimientos de este comercio");
-    const o2 = opcion("Recordarlo para los próximos");
-    const por = caja.createDiv({ cls: "por", text: "Comprobando qué hay de este comercio…" });
+    const l = caja.createEl("label", { cls: "fb-casilla" });
+    const c = l.createEl("input", { attr: { type: "checkbox" } });
+    c.disabled = true;  // hasta saber si ya hay regla no se promete nada
+    const t = l.createSpan({ text: "Cambiar también los demás de este comercio y recordarlo para los próximos" });
+    const por = caja.createDiv({ cls: "por fin-note", text: "Comprobando qué hay de este comercio…" });
     FB.api("/api/parecidos", { id: reg.id }).then((r) => {
       if (!r.ok) { por.setText("No se ha podido comprobar: se cambiará solo este movimiento."); return; }
       const quien = `«${C_titulo(r.patron)}»`;
-      if (r.n) o1.t.setText(`Cambiar también ${r.n === 1 ? "el otro movimiento" : `los otros ${r.n} movimientos`} de ${quien}`);
-      o2.t.setText(`Recordarlo para los próximos de ${quien}`);
-      if (!r.n) o1.l.style.display = "none";
       por.empty();
       if (r.regla) {  // ya hay una regla tuya: ni se tocan los demás ni se reescribe sola
-        for (const o of [o1, o2]) o.l.addClass("off");
-        por.appendText(`Ya tienes una regla para ${quien}: lo suyo va a ${r.regla.categoria || "su categoría"}. Esto cambia solo este movimiento. `);
+        l.addClass("off");
+        por.appendText(`Ya tienes una regla para ${quien}: lo suyo va a ${r.regla.categoria || "su categoría"}. `);
         enlace(por, "Para los demás y los próximos, cambia la regla →", `#editar/regla/${r.regla.id}`);
         return;
       }
-      for (const o of [o1, o2]) { o.c.disabled = false; o.c.checked = true; }
-      parecidos = !!r.n; recordar = true;
-      o1.c.onchange = () => (parecidos = o1.c.checked);
-      o2.c.onchange = () => (recordar = o2.c.checked);
-      por.setText("Es la primera vez que clasificas este comercio: por eso van marcadas.");
+      t.setText(r.n ? `Cambiar también ${r.n === 1 ? "el otro movimiento" : `los otros ${r.n} movimientos`} de ${quien} y recordarlo para los próximos` : `Recordarlo para los próximos de ${quien}`);
+      c.disabled = false;
+      c.onchange = () => (comercio = c.checked);
     });
   }
   const chips = p.createDiv({ cls: "fb-cats" });
   const grupo = reg.clase === "ingreso" ? "ingreso" : "gasto";
   for (const [c] of catSegunClase({ clase: grupo })) {
-    const b = chips.createEl("button", { text: `${catIcono(c)} ${c}`, cls: c === reg.categoria ? "act" : "" });
+    const b = chips.createEl("button", { text: `${catIcono(c)} ${c}`, cls: c === reg.categoria ? "act" : "", attr: { type: "button", "aria-pressed": String(c === reg.categoria) } });
     b.onclick = async () => {
       b.disabled = true;
-      const r = await FB.api("/api/recategorizar", { id: reg.id, categoria: c, parecidos: conExtracto && parecidos, recordar: conExtracto && recordar });
+      const r = await FB.api("/api/recategorizar", { id: reg.id, categoria: c, parecidos: conExtracto && comercio, recordar: conExtracto && comercio });
       if (!r.ok) { b.disabled = false; mensaje(p, r.mensaje || "Error", "err"); return; }
-      FB.aviso(r.mensaje);
       await FB.recargar();
+      FB.aviso(r.mensaje + " ✓", false, { texto: "Deshacer", fn: async () => { await FB.api("/api/deshacer", {}); await FB.refrescar(); } });
       FB.ir(volver);
     };
   }

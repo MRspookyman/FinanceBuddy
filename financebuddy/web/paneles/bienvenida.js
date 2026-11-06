@@ -5,8 +5,8 @@ const titulo = (t, sub, conNav = true) => cabecera(t, false, sub);
 // ───────────── primeros pasos ─────────────
 function vistaBienvenida() {
   const intro = root.createDiv({ cls: "fb-bienvenida" });
-  intro.createEl("h1", { text: "Hola, soy FinanceBuddy 👋" });
-  intro.createEl("p", { text: "Importas los extractos de tu banco (Excel, CSV, Norma 43, OFX o QIF) y te digo cuánto puedes gastar, a dónde va tu dinero y cómo va tu inversión. Todo se queda en tu ordenador." });
+  intro.createEl("h1", { text: "Te damos la bienvenida a FinanceBuddy" });
+  intro.insertAdjacentHTML("beforeend", vozMascota(`Hola, soy ${nombreMascota()}. Yo me encargo de que tus números se entiendan; tú decides qué hacer con ellos. Importa los extractos de tu banco para ver cómo vas. Todo se queda en tu ordenador.`, "normal", { tam: 120 }));
   const pe = intro.createDiv();
   pe.appendText("¿Prefieres verla antes con datos inventados? ");
   accion(pe, "Probar con datos de ejemplo", async () => { const r = await FB.api("/api/ejemplo", { activar: true }); if (r.ok) { await FB.recargar(); FB.ir("#inicio"); } else FB.aviso(r.mensaje, true); });
@@ -28,12 +28,13 @@ function manualBienvenida(root) {
     lista.innerHTML = "";
     cs.forEach((c, i) => {
       const f = lista.createDiv({ cls: "fb-fila" });
-      const n = f.createEl("input", { attr: { type: "text", placeholder: "Nombre" } }); n.value = c.nombre; n.oninput = () => (c.nombre = n.value);
-      const t = f.createEl("select"); for (const [v, l] of Object.entries(TIPO_CUENTA)) { const o = t.createEl("option", { text: l }); o.value = v; }
+      const quien = c.nombre || `cuenta ${i + 1}`;
+      const n = f.createEl("input", { attr: { type: "text", placeholder: "Nombre", "aria-label": `Nombre de la cuenta ${i + 1}` } }); n.value = c.nombre; n.oninput = () => (c.nombre = n.value);
+      const t = f.createEl("select", { attr: { "aria-label": `Tipo de la cuenta ${i + 1}` } }); for (const [v, l] of Object.entries(TIPO_CUENTA)) { const o = t.createEl("option", { text: l }); o.value = v; }
       t.value = c.tipo; t.onchange = () => { c.tipo = t.value; c.extracto = t.value === "corriente"; pintar(); };
-      const s = f.createEl("input", { cls: "corto", attr: { type: "number", step: "0.01", placeholder: "Saldo hoy (€)" } }); s.value = c.saldo; s.oninput = () => (c.saldo = s.value);
+      const s = f.createEl("input", { cls: "corto", attr: { type: "number", step: "0.01", placeholder: "Saldo hoy (€)", "aria-label": `Saldo de hoy de la cuenta ${i + 1} (€)` } }); s.value = c.saldo; s.oninput = () => (c.saldo = s.value);
       const l = f.createEl("label"); const x = l.createEl("input", { attr: { type: "checkbox" } }); x.checked = c.extracto; x.onchange = () => (c.extracto = x.checked); l.appendText("importaré su extracto");
-      if (cs.length > 1) { const b = f.createEl("button", { cls: "fb-btn sec mini", text: "✕" }); b.title = "Quitar"; b.onclick = () => { cs.splice(i, 1); pintar(); }; }
+      if (cs.length > 1) { const b = f.createEl("button", { cls: "fb-btn sec mini", text: "✕", attr: { type: "button", "aria-label": `Quitar ${quien}` } }); b.title = "Quitar"; b.onclick = () => { cs.splice(i, 1); pintar(); }; }
     });
   };
   pintar();
@@ -47,7 +48,7 @@ function manualBienvenida(root) {
   const iL = p2.createEl("input", { cls: "corto", attr: { type: "number", step: "10", placeholder: "p. ej. 500", "aria-label": "Límite de gasto variable al mes (€)" } });
 
   const p3 = opcional("3 · Ingresos y gastos fijos", "opcional");
-  p3.createDiv({ cls: "fin-note", text: "Para la previsión de los próximos meses: nóminas, pensiones, alquiler, recibos… Pon todos los que tengas. Si no los sabes, déjalo: después de importar tu extracto, la app los detecta sola (Ajustes → Detectar fijos)." });
+  p3.createDiv({ cls: "fin-note", text: "Para la previsión de los próximos meses: nóminas, pensiones, alquiler, recibos… Si no los sabes, déjalo: al importar tu extracto, la app te propone los que vea." });
   const fijos = [{ nombre: "Nómina", clase: "ingreso", categoria: "Nómina", importe: "", dia: 28 }, { nombre: "Alquiler o hipoteca", clase: "gasto", categoria: "Vivienda", importe: "", dia: 1 }];
   const listaFijos = p3.createDiv();
   const pintarFijos = () => {
@@ -62,7 +63,7 @@ function manualBienvenida(root) {
         const i = f.createEl("input", { cls: "corto", attr: { type: "number", step: "0.01", placeholder: "€ al mes", "aria-label": "Importe al mes (€)" } }); i.value = r.importe; i.oninput = () => (r.importe = i.value);
         f.appendText("día");
         const dI = f.createEl("input", { cls: "mini", attr: { type: "number", min: "1", max: "31", "aria-label": "Día del mes" } }); dI.value = r.dia; dI.oninput = () => (r.dia = dI.value);
-        const b = f.createEl("button", { cls: "fb-btn sec mini", text: "✕" }); b.title = "Quitar"; b.onclick = () => { fijos.splice(fijos.indexOf(r), 1); pintarFijos(); };
+        const b = f.createEl("button", { cls: "fb-btn sec mini", text: "✕", attr: { type: "button", "aria-label": `Quitar ${r.nombre || (clase === "ingreso" ? "este ingreso fijo" : "este gasto fijo")}` } }); b.title = "Quitar"; b.onclick = () => { fijos.splice(fijos.indexOf(r), 1); pintarFijos(); };
       }
       const bMas = listaFijos.createEl("button", { cls: "fb-btn sec", text: clase === "ingreso" ? "+ Otro ingreso" : "+ Otro gasto fijo" });
       bMas.onclick = () => { fijos.push({ nombre: "", clase, categoria: clase === "ingreso" ? "Nómina" : "", importe: "", dia: clase === "ingreso" ? 28 : 1 }); pintarFijos(); };
@@ -78,10 +79,13 @@ function manualBienvenida(root) {
   const b = root.createEl("button", { cls: "fb-btn grande", text: "Empezar" });
   b.onclick = async () => {
     b.disabled = true;
-    const r = await FB.api("/api/bienvenida", { cuentas: cs, limite: iL.value, fondo_meses: cF.checked ? iM.value : null,
-      recurrentes: fijos.filter((x) => num(x.importe) > 0 && x.nombre.trim()).map((x) => ({ nombre: x.nombre.trim(), clase: x.clase, categoria: x.categoria, importe: x.importe, dia: x.dia })) });
+    const recurrentes = fijos.filter((x) => num(x.importe) > 0 && x.nombre.trim()).map((x) => ({ nombre: x.nombre.trim(), clase: x.clase, categoria: x.categoria, importe: x.importe, dia: x.dia }));
+    const r = await FB.api("/api/bienvenida", { cuentas: cs, limite: iL.value, fondo_meses: cF.checked ? iM.value : null, recurrentes });
     b.disabled = false;
     if (!r.ok) { msg.innerHTML = ""; mensaje(msg, r.mensaje || "Error", "err"); return; }
+    // Qué se ha guardado, en una frase; lo siguiente es importar
+    const nC = cs.filter((c) => String(c.nombre || "").trim()).length, nF = recurrentes.length;
+    FB.aviso(`Guardado: ${nC} cuenta${nC === 1 ? "" : "s"}${num(iL.value) > 0 ? ", tu límite" : ""}${nF ? ` y ${nF} fijo${nF === 1 ? "" : "s"}` : ""}. Ahora importa el extracto de tu banco.`);
     await FB.recargar();
     FB.ir("#importar");
   };

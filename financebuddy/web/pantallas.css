@@ -3,6 +3,7 @@
 .fb-grupos{display:flex;flex-direction:column;gap:10px;margin-bottom:var(--g)}
 .fb-grupo{padding:14px 18px;border-radius:var(--r);background:var(--surface);border:1px solid var(--line);transition:opacity .2s,transform .2s}
 .fb-grupo.fuera{opacity:0;transform:translateX(24px)}
+.fb-grupo.fb-grupo-enfocado{outline:3px solid var(--brand);outline-offset:3px}
 .fb-grupo .cab{display:flex;align-items:center;gap:12px}
 .fb-grupo .cab .n{flex:1;min-width:0}
 .fb-grupo .cab .t{font-weight:700}
@@ -14,6 +15,36 @@
 .fb-grupo .fin-more{margin:10px 0 0;border:none;background:none}
 .fb-grupo .fin-more>summary{padding:4px 0;font-size:.87em;color:var(--ink-3);font-weight:600}
 .fb-grupo .fin-more-body{padding:4px 0 0}
+.fb-revision-barra{display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin-bottom:16px}
+.fb-revision-barra .fb-filtro-rev,.fb-revision-barra .fb-bloque-sug{margin:0}
+.fb-revision-barra>.fin-more{flex:1;min-width:280px;margin:0}
+.fb-revision-barra .fb-sug-lista{position:relative;margin-top:12px}
+.fb-revision-voz{margin-top:10px;font-size:.9em;color:var(--ink-2)}
+.fb-revision-voz .fb-voz{padding:0;background:none;border:0}
+.fb-revision-voz p{margin:0}
+.fb-grupo-banco .cab .v{color:var(--coral-t)}
+.fb-grupo-banco .cab .v.pos{color:var(--ink)}
+.fin .fb-proxima{border:0;border-top:1px solid var(--line);padding:10px 0 0;margin:16px 0 0;min-width:0}
+.fin .fb-proxima legend{float:left;width:100%;font-weight:700;margin-bottom:6px}
+.fin .fb-proxima label{display:flex;align-items:center;gap:8px;clear:both;font-size:.9em;padding:4px 0}
+.fin .fb-proxima input[type=radio]{width:16px;height:16px;margin:0;accent-color:var(--brand)}
+.fin .fb-proxima input[type=text]{width:220px;max-width:45%;height:32px}
+.fb-revision-enlaces{display:flex;align-items:center;gap:10px;margin-left:auto}
+.fin button.fb-revision-link,.fin .fb-cats button.fb-revision-link{border:0;background:none;color:var(--ink-2);font-size:.87em;padding:4px;text-decoration:underline;text-underline-offset:3px;cursor:pointer}
+.fin .fb-cats button:focus-visible,.fin button.fb-revision-link:focus-visible{outline:2px solid var(--brand);outline-offset:3px}
+.fb-buscar-categoria:not([hidden]){display:block;margin-top:12px;padding:12px 14px;border-radius:var(--r-s);border:1px solid var(--line);background:var(--surface-2)}
+.fb-buscar-linea{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.fb-buscar-linea label{font-size:.9em;font-weight:600}
+.fin .fb-buscar-linea input{flex:0 1 260px;height:34px;padding:0 10px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink);font:inherit;font-size:.9em}
+.fin .fb-buscar-linea input:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+.fb-buscar-n{font-size:.85em;color:var(--ink-2)}
+.fb-buscar-res{margin-top:10px;max-height:220px;overflow-y:auto}
+.fb-auto-lista{width:100%}
+.fb-auto-fila{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:6px 12px;padding:10px 0;border-top:1px solid var(--line)}
+.fb-auto-fila>div:first-child{grid-column:1/-1}
+.fb-siempre-bloque{grid-column:4;display:flex;align-items:center;gap:6px;font-size:.87em}
+.fb-grupo-banco .fb-fila[hidden],.fb-buscar-categoria[hidden]{display:none}
+.fb-revision-barra .fb-sug-l .v.pos{color:var(--ink)}
 /* Lo que va a pasar al elegir una categoría: antes eran dos casillas pequeñas debajo de los botones */
 .fb-aplicar{margin:4px 0 2px;padding:12px 14px;border-radius:var(--r-s);border:1px solid var(--line);background:var(--surface-2)}
 .fb-aplicar .et{font-size:.87em;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-2);margin-bottom:8px}
@@ -43,14 +74,10 @@
 .fb-cands{display:flex;flex-direction:column;gap:6px;margin-top:12px}.fb-cands .et{font-size:.87em;font-weight:650;color:var(--ink-2)}
 .fin .fb-cands button.fb-cand{all:unset;box-sizing:border-box;cursor:pointer;display:block;padding:9px 13px;border-radius:8px;background:var(--surface-2);border:1px solid transparent;transition:background .12s,border-color .12s,transform 120ms var(--ease-out)}
 .fin .fb-cands button.fb-cand:hover{border-color:var(--brand)}
-.fb-cand.jev{background:var(--brand-soft);border-color:color-mix(in srgb,var(--brand) 40%,transparent)}
 .fb-cand .t{display:flex;justify-content:space-between;gap:10px;font-weight:650;font-size:.9em}.fb-cand .v{font-variant-numeric:tabular-nums;white-space:nowrap}
 .fb-cand .s{font-size:.87em;color:var(--ink-2);margin-top:2px}.fb-cand .ext{margin:3px 0 0;font-size:.87em}
 @keyframes fb-entra{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 .fb-previa{animation:fb-entra 200ms var(--ease-out) both}
-.fb-enviado{padding:9px 0;border-top:1px solid var(--line)}.fb-enviado .c{font-size:.87em;color:var(--ink-3)}
-.fb-enviado .e{white-space:pre-wrap;font-size:.87em;margin:3px 0}.fb-enviado .q{font-size:.87em;color:var(--ink-2)}
-.fb-lista-jev{margin:4px 0 12px;padding-left:20px;font-size:.88em;color:var(--ink-2)} .fb-lista-jev li{margin:2px 0}
 .fb-hecho{display:grid;justify-items:center;gap:6px;padding:48px 20px;text-align:center;border-radius:var(--r);background:var(--surface);border:1px solid var(--line);color:var(--ink-2)}
 .fb-hecho .i{display:grid;place-items:center;width:52px;height:52px;border-radius:12px;font-size:24px;color:var(--on-brand);background:var(--brand);margin-bottom:6px}
 .fb-hecho b{font-size:1.3em;color:var(--ink)}
@@ -63,11 +90,7 @@
 .fb-sug-l .s{font-size:.87em;color:var(--ink-2)}
 .fb-sug-l .v{font-weight:700;font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}.fb-sug-l .v.pos{color:var(--fin-up)}
 .fb-sug-l .pr{font-size:.88em;font-weight:600;color:var(--ink-2)}
-.fb-sug2{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:4px 12px;align-items:center;padding:9px 0;border-top:1px solid var(--line)}
-.fb-sug2:first-child{border-top:0}
-.fb-sug2 .n{min-width:0}
-.fb-sug2 .t{font-weight:650;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.fb-sug2 .s{font-size:.87em;color:var(--ink-2)}
+.fb-grupo-banco .fb-cats .sug{border-color:var(--brand)}
 
 /* ── ajustes: apariencia, orden del inicio, selectores de icono y color ── */
 .fb-colores{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
@@ -127,7 +150,7 @@
 .fb-estado-precios .t{font-weight:650}.fb-estado-precios .s{color:var(--ink-2);margin-top:3px}
 
 /* ── foco visible con teclado (los botones usan all:unset, que quita el contorno) ── */
-button:focus-visible,a:focus-visible,summary:focus-visible,[tabindex]:focus-visible,label:focus-within>input[type=checkbox]{outline:2px solid var(--brand)!important;outline-offset:2px}
+button:focus-visible,a:focus-visible,summary:focus-visible,[tabindex]:focus-visible,label:focus-within>input[type=checkbox]{outline:3px solid var(--brand)!important;outline-offset:2px}
 .fin button.fin-link{all:unset;cursor:pointer;color:var(--brand);font-weight:650;border-bottom:1px solid currentColor}
 
 .fin-note+.fb-stats{margin-top:10px}
@@ -197,3 +220,64 @@ button:focus-visible,a:focus-visible,summary:focus-visible,[tabindex]:focus-visi
   a{color:#000;text-decoration:none}
   .fb-donut text,.fb-donut text.v{fill:#000}
 }
+
+/* ── Cuentas ── */
+:root {
+  --cuenta-1:#5B3FD1; --cuenta-tinta-1:#FFFFFF;
+  --cuenta-2:#FFC83D; --cuenta-tinta-2:#1B1440;
+  --cuenta-3:#1B1440; --cuenta-tinta-3:#FFFFFF;
+  --cuenta-4:#394BA0; --cuenta-tinta-4:#FFFFFF;
+  --cuenta-5:#C4B5FD; --cuenta-tinta-5:#1B1440;
+  --cuenta-6:#3F4A56; --cuenta-tinta-6:#FFFFFF;
+}
+.fb-cuenta-color-1{--cuenta-fondo:var(--cuenta-1);--cuenta-tinta:var(--cuenta-tinta-1)}
+.fb-cuenta-color-2{--cuenta-fondo:var(--cuenta-2);--cuenta-tinta:var(--cuenta-tinta-2)}
+.fb-cuenta-color-3{--cuenta-fondo:var(--cuenta-3);--cuenta-tinta:var(--cuenta-tinta-3)}
+.fb-cuenta-color-4{--cuenta-fondo:var(--cuenta-4);--cuenta-tinta:var(--cuenta-tinta-4)}
+.fb-cuenta-color-5{--cuenta-fondo:var(--cuenta-5);--cuenta-tinta:var(--cuenta-tinta-5)}
+.fb-cuenta-color-6{--cuenta-fondo:var(--cuenta-6);--cuenta-tinta:var(--cuenta-tinta-6)}
+.fb-cuentas-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px;margin:18px 0}
+.fin a.fb-tcuenta{position:relative;display:flex;flex-direction:column;min-height:180px;overflow:hidden;padding:22px;border-radius:10px;background:var(--cuenta-fondo);color:var(--cuenta-tinta);text-decoration:none;border:2px solid transparent}
+.fb-tcuenta::after{content:"";position:absolute;right:14px;bottom:14px;width:70px;height:60px;background:radial-gradient(circle,currentColor 1.5px,transparent 2px) 0 0/12px 12px;opacity:.12;pointer-events:none}
+.fin a.fb-tcuenta:hover{color:var(--cuenta-tinta);transform:translateY(-2px)}
+.fin a.fb-tcuenta:focus-visible{outline:3px solid var(--ink);outline-offset:4px;box-shadow:0 0 0 3px var(--surface)}
+.fin a.fb-tcuenta[aria-current]{border-color:var(--cuenta-tinta)}
+body.theme-dark .fin a.fb-tcuenta:not([aria-current]){border-color:rgba(255,255,255,.12)}  /* la cuenta de color 3 (casi negra) no se perdía en el fondo oscuro */
+.fb-tcuenta-nombre{font-size:17px;font-weight:650;padding-right:40px;overflow-wrap:anywhere}
+.fb-tcuenta-tipo{text-transform:uppercase;font-size:11px;letter-spacing:.09em;margin-top:3px}
+.fb-tcuenta-icono{position:absolute;right:22px;top:20px;font-size:25px}
+.fb-tcuenta-saldo{margin-top:auto;padding-top:24px;font:600 29px/1.2 Bahnschrift,"Segoe UI",sans-serif;font-variant-numeric:tabular-nums}
+.fb-tcuenta-origen{font-size:12px;margin-top:6px}
+.fb-cuenta-detalle{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(320px,1fr);gap:20px;margin-top:20px;align-items:start}
+.fb-cuenta-form{display:grid;gap:16px}
+.fb-cuenta-form .fb-campo{display:grid;gap:6px}
+.fb-cuenta-form .fb-campo input[type=text]{width:100%}
+.fb-cuenta-opciones{border:1px solid var(--line);border-radius:10px;padding:12px;display:flex;flex-wrap:wrap;gap:9px}
+.fb-cuenta-opciones legend{padding:0 5px;font-weight:600}
+.fb-cuenta-icono-opcion,.fb-cuenta-muestra{display:flex;align-items:center;gap:5px;border:1px solid var(--line);border-radius:8px;padding:8px;cursor:pointer}
+.fb-cuenta-icono-opcion span{font-size:23px}
+.fb-cuenta-muestra{background:var(--cuenta-fondo);color:var(--cuenta-tinta)}
+.fb-cuenta-opciones label:has(input:focus-visible){outline:3px solid var(--ink);outline-offset:3px}
+.fb-cuenta-opciones input{accent-color:var(--brand)}
+.fb-cuenta-botones{display:flex;flex-wrap:wrap;gap:10px}
+.fb-cuenta-salida .v{color:var(--coral-t)}
+/* ── Revisión guiada: comprobar saldos (una tarjeta por cuenta, el campo debajo de su nombre) ── */
+.fb-repaso-saldos{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px;margin:14px 0}
+.fb-repaso-saldos .fb-card{display:grid;gap:8px;align-content:start}
+.fb-repaso-saldos h3{margin:0}
+.fb-repaso-campo{display:grid;gap:6px;font-weight:600}
+.fb-repaso-campo input{max-width:220px}
+/* ── SencillezB ── */
+/* Inversión · «Anotar valores a mano» en la propia pantalla: una fila por activo (nombre y lo que vale ahora · valor · precio opcional) */
+.fb-anotar form{margin-top:6px}
+.fb-anotar-f{display:grid;grid-template-columns:minmax(0,1fr) 10em auto 8em auto;gap:6px 10px;align-items:center;padding:10px 0;border-top:1px solid var(--line)}
+.fb-anotar-f .n{display:flex;flex-wrap:wrap;align-items:center;gap:2px 8px;font-weight:600}
+.fb-anotar-f .n .s{flex-basis:100%;font-weight:400;font-size:.86em;color:var(--ink-2)}
+.fb-anotar-f>.s{font-size:.86em;color:var(--ink-2)}
+.fb-anotar-f input{width:100%}
+.fb-anotar form>.fb-fila{margin-top:12px}
+/* Independencia · cada supuesto: nombre, campo y unidad en línea; su nota debajo */
+.fb-indep-f{display:grid;grid-template-columns:minmax(0,28em) 10em auto;gap:4px 12px;align-items:center;padding:8px 0}
+.fb-indep-f+.fb-indep-f{border-top:1px solid var(--line)}
+.fb-indep-f input{width:100%}
+.fb-indep-f .s{grid-column:1/-1;margin:0}

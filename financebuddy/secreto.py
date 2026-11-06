@@ -1,4 +1,4 @@
-# Las claves de los servicios opcionales (Jev, CoinGecko) se guardan cifradas con la protección de datos de Windows (DPAPI):
+# La clave opcional de CoinGecko se guarda cifrada con la protección de datos de Windows (DPAPI):
 # solo las puede leer tu usuario de Windows en este ordenador. Así no viajan legibles en datos.db ni en sus copias de
 # seguridad (la carpeta Copias, un USB, una carpeta sincronizada) ni si le pasas el archivo a alguien.
 # La contrapartida: al llevar los datos a otro ordenador (o a otro usuario) hay que volver a pegar la clave.

@@ -17,3 +17,6 @@ Copias/
 
 # Informes de los agentes de revisión
 .claude/informes/
+
+# Instrucciones locales
+/CLAUDE.md

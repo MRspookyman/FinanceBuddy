@@ -1,7 +1,26 @@
 // ───────────── importar ─────────────
 // Resultados de la última importación: se guardan en FB.estado para que sigan ahí al refrescar la pantalla.
-let resultadosImport = FB.estado.imp || [];
-const guardarImport = (lista) => { resultadosImport = FB.estado.imp = lista; };
+const resultadosImport = FB.estado.imp ||= [];
+const guardarImport = (lista) => { resultadosImport.splice(0, resultadosImport.length, ...lista); };
+const peticionImport = (r) => ({ ...(r.peticion || { archivo: r.archivo, tipo: r.tipo, cuenta: r.cuenta, perfil: r.perfil }), subido: !!r.subido });
+const claveArchivoImport = (r) => r.archivo;
+const empezarImport = () => { FB.estado.impLote = []; };
+const añadirImport = (r) => {
+  guardarImport([r, ...resultadosImport.filter((x) => claveArchivoImport(x) !== claveArchivoImport(r))]);
+  FB.estado.impLote = [...(FB.estado.impLote || []).filter((x) => claveArchivoImport(x) !== claveArchivoImport(r)), r];
+};
+async function ejecutarImportacion(accion) {
+  if (FB.estado.impEnCurso) { FB.aviso("Ya hay una importación en curso. Espera a que termine."); return; }
+  FB.estado.impEnCurso = true;
+  try { await accion(); }
+  catch (error) {
+    console.error(error);
+    FB.aviso("No se ha podido terminar la importación. Vuelve a Importar para revisar los resultados y reintentar los archivos pendientes.", true);
+  } finally {
+    FB.estado.impEnCurso = false;
+    await FB.refrescar();
+  }
+}
 function vistaImportar() {
   titulo("Importar", "Los movimientos de tu banco y de tu bróker");
   // El camino principal (soltar un archivo) va solo y arriba; la carpeta y la plantilla, debajo y en dos columnas: antes
@@ -18,37 +37,60 @@ function vistaImportar() {
   lp.appendText("Ver antes de importar (no se guarda nada hasta que lo confirmes)");
   const inp = pS.createEl("input", { attr: { type: "file", accept: ".xlsx,.xls,.csv,.txt,.n43,.ofx,.qfx,.qif", multiple: "" } }); inp.style.display = "none";
   const zona = zonaSoltar(pS, "Arrastra aquí el extracto (Excel, CSV, Norma 43, OFX o QIF), o pulsa para elegirlo", () => inp.click(), (files) => subir(files));
-  const subir = async (files) => {
+  const subir = (files) => ejecutarImportacion(async () => {
+    empezarImport();
+    const resultados = [];
     for (const f of files) {
       zona.textContent = `Importando ${f.name}…`;
-      const b64 = await new Promise((ok) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(",")[1] || ""); r.readAsDataURL(f); });
+      const b64 = await new Promise((ok, mal) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(",")[1] || ""); r.onerror = () => mal(r.error); r.readAsDataURL(f); });
       const r = await FB.api("/api/importar/subir", { nombre: f.name, tipo: tipo || null, contenido: b64, previa: quierePrevia() });
-      guardarImport([r, ...resultadosImport]);
+      if (!r.archivo) r.archivo = f.name;
+      r.subido = true;
+      añadirImport(r);
+      resultados.push(r);
     }
-    await FB.refrescar();
-  };
+    await finalizarImportacion(resultados);
+  });
   inp.onchange = () => subir([...inp.files]);
   if (FB.soltados) { const f = FB.soltados; FB.soltados = null; subir(f); }  // archivo soltado en otra pantalla
-
+  if (FB.estado.impEnCurso) mensaje(pS, "Importación en curso. Puedes cambiar de pantalla; los resultados se conservarán.");
+  if (resultadosImport.length) {
+    const pR = panel(root, "Resultado");
+    resumenImportaciones(pR);
+    avisoDeshacerPendiente(pR);
+    const grupos = new Set();
+    for (const r of resultadosImport) {
+      if (r.necesita === "cuenta") {
+        const clave = claveCuentaImport(r);
+        if (grupos.has(clave)) continue;
+        grupos.add(clave);
+      }
+      resultadoImport(pR, r);
+    }
+  }
   const g = rejilla();
   const pC = panel(g, "O déjalo en la carpeta Importar");
   pC.createDiv({ cls: "fin-note", text: "Guarda los extractos en «Importar\\Banco» o «Importar\\Inversión» (dentro de tu carpeta de datos) y pulsa el botón. Los archivos importados pasan a «Procesados»." });
   const arch = (DB.info || {}).archivos || [];
-  if (arch.length) filasDato(pC, arch.map((a) => ({ l: a.nombre, s: a.tipo === "banco" ? "banco" : a.tipo === "inversion" ? "inversión" : "se detectará el tipo", v: "" })));
+  if (arch.length) plegable(pC, `Ver los ${arch.length} archivos pendientes`, (c) => filasDato(c, arch.map((a) => ({ l: a.nombre, s: a.tipo === "banco" ? "banco" : a.tipo === "inversion" ? "inversión" : "se detectará el tipo", v: "" }))));
   const fb = pC.createDiv({ cls: "fb-fila" });
   // Relleno solo si hay archivos esperando: entonces sí es lo que toca hacer. Vacío, es un camino más entre otros.
   const bI = fb.createEl("button", { cls: arch.length ? "fb-btn" : "fb-btn sec", text: arch.length ? `Importar ${arch.length} archivo${arch.length > 1 ? "s" : ""}` : "Importar la carpeta" });
-  bI.onclick = async () => { bI.disabled = true; bI.textContent = "Importando…"; const r = await FB.api("/api/importar/carpeta", { previa: quierePrevia() }); guardarImport([...(r.resultados || [r]), ...resultadosImport]); await FB.refrescar(); };
+  bI.disabled = !!FB.estado.impEnCurso;
+  bI.onclick = () => ejecutarImportacion(async () => {
+    bI.disabled = true; bI.textContent = "Importando…";
+    empezarImport();
+    const r = await FB.api("/api/importar/carpeta", { previa: quierePrevia() });
+    const lista = r.resultados || [r];
+    for (const x of lista) añadirImport(x);
+    await finalizarImportacion(lista);
+  });
   const bA = fb.createEl("button", { cls: "fb-btn sec", text: "Abrir la carpeta" });
   bA.onclick = () => FB.api("/api/abrir_carpeta", {});
 
   const pP = panel(g, "¿Sin extracto? Usa la plantilla");
   pP.createDiv({ cls: "fin-note", text: "Una hoja de Excel con fecha, concepto, importe y un desplegable con tus categorías: para pasar movimientos de otro sitio o de una cuenta sin extracto. La categoría que elijas es la que se usa." });
   const bP = pP.createEl("button", { cls: "fb-btn sec", text: "Descargar la plantilla de Excel" }); bP.onclick = descargarPlantilla;
-  if (resultadosImport.length) {
-    const pR = panel(root, "Resultado");
-    for (const r of resultadosImport) resultadoImport(pR, r);
-  }
   const lotes = cfg.importaciones || [];
   if (lotes.length) plegable(root, "Importaciones recientes", (c) => {
     c.createDiv({ cls: "fin-note", text: "Cada fila es un archivo que importaste. «Quitar» borra todo lo que trajo ese archivo, aunque hayas hecho otras cosas después; lo que apuntaste a mano no se toca. Si lo vuelves a importar, sus filas vuelven a entrar." });
@@ -92,7 +134,7 @@ function resumenPrevia(V) {
   if (A.n) partes.push(`${A.n} compra${A.n === 1 ? "" : "s"} y venta${A.n === 1 ? "" : "s"} de inversión`);
   if (!M.n && !A.n) partes.push("Nada nuevo");
   if (V.existentes) partes.push(`${V.existentes} ya estaba${V.existentes === 1 ? "" : "n"} y se omite${V.existentes === 1 ? "" : "n"}`);
-  if (V.sugeridos) partes.push(`${V.sugeridos} con categoría sugerida, por confirmar`);
+  if (V.automaticos) partes.push(`${V.automaticos} clasificados por reglas`);
   if (V.saldo_final) partes.push(`saldo del extracto el ${fechaCorta(V.saldo_final.fecha)}: ${eur(V.saldo_final.saldo, 2)} (compáralo con tu banco)`);
   return partes.join(" · ") + ".";
 }
@@ -111,7 +153,7 @@ function tarjetaPrevia(card, r) {
     return;
   }
   detallePrevia(card, V);
-  botonesPrevia(card, r, "Importar ahora");
+  botonesPrevia(card, r, "Importar");  // el mismo nombre con o sin dudas: es el mismo paso
 }
 function detallePrevia(card, V) {
   const M = V.movimientos, A = V.aportaciones;
@@ -119,81 +161,133 @@ function detallePrevia(card, V) {
   if (M.n) t.push({ l: "Movimientos nuevos", v: String(M.n), s: V.desde ? `del ${fechaCorta(V.desde)} al ${fechaCorta(V.hasta)}` : "" }, { l: "Entra", v: eur(M.ingresos, 2), t: "pos" }, { l: "Sale", v: eur(M.gastos, 2), s: M.traspasos ? `+ ${M.traspasos} traspaso${M.traspasos > 1 ? "s" : ""}` : "" });
   if (A.n) t.push({ l: "Compras y ventas", v: String(A.n), s: `compras ${eur(A.compras, 2)}${A.ventas ? ` · ventas ${eur(A.ventas, 2)}` : ""}` });
   if (V.saldo_final) t.push({ l: "Saldo del extracto", v: eur(V.saldo_final.saldo, 2), s: `a ${fechaCorta(V.saldo_final.fecha)}: compáralo con tu banco` });
-  if (V.sugeridos) t.push({ l: "Con categoría sugerida", v: String(V.sugeridos), s: "se guardan ya, por confirmar" });
+  if (V.automaticos) t.push({ l: "Por tus reglas", v: String(V.automaticos), s: "puedes corregirlos en Por revisar" });
   t.push({ l: "Ya estaban", v: String(V.existentes), s: "se omiten, no se duplican" }, { l: "Por revisar", v: String(V.dudas.n), t: V.dudas.n ? "neg" : "" });
   tiles(card, t);
   filasSinLeer(card, V.ilegibles);
   if (V.activos_nuevos.length) card.createDiv({ cls: "fin-note", text: `Se crearían los activos: ${V.activos_nuevos.join(", ")}.` });
   if (V.categorias.length) card.createDiv({ cls: "fin-note", text: "Más gasto: " + V.categorias.map((c) => `${c.categoria} ${eur(c.total, 2)}`).join(" · ") });
   if (V.muestra.length) plegable(card, `Ver los últimos ${V.muestra.length} movimientos`, (c) => tabla(c, [{ t: "Fecha" }, { t: "Concepto" }, { t: "Categoría", opt: true }, { t: "Importe", num: true }],
-    V.muestra.map((m) => [fechaCorta(m.fecha), m.concepto, m.clase === "transferencia" ? "Entre tus cuentas" : { text: m.categoria, badge: m.sugerido ? "por confirmar" : "" }, { text: eurS(m.importe), cls: m.importe < 0 ? "neg" : "" }])));
+    V.muestra.map((m) => [fechaCorta(m.fecha), m.concepto, m.clase === "transferencia" ? "Entre tus cuentas" : { text: m.categoria, badge: m.auto ? "por regla" : "" }, { text: eurS(m.importe), cls: m.importe < 0 ? "neg" : "" }])));
   if (V.dudas.n) plegable(card, `Lo que quedaría por revisar (${V.dudas.n})`, (c) => tabla(c, [{ t: "Fecha" }, { t: "Texto del extracto" }, { t: "Importe", num: true }],
     V.dudas.muestra.map((m) => [fechaCorta(m.fecha), m.texto, eurS(m.importe)])));
 }
 function botonesPrevia(card, r, texto) {
   const f = card.createDiv({ cls: "fb-fila" });
   const bOk = f.createEl("button", { cls: "fb-btn", text: texto });
-  bOk.onclick = async () => {
+  bOk.disabled = !!FB.estado.impEnCurso;
+  bOk.onclick = () => ejecutarImportacion(async () => {
     bOk.disabled = true;
-    const x = await FB.api("/api/importar/reintentar", { ...(r.peticion || { archivo: r.archivo, tipo: r.tipo, cuenta: r.cuenta, perfil: r.perfil }), previa: false });
-    reemplazar(r, x);
-  };
+    const x = await FB.api("/api/importar/reintentar", { ...peticionImport(r), previa: false });
+    await reemplazar(r, x);
+  });
   const bNo = f.createEl("button", { cls: "fb-btn sec", text: r.subido ? "No importar (descartar el archivo)" : "Cerrar" });
-  bNo.onclick = async () => {
+  bNo.disabled = !!FB.estado.impEnCurso;
+  bNo.onclick = () => ejecutarImportacion(async () => {
     if (r.subido) { const x = await FB.api("/api/importar/descartar", { archivo: r.archivo }); FB.aviso(x.mensaje || "Hecho", !x.ok); }
-    guardarImport(resultadosImport.filter((y) => y !== r)); await FB.refrescar();
-  };
+    guardarImport(resultadosImport.filter((y) => y !== r));
+    FB.estado.impLote = (FB.estado.impLote || []).filter((y) => y !== r);
+    await finalizarImportacion([]);
+  });
 }
 function resultadoImport(padre, r) {
   const card = padre.createDiv({ cls: "fb-card" });
-  if (r.ok && r.previa) { tarjetaPrevia(card, r); return; }
+  if (r.ok && r.previa && !r.ya_importado) { tarjetaPrevia(card, r); return; }
   if (r.ok) {
-    mensaje(card, r.mensaje || "Importado", "ok");
+    card.createDiv({ cls: "top", text: r.archivo || r.cuenta || "Extracto" });
+    mensaje(card, r.mensaje || "Importado", r.ya_importado ? "" : "ok");
     filasSinLeer(card, r.ilegibles, true);
     const lote = (cfg.importaciones || []).find((e) => e.id === r.lote);  // queda algo de este archivo que quitar
     if (lote) botonQuitarImportacion(card.createDiv({ cls: "fb-fila" }), lote, "Quitar esta importación", `Quitar esta importación: ${r.archivo}`);
     cuadreExtracto(card, r);
-    if (r.sugeridas) enlace(card, `Ver o confirmar las ${r.sugeridas} categoría${r.sugeridas > 1 ? "s" : ""} sugerida${r.sugeridas > 1 ? "s" : ""} →`, "#revisar");
-    if (r.dudas) enlace(card.createDiv({ cls: "fb-fila" }), r.dudas > 1 ? `Revisar las ${r.dudas} dudas →` : "Revisar la duda →", "#revisar").className += " fb-btn";  // lo que toca hacer después: grande y a la vista
+    if (r.hueco && r.hueco.mensaje) card.createDiv({ cls: "fin-note", text: r.hueco.mensaje });
+    if (r.preguntar_efectivo && resultadosImport.find((x) => x.preguntar_efectivo === r.preguntar_efectivo) === r) preguntarEfectivoImport(card, r);
+    // En la revisión guiada, sus pasos ya llevan a las dudas y a las sugeridas: aquí serían otro botón principal junto a «Siguiente»
+    const enRepaso = vista === "repaso";
+    if (r.sugeridas && !enRepaso) enlace(card, `Ver o confirmar las ${r.sugeridas} categoría${r.sugeridas > 1 ? "s" : ""} sugerida${r.sugeridas > 1 ? "s" : ""} →`, "#revisar");
+    if (r.dudas && !enRepaso) enlace(card.createDiv({ cls: "fb-fila" }), r.dudas > 1 ? `Revisar las ${r.dudas} dudas →` : "Revisar la duda →", "#revisar").className += " fb-btn";  // lo que toca hacer después: grande y a la vista
     if (r.tipo === "banco" && r.nuevas) enlace(card, "Detectar tus ingresos y gastos fijos →", "#fijos");
-    if (r.jev_en_marcha && r.tipo === "banco" && r.nuevas) enlace(card, "✨ Revisar tus categorías →", "#revision");  // solo lo que Jev audita tras importar movimientos nuevos
     return;
   }
-  if (r.necesita === "cuenta") {
-    card.createDiv({ cls: "top", text: `${r.archivo}: ¿de qué cuenta es este extracto?` });
-    card.createDiv({ cls: "txt", text: `Formato reconocido: ${r.perfil}. Elige la cuenta; se recordará para la próxima vez.` });
-    const f = card.createDiv({ cls: "fb-fila" });
-    const importarEn = async (cuenta, b) => { b.disabled = true; const x = await FB.api("/api/importar/reintentar", { archivo: r.archivo, tipo: r.tipo, cuenta, perfil: r.perfil, previa: quierePrevia(), subido: !!r.subido }); reemplazar(r, x); };
-    if (!(r.cuentas || []).length) {
-      const esBroker = r.tipo === "inversion";
-      f.appendText(esBroker ? "Aún no tienes una cuenta de bróker. Créala:" : "Aún no tienes esa cuenta. Créala:");
-      const iN = f.createEl("input", { attr: { type: "text", placeholder: "Nombre de la cuenta" } }); iN.value = String(r.perfil || "").split(/[ (]/)[0];
-      const bC = f.createEl("button", { cls: "fb-btn", text: "Crear la cuenta e importar" });
-      bC.onclick = async () => {
-        if (!iN.value.trim()) return;
-        const x = await FB.api("/api/guardar", { tipo: "cuenta", datos: { nombre: iN.value.trim(), tipo: esBroker ? "broker" : "corriente", extracto: true } });
-        if (!x.ok) { mensaje(card, x.mensaje || "Error", "err"); return; }
-        importarEn(iN.value.trim(), bC);
-      };
-      return;
-    }
-    const s = f.createEl("select");
-    for (const c of r.cuentas || []) { const o = s.createEl("option", { text: c }); o.value = c; }
-    const b = f.createEl("button", { cls: "fb-btn", text: "Importar" });
-    b.onclick = () => importarEn(s.value, b);
-    return;
-  }
+  if (r.necesita === "cuenta") { preguntaCuentaImport(card, r); return; }
   if (r.necesita === "perfil") { configurarFormato(card, r); return; }
   mensaje(card, r.mensaje || "No se ha podido importar", "err");
 }
-// Tras importar: ¿el saldo que dice el banco coincide con el que calcula la app? (si no, autoCuadre lo iguala al del banco)
+// Solo agrupamos una identidad reconocida; sin número de cuenta cada archivo necesita una decisión propia.
+const claveCuentaImport = (r) => JSON.stringify([r.tipo, r.perfil, r.iban || claveArchivoImport(r)]);
+function preguntaCuentaImport(card, r) {
+  const grupo = resultadosImport.filter((x) => x.necesita === "cuenta" && claveCuentaImport(x) === claveCuentaImport(r));
+  const esBroker = r.tipo !== "banco";
+  card.createDiv({ cls: "top", text: grupo.length > 1 ? `¿De qué cuenta son estos ${grupo.length} extractos?` : `${r.archivo}: ¿de qué cuenta es este extracto?` });
+  card.createDiv({ cls: "txt", text: `Formato reconocido: ${r.perfil}${r.iban ? ` · cuenta terminada en ${r.iban}` : ""}. Tu elección se aplicará ${grupo.length > 1 ? "a todos estos archivos" : "a este archivo"}.` });
+  plegable(card, `Ver ${grupo.length === 1 ? "el archivo" : `los ${grupo.length} archivos`}`, (c) => {
+    for (const x of grupo) c.createDiv({ text: x.archivo });
+  });
+  const disponibles = cuentas().filter((c) => (c.tipo === "broker") === esBroker && (!r.iban || !c.p.iban || c.p.iban === r.iban));
+  const f = card.createDiv({ cls: "fb-fila" });
+  let selector;
+  if (disponibles.length) {
+    const l = f.createEl("label", { text: "Cuenta " });
+    selector = l.createEl("select");
+    for (const c of disponibles) { const o = selector.createEl("option", { text: c.nombre }); o.value = c.nombre; }
+    selector.createEl("option", { text: "Crear otra cuenta", attr: { value: "" } });
+  }
+  const lNombre = f.createEl("label", { text: "Nombre de la cuenta " });
+  const entrada = lNombre.createEl("input", { attr: { type: "text" } });
+  const base = String(r.perfil || "").split(/[ (]/)[0];
+  entrada.value = cuentas().some((c) => c.nombre === base) ? `${base} ${r.iban || ""}`.trim() : base;
+  const b = f.createEl("button", { cls: "fb-btn" });
+  const actualizar = () => {
+    lNombre.hidden = !!selector?.value;
+    b.textContent = selector?.value ? "Usar esta cuenta e importar" : "Crear la cuenta e importar";
+  };
+  if (selector) selector.onchange = actualizar;
+  actualizar();
+  b.disabled = !!FB.estado.impEnCurso;
+  b.onclick = () => ejecutarImportacion(async () => {
+    const nombre = selector?.value || entrada.value.trim();
+    if (!nombre) return;
+    b.disabled = true;
+    if (!selector?.value) {
+      const x = await FB.api("/api/guardar", { tipo: "cuenta", datos: { nombre, tipo: esBroker ? "broker" : "corriente", extracto: true, ...(r.iban ? { iban: r.iban } : {}) } });
+      if (!x.ok) { FB.aviso(x.mensaje || "No se ha podido crear la cuenta", true); return; }
+    }
+    const nuevos = [];
+    for (const viejo of grupo) {
+      const x = await FB.api("/api/importar/reintentar", { ...peticionImport(viejo), cuenta: nombre, previa: quierePrevia() });
+      sustituirImport(viejo, x); nuevos.push(x);
+    }
+    await finalizarImportacion(nuevos);
+  });
+}
+// El servidor iguala el saldo al importar; la pantalla solo cuenta lo que ha hecho, nunca escribe saldos por su cuenta.
 function cuadreExtracto(card, r) {
-  const ext = r.tipo === "banco" ? cfg[`saldo_extracto:${r.cuenta}`] : null;
-  if (!ext) return;
-  const f = DateTime.fromISO(ext.fecha), P = patrimonio();
-  const u = [...P].reverse().find((x) => x.fecha < f.startOf("day")) || P[0];
-  const est = u ? proyectar(u, f.endOf("day"), true).cuentas.saldos[r.cuenta] : null;
-  if (est != null && Math.abs(ext.saldo - est) < 0.01) card.createDiv({ cls: "fin-note", text: `✓ El saldo de ${r.cuenta} (${eur(ext.saldo)}) es el que dice tu banco.` });
+  if (r.saldo_igualado) card.createDiv({ cls: "txt", text: `${r.cuenta}: saldo igualado al del banco (${eur(r.saldo_igualado.saldo, 2)})` });
+}
+function preguntarEfectivoImport(card, r) {
+  const cuenta = r.preguntar_efectivo;
+  card.createDiv({ cls: "txt", text: `¿Cuánto tienes sin invertir hoy en ${cuenta}? (Opcional)` });
+  card.createDiv({ cls: "fin-note", text: "Solo el dinero sin invertir, no el valor de tus fondos. Se guardará como saldo de hoy. Esta pregunta solo se hace una vez." });
+  const f = card.createDiv({ cls: "fb-fila" });
+  const l = f.createEl("label", { text: "Efectivo en euros " });
+  const i = l.createEl("input", { attr: { type: "text", inputmode: "decimal", placeholder: "0,00" } });
+  const b = f.createEl("button", { cls: "fb-btn", text: "Guardar efectivo" });
+  const no = f.createEl("button", { cls: "fb-btn sec", text: "Ahora no" });
+  const m = card.createDiv({ attr: { "aria-live": "polite" } });
+  const responder = async (guardar) => {
+    if (FB.estado.impEnCurso) { FB.aviso("Ya hay una importación en curso. Espera a que termine."); return; }
+    const saldo = importeRepaso(i.value);
+    if (guardar && !Number.isFinite(saldo)) { m.empty(); mensaje(m, "Escribe el efectivo en euros, por ejemplo 1.200,50.", "err"); i.focus(); return; }
+    b.disabled = no.disabled = true;
+    const x = await FB.api("/api/importar/efectivo", { cuenta, ...(guardar ? { saldo } : {}) });
+    if (!x.ok) { b.disabled = no.disabled = false; m.empty(); mensaje(m, x.mensaje || "No se ha podido guardar", "err"); return; }
+    // Varios archivos del mismo bróker pueden haber traído la misma pregunta en el lote.
+    for (const y of resultadosImport) if (y.preguntar_efectivo === cuenta) delete y.preguntar_efectivo;
+    FB.aviso(x.mensaje || (guardar ? "Efectivo guardado" : "No se volverá a preguntar"), false, x.deshacer ? avisoDeshacer() : undefined);
+    await finalizarImportacion([]);
+  };
+  b.onclick = () => responder(true);
+  no.onclick = () => responder(false);
 }
 // Quitar de golpe todo lo que trajo una importación (un lote). Siempre con confirmación: dice cuántos registros se van y que se
 // pierde lo que hayas cambiado en ellos. El servidor lo deja deshacer con «Deshacer».
@@ -217,56 +311,60 @@ function botonQuitarImportacion(padre, lote, texto, nombreAccesible) {
   };
   return b;
 }
-// El saldo de cada cuenta con extracto es el que dice el banco: si la app calcula otro, se anota el del banco (un registro de saldos de ese día;
-// el mes no se cierra ni cambia el valor de la inversión). Se intenta una vez por cada saldo distinto del extracto.
-async function autoCuadre() {
-  const P = patrimonio();
-  if (!P.length || (DB.info || {}).ejemplo) return false;
-  const ultima = P[P.length - 1].fecha;
-  const hechos = [];
-  for (const c of cuentas().filter((c) => c.extracto && c.tipo !== "broker")) {
-    const ext = cfg[`saldo_extracto:${c.nombre}`], f = ext && DateTime.fromISO(ext.fecha);
-    if (!f || !f.isValid || f > hoy.endOf("day") || ultima > f.endOf("day")) continue;  // sin extracto, futuro, o ya anotaste saldos después
-    const u = [...P].reverse().find((x) => x.fecha < f.startOf("day")) || P[0];
-    const est = proyectar(u, f.endOf("day"), true).cuentas.saldos[c.nombre];
-    if (est == null) continue;
-    // El saldo que ya hubiera anotado de ESE MISMO día: el banco va publicando durante el día, así que un extracto bajado
-    // por la mañana deja un saldo que el de la tarde desmiente. Los movimientos sí cuadran (el nuevo extracto los trae), y
-    // por eso esto se colaba: el aviso «no cuadra» se quedaba puesto para siempre comparando un saldo viejo.
-    const mismoDia = P.find((x) => x.fecha.hasSame(f, "day"));
-    const guardado = mismoDia ? mismoDia.cuentas.saldos[c.nombre] : null;
-    const viejo = guardado != null && Math.abs(ext.saldo - guardado) >= 0.01;
-    if (Math.abs(ext.saldo - est) < 0.01 && !viejo) continue;
-    hechos.push({ c, ext, f, u, mismoDia });
-  }
-  if (!hechos.length) return false;
-  const F = DateTime.max(...hechos.map((x) => x.f)), delDia = hechos.filter((x) => x.f.hasSame(F, "day"));
-  const clave = "fb-cuadre:" + delDia.map((x) => `${x.c.nombre}:${x.ext.fecha}:${x.ext.saldo}`).join("|");
-  try { if (sessionStorage.getItem(clave)) return false; sessionStorage.setItem(clave, "1"); } catch (_) {}
-  // Se parte de lo que ya hubiera anotado ese día (para no tocar lo que pusieras a mano en otras cuentas) y, si no hay, de
-  // los saldos que salen de los movimientos; encima van los que dice el banco.
-  const u0 = delDia[0].u, base = delDia.map((x) => x.mismoDia).find(Boolean);
-  const saldos = { ...(base ? base.cuentas.saldos : proyectar(u0, F.endOf("day"), true).cuentas.saldos) };
-  for (const x of delDia) saldos[x.c.nombre] = x.ext.saldo;
-  const r = await FB.api("/api/saldo_banco", { fecha: F.toISODate(), saldos });
-  if (!r.ok) return false;
-  FB.aviso(`Saldo igualado al del banco: ${delDia.map((x) => `${x.c.nombre} ${eur(x.ext.saldo)}`).join(", ")}`);
-  await FB.refrescar();
-  return true;
+// Un lote se mantiene unido aunque unos archivos entren y otros necesiten una respuesta.
+function resumenImportaciones(padre) {
+  const lista = FB.estado.impLote || [];
+  if (lista.length < 2) return;
+  const hechos = lista.filter((r) => r.ok && !r.previa && !r.ya_importado);
+  const repetidos = lista.filter((r) => r.ya_importado).length;
+  const pendientes = lista.filter((r) => !r.ok || (r.previa && !r.ya_importado) || r.preguntar_efectivo).length;
+  const nuevas = hechos.reduce((n, r) => n + (r.nuevas || 0), 0);
+  const dudas = hechos.reduce((n, r) => n + (r.dudas || 0), 0);
+  padre.createDiv({ cls: "txt", attr: { role: "status" }, text: `${lista.length} archivos: ${hechos.length} importados · ${repetidos} ya importados · ${pendientes} por resolver. ${nuevas} registros nuevos${dudas ? ` · ${dudas} por revisar` : ""}.` });
 }
-const reemplazar = async (viejo, nuevo) => { guardarImport(resultadosImport.map((x) => (x === viejo ? nuevo : x))); await FB.refrescar(); };
+async function finalizarImportacion(lista) {
+  const lote = FB.estado.impLote || lista;
+  const escritos = lista.filter((r) => r.ok && !r.previa && r.deshacer);
+  // En una subida múltiple no pedimos un clic por cada archivo que no tiene nada que revisar.
+  // Para uno solo se respeta siempre «Ver antes de importar».
+  if (lote.length > 1) {
+    for (const r of [...lote]) {
+      if (!r.ok || !r.previa || r.ya_importado || previaConDudas(r.previa)) continue;
+      const x = await FB.api("/api/importar/reintentar", { ...peticionImport(r), previa: false });
+      sustituirImport(r, x);
+      if (x.ok && x.deshacer) escritos.push(x);
+    }
+  }
+  await FB.refrescar();
+  const que = (FB.DB.info || {}).deshacer;
+  if (escritos.length && que) FB.aviso(que, false, avisoDeshacer());
+  if (location.hash.split("/")[0] !== "#importar") {
+    FB.aviso("Importación terminada. Puedes revisar los resultados en Importar.", resultadosImport.some((r) => !r.ok), { texto: "Ver resultados", fn: () => FB.ir("#importar") });
+    return;
+  }
+  // No se abandona ninguna pregunta, error o vista previa de esta pantalla.
+  if (resultadosImport.some((r) => !r.ok || (r.previa && !r.ya_importado) || r.preguntar_efectivo)) return;
+  const reales = (FB.estado.impLote || lista).filter((r) => r.ok && !r.previa && !r.ya_importado && (r.nuevas || r.dudas));
+  if (reales.length) { FB.repasoImportado = reales; FB.ir("#repaso"); }
+}
+function sustituirImport(viejo, nuevo) {
+  nuevo.archivo ||= viejo.archivo;
+  nuevo.subido = !!viejo.subido;
+  guardarImport(resultadosImport.map((x) => claveArchivoImport(x) === claveArchivoImport(viejo) ? nuevo : x));
+  FB.estado.impLote = (FB.estado.impLote || []).map((x) => claveArchivoImport(x) === claveArchivoImport(viejo) ? nuevo : x);
+}
+const reemplazar = async (viejo, nuevo) => { sustituirImport(viejo, nuevo); await finalizarImportacion([nuevo]); };
 // Formato nuevo: el usuario dice qué columna es cada cosa (se guarda como «formato» y se reconoce solo la próxima vez).
 function configurarFormato(card, r) {
   card.createDiv({ cls: "top", text: `${r.archivo}: formato nuevo` });
   card.createDiv({ cls: "txt", text: "Dime qué columna es cada cosa (solo esta vez: la próxima se reconocerá solo)." });
   if (Object.keys(r.columnas_probables || {}).length) card.createDiv({ cls: "fin-note", text: "La app ha reconocido sola las columnas por su nombre y su contenido: compruébalas y dale a guardar." });
-  else if (r.propuesta && Object.keys(r.propuesta).some((k) => k !== "_tipo")) card.createDiv({ cls: "fin-note", text: "✨ El asistente Jev ha elegido las columnas: revísalas antes de guardar." });
   const cab = (r.cabecera || []).map((c, i) => [c, c || `(columna ${i + 1})`]).filter(([c]) => c);
   const tw = card.createDiv({ cls: "fin-tablewrap" });
   const t = tw.createEl("table", { cls: "fin-table fb-muestra" });
   const hr = t.createEl("thead").createEl("tr"); for (const c of r.cabecera || []) hr.createEl("th", { text: c });
   const tb = t.createEl("tbody"); for (const f of r.ejemplos || []) { const tr = tb.createEl("tr"); for (const c of f) tr.createEl("td", { text: c }); }
-  let tipo = r.tipo || (r.propuesta || {})._tipo || "banco";  // _tipo: si Jev ve que es del banco o del bróker
+  let tipo = r.tipo || "banco";
   const form = card.createDiv({ cls: "fb-form" });
   const sel = {}, esTipo = {};
   const campos = () => tipo === "inversion"
@@ -285,7 +383,7 @@ function configurarFormato(card, r) {
       const s = form.createEl("select"); const o0 = s.createEl("option", { text: "—" }); o0.value = "";
       for (const [v, et] of cab) { const o = s.createEl("option", { text: et }); o.value = v; }
       const adivina = cab.find(([c]) => ({ fecha: /^fecha( de)? ?(operaci|contable)?/i, concepto: /concepto|descripci|detalle|movimiento/i, importe: /importe|cantidad|monto/i, saldo: /saldo/i, fecha_valor: /valor/i, cargo: /cargo|debe/i, abono: /abono|haber/i }[k] || /^$/).test(c));
-      const propuesto = (r.propuesta || {})[k];  // lo que ha reconocido la app en el archivo (y, si está activado, lo que añade Jev)
+      const propuesto = (r.propuesta || {})[k];  // lo que ha reconocido la app en el archivo
       s.value = sel[k] ?? (propuesto && cab.some(([c]) => c === propuesto) ? propuesto : adivina && !(k === "fecha" && /valor/i.test(adivina[0])) ? adivina[0] : "");
       sel[k] = s.value; s.onchange = () => (sel[k] = s.value);
     }
@@ -302,13 +400,14 @@ function configurarFormato(card, r) {
   pintar();
   const b = card.createEl("button", { cls: "fb-btn", text: "Guardar formato e importar" });
   const m = card.createDiv();
-  b.onclick = async () => {
+  b.disabled = !!FB.estado.impEnCurso;
+  b.onclick = () => ejecutarImportacion(async () => {
     const columnas = {}; for (const [k] of campos()) if (sel[k]) columnas[k] = sel[k];
     b.disabled = true;
     const x = await FB.api("/api/importar/reintentar", { archivo: r.archivo, tipo, columnas, perfil: iN.value, cuenta: sC.value, compras_negativas: cNeg ? cNeg.checked : true, previa: quierePrevia(), subido: !!r.subido });
     b.disabled = false;
     if (!x.ok && !x.necesita) { m.innerHTML = ""; mensaje(m, x.mensaje || "Error", "err"); return; }
-    reemplazar(r, x);
-  };
+    await reemplazar(r, x);
+  });
 }
 

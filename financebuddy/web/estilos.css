@@ -1,40 +1,39 @@
 /* FinanceBuddy · estilos
-   Identidad «pizarra»: neutros fríos, superficies blancas con líneas finas (sin sombras ni texturas), barra de
-   navegación arriba y una portada en tinta para la cifra del mes. Pensada para la pantalla de un ordenador. Títulos y cifras con una DIN (Bahnschrift, viene
-   con Windows; si no está, la del sistema). El acento se usa poco: estado activo, botones y la cifra principal.
-   Verde/rojo solo para ganancia/pérdida y estado. */
+   Identidad Violeta: superficies suaves, cifras nítidas y Nubo como compañero integrado.
+   Títulos y cifras con Bahnschrift (Windows); colores semánticos independientes del acento. */
 :root{color-scheme:light}
 *{box-sizing:border-box}
 body{margin:0;font-family:"Segoe UI Variable Text","Segoe UI",system-ui,-apple-system,sans-serif;font-size:15px;line-height:1.45;-webkit-font-smoothing:antialiased;
  --num:"Bahnschrift","DIN Alternate","Segoe UI Variable Display","Segoe UI",system-ui,sans-serif;--serif:var(--num);
- --bg:#F2F4F7;--surface:#FFFFFF;--surface-2:#F0F2F5;--line:#DDE2E8;--ink:#10151C;--ink-2:#525D6B;--ink-3:#616C7A;
- --tinta:#10151C;--on-brand:#fff;
- --brand:#1B7558;--brand-hi:#62D3A6;--brand-soft:color-mix(in srgb,var(--brand) 11%,var(--surface));
- --coral:#DD5F36;--mint:#137A4A;--rose:#CA3329;--amber:#B87A00;
+ --bg:#F5F3FF;--surface:#FFFFFF;--surface-2:#EEEAF9;--line:#DCD5EE;--ink:#1B1440;--ink-2:#564D80;--ink-3:#645A80;
+ --tinta:#1B1440;--on-brand:#fff;
+ --brand:#5B3FD1;--brand-hi:#B5A5FF;--acento-2:#FFC83D;--brand-soft:color-mix(in srgb,var(--brand) 11%,var(--surface));
+ --coral:#DD5F36;--mint:#137A4A;--rose:#B51959;--amber:#B87A00;
  /* coral y ámbar para TEXTO: los de arriba no llegan a 4,5:1 sobre blanco (rellenos y bordes siguen con los de arriba) */
- --coral-t:#B4461F;--amber-t:#8F5E00;
+ --coral-t:#A8411C;--amber-t:#805300;
  --aurora:var(--brand);
  --shadow:none;--shadow-s:0 12px 32px -8px rgba(16,21,28,.22),0 0 0 1px rgba(16,21,28,.06);
- --r:12px;--r-s:10px;--g:14px;
+ --r:16px;--r-s:12px;--g:14px;
  --ease-out:cubic-bezier(0.23,1,0.32,1);
  --hover:rgba(16,21,28,.045);
  --fin-s1:var(--brand);--fin-s2:#DD5F36;--fin-s3:#B38000;--fin-s4:#7558DD;--fin-s5:#2B82C6;--fin-s6:#CE457C;--fin-s7:#7C8A2E;--fin-s8:#1A8F8F;
  --fin-good:var(--mint);--fin-bad:var(--rose);--fin-warn:var(--amber);--fin-up:#12794A;--fin-down:#C5332A;
  background:var(--bg);color:var(--ink)}
 /* Color de acento (Ajustes → Apariencia). Cada uno trae su tono vivo (--brand-hi): el que se usa sobre tinta y en oscuro. */
-body[data-acento=violeta]{--brand:#5A44D4;--brand-hi:#AB9DFF}
+body[data-acento=violeta]{--brand:#5B3FD1;--brand-hi:#B5A5FF}
+body[data-acento=salvia]{--brand:#1B7558;--brand-hi:#62D3A6}
 body[data-acento=azul]{--brand:#1C5DCF;--brand-hi:#82B1FF}
 body[data-acento=verde]{--brand:#327D1A;--brand-hi:#9BDA7B}
 body[data-acento=coral]{--brand:#CB4520;--brand-hi:#FF9C7D}
 body[data-acento=rosa]{--brand:#C4307A;--brand-hi:#FF92C0}
 body[data-acento=grafito]{--brand:#2B3340;--brand-hi:#CAD3DF}
 body.theme-dark{color-scheme:dark;
- --bg:#0B0E12;--surface:#141920;--surface-2:#1C222B;--line:#29313B;--ink:#E9EDF2;--ink-2:#A4AFBC;--ink-3:#8793A2;
- --tinta:#1A212A;--on-brand:#0B0E12;
+ --bg:#110E20;--surface:#1C172D;--surface-2:#272139;--line:#3D3452;--ink:#F1EDFF;--ink-2:#C5BBDD;--ink-3:#ADA1C5;
+ --tinta:#1B1440;--on-brand:#110E20;
  --brand:var(--brand-hi);--brand-soft:color-mix(in srgb,var(--brand) 16%,var(--surface));
- --coral:#FF9270;--mint:#4FD08E;--rose:#FF7A6B;--amber:#F2B84B;--coral-t:var(--coral);--amber-t:var(--amber);
+ --coral:#FFAE91;--mint:#74DBA1;--rose:#FF96C5;--amber:#F2C76F;--coral-t:var(--coral);--amber-t:var(--amber);
  --shadow-s:0 14px 36px -8px rgba(0,0,0,.7),0 0 0 1px rgba(255,255,255,.06);--hover:rgba(255,255,255,.05);
- --fin-s2:#FF9270;--fin-s3:#EFC455;--fin-s4:#AB9DFF;--fin-s5:#7DBBEE;--fin-s6:#F58DB6;--fin-s7:#BCC777;--fin-s8:#6ED3D3;--fin-up:#4FD08E;--fin-down:#FF7A6B}
+ --fin-s2:#FFAE91;--fin-s3:#EFC455;--fin-s4:#B5A5FF;--fin-s5:#7DBBEE;--fin-s6:#F58DB6;--fin-s7:#BCC777;--fin-s8:#6ED3D3;--fin-up:#74DBA1;--fin-down:#FF9C91}
 a{color:var(--brand)}
 button{font:inherit}
 /* Títulos y cifras con la DIN */
@@ -66,7 +65,7 @@ button{font:inherit}
 #tema span,#discreto span{display:none}
 #ayuda:hover,#tema:hover,#discreto:hover{background:var(--surface-2);color:var(--ink)}
 #discreto[aria-pressed="true"]{color:var(--brand);background:var(--brand-soft)}
-.logo{--logo-bg:var(--tinta)}
+.logo{--nubo-cuerpo:#8B6CF2;--nubo-ojos:#1E1A2B}
 /* Modo discreto: los importes se desenfocan (al pasar el ratón o enfocar un campo, se ven) */
 body.discreto .blur{filter:blur(7px);user-select:none;transition:filter .15s}
 body.discreto svg text.blur{filter:blur(5px)}
@@ -94,7 +93,7 @@ body.discreto input[type=number]{filter:blur(6px)} body.discreto input[type=numb
 #atajos p{margin:0 0 16px;font-size:.87em;color:var(--ink-2)}
 
 /* ── base de las pantallas ── */
-.fin{--r:12px;--g:14px}
+.fin{--r:16px;--g:14px}
 .fin *{box-sizing:border-box}
 .fin a.internal-link{color:inherit;text-decoration:none}
 .fin a.internal-link:hover{color:var(--brand)}

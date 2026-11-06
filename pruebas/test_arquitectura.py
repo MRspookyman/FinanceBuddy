@@ -68,9 +68,9 @@ class TestArquitectura(unittest.TestCase):
         self.assertEqual(ajenos, [], "dependencias que no están en requirements.txt")
 
     def test_solo_los_opcionales_salen_a_internet(self):
-        """Regla 1: las únicas salidas son Jev, los precios y el aviso de versión (y __main__, que solo llama a 127.0.0.1 para
+        """Regla 1: las únicas salidas son los precios y el aviso de versión (y __main__, que solo llama a 127.0.0.1 para
         reutilizar la app ya abierta). Un módulo nuevo que abra conexiones es «con permiso»."""
-        permitidos = {"jev.py", "precios.py", "actualizaciones.py", "__main__.py"}
+        permitidos = {"precios.py", "actualizaciones.py", "__main__.py"}
         red = re.compile(r"\burllib\.request\b|\bhttp\.client\b|\bsocket\b|\bftplib\b|\bsmtplib\b|\bwebsocket")
         fuera = [os.path.basename(r) for r in glob.glob(os.path.join(PKG, "*.py"))
                  if os.path.basename(r) not in permitidos and red.search(leer(r))]

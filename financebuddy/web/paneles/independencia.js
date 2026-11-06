@@ -22,37 +22,7 @@ function vistaIndependencia() {
   enlace(bot, "← Inversión", "#inversion").className = "fb-btn sec";
   const S = supuestosIndependencia();
 
-  const pS = panel(root, "Tus supuestos", null, "Lo que ves son los valores sacados de tus datos; cámbialos y se guardan al salir del campo. Dejar un campo vacío vuelve al valor de tus datos.");
-  const filas = [
-    ["gasto", "Gasto que quieres tener al año", "€ al año", "10", "Lo que gastarías al año ya independiente. Por defecto, 12 veces tu gasto medio de los últimos meses."],
-    ["tasa", "Cuánto retiras cada año del capital", "% del capital", "0.1", "Con el 4 % el capital dura, en el pasado, unos 30 años o más. Más bajo es más prudente."],
-    ["rent", "Rentabilidad esperada al año, descontando la subida de precios", "% al año", "0.1", "Por defecto, la de tus inversiones con un tope del 5 %. Nadie sabe lo que rentará de verdad."],
-    ["apo", "Lo que metes a invertir al mes", "€ al mes", "10", "Por defecto, tu media del último año."],
-    ["edad", "Tu edad", "años", "1", "Opcional: sin ella no se puede decir a qué edad llegarías ni contar la pensión."],
-    ["pension", "Pensión pública que esperas cobrar", "€ al mes, neta", "10", "La escribes tú, en euros de hoy y ya sin impuestos (la Seguridad Social te da una estimación). Déjala vacía si no quieres contarla."],
-    ["edadPension", "Edad desde la que la cobrarías", "años", "1", ""],
-  ];
-  const guardar = (k, el) => {
-    const g = { ...S.guardados };
-    const n = el.value === "" ? NaN : Number(el.value);
-    if (isFinite(n)) g[k] = n; else delete g[k];
-    return guardarAjuste("/api/config", { independencia: g });
-  };
-  for (const [k, nombre, unidad, paso, nota] of filas) {
-    const f = pS.createDiv({ cls: "fb-fila" });
-    f.createSpan({ cls: "fb-et", text: nombre }).style.minWidth = "26em";
-    const i = f.createEl("input", { cls: "corto", attr: { type: "number", min: "0", step: paso, "aria-label": `${nombre}, en ${unidad}` } });
-    i.value = S.v[k] == null ? "" : S.v[k];
-    i.dataset.fb = "indep-" + k;
-    i.onchange = () => guardar(k, i);
-    f.createSpan({ cls: "fin-note", text: unidad });
-    if (nota) pS.createDiv({ cls: "fin-note", text: nota });
-  }
-  if (Object.keys(S.guardados).length) {
-    const r = pS.createEl("button", { cls: "fb-btn sec", text: "Volver a los valores de mis datos", attr: { type: "button" } });
-    r.onclick = () => guardarAjuste("/api/config", { independencia: {} });
-  }
-
+  // Primero la respuesta; debajo, los supuestos de los que sale (al cambiar uno, se guarda y la respuesta se recalcula)
   const R = independencia({ gasto: S.v.gasto, tasa: S.v.tasa / 100, rent: S.v.rent / 100, apo: S.v.apo, patrimonio: S.patrimonio, edad: S.v.edad,
     pension: S.v.pension, edadPension: S.v.edadPension });
   const pR = panel(root, "Resultado");
@@ -78,6 +48,38 @@ function vistaIndependencia() {
         : `Con la pensión que has escrito y la edad desde la que la cobras, no hace falta menos capital: llega demasiado tarde para compensar los años hasta cobrarla.`;
       pR.createDiv({ cls: "fin-note", text: txt });
     }
+  }
+
+  const pS = panel(root, "Tus supuestos", null, "Lo que ves sale de tus datos. Si dejas un campo vacío, vuelve al valor de tus datos.");
+  pS.createDiv({ cls: "fin-note", text: "Cambia lo que quieras: se guarda al salir del campo y el resultado de arriba se recalcula." });
+  const filas = [
+    ["gasto", "Gasto que quieres tener al año", "€ al año", "10", "Lo que gastarías al año ya independiente. Por defecto, 12 veces tu gasto medio de los últimos meses."],
+    ["tasa", "Cuánto retiras cada año del capital", "% del capital", "0.1", "Con el 4 % el capital dura, en el pasado, unos 30 años o más. Más bajo es más prudente."],
+    ["rent", "Rentabilidad esperada al año, descontando la subida de precios", "% al año", "0.1", "Por defecto, la de tus inversiones con un tope del 5 %. Nadie sabe lo que rentará de verdad."],
+    ["apo", "Lo que metes a invertir al mes", "€ al mes", "10", "Por defecto, tu media del último año."],
+    ["edad", "Tu edad", "años", "1", "Opcional: sin ella no se puede decir a qué edad llegarías ni contar la pensión."],
+    ["pension", "Pensión pública que esperas cobrar", "€ al mes, neta", "10", "La escribes tú, en euros de hoy y ya sin impuestos (la Seguridad Social te da una estimación). Déjala vacía si no quieres contarla."],
+    ["edadPension", "Edad desde la que la cobrarías", "años", "1", ""],
+  ];
+  const guardar = (k, el) => {
+    const g = { ...S.guardados };
+    const n = el.value === "" ? NaN : Number(el.value);
+    if (isFinite(n)) g[k] = n; else delete g[k];
+    return guardarAjuste("/api/config", { independencia: g });
+  };
+  for (const [k, nombre, unidad, paso, nota] of filas) {
+    const f = pS.createDiv({ cls: "fb-indep-f" });
+    f.createEl("label", { text: nombre, attr: { for: "fb-indep-" + k } });
+    const i = f.createEl("input", { cls: "corto", attr: { id: "fb-indep-" + k, type: "number", min: "0", step: paso, "aria-label": `${nombre}, en ${unidad}` } });
+    i.value = S.v[k] == null ? "" : S.v[k];
+    i.dataset.fb = "indep-" + k;
+    i.onchange = () => guardar(k, i);
+    f.createSpan({ cls: "fin-note", text: unidad });
+    if (nota) f.createDiv({ cls: "fin-note s", text: nota });
+  }
+  if (Object.keys(S.guardados).length) {
+    const r = pS.createEl("button", { cls: "fb-btn sec", text: "Volver a los valores de mis datos", attr: { type: "button" } });
+    r.onclick = () => guardarAjuste("/api/config", { independencia: {} });
   }
   const aviso = root.createDiv({ cls: "fin-note" });
   aviso.setText("Es orientativo: no sabe lo que rentarán de verdad tus inversiones, no cuenta impuestos y no es asesoramiento financiero. La pensión pública es la cifra que tú escribes; la app no la calcula.");

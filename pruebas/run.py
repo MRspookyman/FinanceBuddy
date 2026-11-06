@@ -18,7 +18,7 @@ SALIDA = os.path.join(tempfile.gettempdir(), "fb-pruebas")
 # Navegadores con modo sin ventana (el primero que exista)
 EDGES = [r"C:\Program Files\Google\Chrome\Application\chrome.exe", r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
          r"C:\Program Files\Microsoft\Edge\Application\msedge.exe"]
-PANTALLAS = "inicio,movimientos,inversion,importar,revisar,apuntar,cerrar,valores,ajustes,fijos,gestionar/movimiento,gestionar/cuenta,editar/movimiento/nuevo,editar/recurrente/nuevo,revision,renta,anual,independencia,bienvenida,gestionar/categoria,editar/regla/nuevo,ajustes/datos"
+PANTALLAS = "inicio,movimientos,inversion,importar,revisar,apuntar,cerrar,valores,ajustes,fijos,gestionar/movimiento,gestionar/cuenta,editar/movimiento/nuevo,editar/recurrente/nuevo,renta,anual,independencia,bienvenida,gestionar/categoria,editar/regla/nuevo,ajustes/datos,cuentas,repaso,repaso/saldos"
 HOY = "2026-09-30"
 
 def main():
@@ -61,7 +61,8 @@ def main():
             tam = f"--window-size={flags.get('ancho', '1440' if 'capturas' in flags else '1200')},{flags.get('alto', '2600')}"
             base = [edge, "--headless", "--disable-gpu", "--no-first-run", f"--user-data-dir={perfil}", f"--virtual-time-budget={60000 if 'flujos' in flags else 6000}"]
             if os.name != "nt": base.append("--no-sandbox")
-            out = subprocess.run(base + ([tam] if "guion" in flags and "ancho" in flags else []) + ["--dump-dom", url], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120).stdout
+            # Los flujos (más de 100) tardan ~85 s solos y más con las otras tandas a la vez: 120 s se quedaba corto
+            out = subprocess.run(base + [tam, "--dump-dom", url], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300 if "flujos" in flags else 120).stdout
             m = re.search(r'<div id="log">(.*?)</div>', out, re.S)
             texto = html.unescape(m.group(1)).strip() if m else "(sin log)"
             h1 = re.search(r"<h1[^>]*>(.*?)</h1>", out, re.S)
@@ -71,7 +72,7 @@ def main():
             # quieto=1: sin animaciones, o las cifras salen a medio contar en la foto
             if "shot" in flags:
                 png = os.path.join(SALIDA, f"{v.replace('/', '-')}{'-' + flags['tema'] if 'tema' in flags else ''}.png")
-                subprocess.run(base + [tam, f"--screenshot={png}", f"http://127.0.0.1:{puerto}/?quieto=1{'&tema=' + flags['tema'] if 'tema' in flags else ''}#{v}"], capture_output=True, timeout=120)
+                subprocess.run(base + [tam, f"--screenshot={png}", f"http://127.0.0.1:{puerto}/?quieto=1{'&flujos=1' if 'guion' in flags else ''}{'&tema=' + flags['tema'] if 'tema' in flags else ''}#{v}"], capture_output=True, timeout=120)
             if "capturas" in flags:  # ?tema= fuerza el tema solo en esa carga (nucleo.js)
                 for tema in ("claro", "oscuro"):
                     png = os.path.join(SALIDA, f"{v.replace('/', '-')}-{tema}.png")

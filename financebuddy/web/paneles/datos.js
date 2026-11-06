@@ -95,6 +95,8 @@ let filtroCat = (vista === "gastos" || vista === "movimientos") && estado0.filtr
 if (filtroCat) guardarEstado({ filtroCat: null });
 // «Todo el año» en la lista de Movimientos, pedido desde Mi año (también se consume una vez: FB.estado se vacía al navegar).
 if (vista === "movimientos" && estado0.hist) { FB.estado.hist = estado0.hist; guardarEstado({ hist: null }); }
+// Una cuenta pedida desde «Tus cuentas»: la lista abre con ese filtro de «Más filtros» (se consume una vez).
+if (vista === "movimientos" && estado0.cuentaMov) { FB.estado.masFiltros = { cuenta: String(estado0.cuentaMov), desde: "", hasta: "", sinRevisar: false, etiqueta: "", deben: false, abierto: true }; guardarEstado({ cuentaMov: null }); }
 // Un comercio pedido desde «Dónde más gastas» (Mi año): la lista abre con él en el buscador (también se consume una vez).
 let busqueda = vista === "movimientos" && estado0.busqueda ? String(estado0.busqueda) : "";
 if (busqueda) guardarEstado({ busqueda: null });
@@ -105,7 +107,7 @@ const registros = (tipo) => (DB.registros[tipo] || []).map((r) => ({ ...r, file:
 
 let _movs, _cats, _pat, _objs, _recs, _activos, _aports, _cuentas, _cobros;
 // Cuentas del usuario. tipo: corriente · ahorro · broker · otro. La «principal» es la primera corriente.
-const cuentas = () => (_cuentas ??= registros("cuenta").map((p) => ({ p, nombre: p.nombre, tipo: txt(p.tipo) || "corriente", extracto: !!p.extracto })));
+const cuentas = () => (_cuentas ??= registros("cuenta").map((p) => ({ p, nombre: p.nombre, tipo: txt(p.tipo) || "corriente", extracto: !!p.extracto, alias: txt(p.alias), icono: txt(p.icono), color: txt(p.color) })));
 const cuentaPor = (n) => cuentas().find((c) => c.nombre === n);
 const tipoCuenta = (n) => (cuentaPor(n) || {}).tipo || "";
 const principal = () => (cuentas().find((c) => c.tipo === "corriente") || cuentas()[0] || {}).nombre || "";
@@ -329,14 +331,40 @@ function agrupar(saldos, valores, otros) {
     cuentas: { tiene: true, corriente, ahorro: cuentasTipo("ahorro").length ? ahorro : null, saldos: { ...saldos } },
   };
 }
-const patrimonio = () => (_pat ??= registros("patrimonio").map((p) => {
-  const saldos = {};
-  for (const [k, v] of Object.entries(p.saldos || {})) saldos[k] = num(v);
-  const { c, cuentas: cs } = agrupar(saldos, p.valores || {}, p.otros);
-  const deudas = Math.abs(num(p.deudas));
-  const act = sum(Object.values(c));
-  return { p, fecha: toDate(p.fecha), c, cuentas: cs, valores: p.valores || {}, otros: num(p.otros), deudas, activos: act, neto: act - deudas };
-}).filter((x) => x.fecha).sort((a, b) => a.fecha.toMillis() - b.fecha.toMillis()));
+const patrimonio = () => {
+  if (_pat) return _pat;
+  const P = registros("patrimonio").map((p) => ({ p, fecha: toDate(p.fecha) })).filter((x) => x.fecha).sort((a, b) => a.fecha.toMillis() - b.fecha.toMillis());
+  _pat = [];
+  for (const { p, fecha } of P) {
+    const anterior = _pat[_pat.length - 1], saldos = {}, origen_saldos = {};
+    // Una importación puede actualizar solo una cuenta: las demás conservan su ancla,
+    // proyectada hasta esta fecha. Ese arrastre no es un saldo escrito por el usuario.
+    const faltan = anterior ? Object.keys(anterior.cuentas.saldos).filter((n) => !Object.prototype.hasOwnProperty.call(p.saldos || {}, n)) : [];
+    if (faltan.length) {
+      const pr = proyectar(anterior, fecha.endOf("day"), true);
+      for (const n of faltan) { saldos[n] = pr.cuentas.saldos[n]; origen_saldos[n] = "extracto"; }
+    }
+    const legado = ["Saldo del extracto", "Saldo del primer extracto"].includes(txt(p.nota)) ? "extracto" : "manual";
+    for (const [k, v] of Object.entries(p.saldos || {})) {
+      saldos[k] = num(v);
+      origen_saldos[k] = (p.origen_saldos || {})[k] || legado;
+    }
+    const deExtracto = legado === "extracto" || Object.values(p.origen_saldos || {}).some((o) => o === "extracto");
+    const valores = p.valores ?? (deExtracto && anterior ? anterior.valores : {}), otros = p.otros == null ? (anterior ? anterior.otros : 0) : num(p.otros);
+    const deudas = p.deudas == null ? (anterior ? anterior.deudas : 0) : Math.abs(num(p.deudas));
+    const { c, cuentas: cs } = agrupar(saldos, valores, otros), act = sum(Object.values(c));
+    _pat.push({ p, fecha, c, cuentas: cs, origen_saldos, valores, otros, deudas, activos: act, neto: act - deudas });
+  }
+  return _pat;
+};
+// Un saldo de extracto es un punto de partida, no una comprobación independiente de los movimientos.
+// Las notas identifican los registros automáticos anteriores a la marca por cuenta.
+function saldoManual(p, cuenta) {
+  if (!Object.prototype.hasOwnProperty.call(p.cuentas.saldos, cuenta)) return false;
+  const origen = (p.origen_saldos || {})[cuenta];
+  if (origen != null) return origen === "manual";
+  return !["Saldo del extracto", "Saldo del primer extracto"].includes(txt((p.p || {}).nota));
+}
 // `cuenta: X` en un objetivo → lo ahorrado es el saldo (estimado hoy) de esa cuenta; si no, el campo `ahorrado`.
 // `meta_meses: N` → la meta es N meses de gasto medio reciente (redondeada a 50 €); si no, el campo `meta`.
 const objetivos = () => (_objs ??= registros("objetivo").map((p) => {

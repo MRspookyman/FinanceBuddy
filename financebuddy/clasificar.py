@@ -12,8 +12,8 @@ def casa(patron, texto_norm):
     return re.search(rf"(?<![a-z0-9]){re.escape(p)}{fin}", texto_norm) is not None
 
 def ordenar_reglas(reglas):
-    """Las del usuario primero (las más recientes antes), luego las de la plantilla en su orden."""
-    usuario = sorted([r for r in reglas if r.get("origen") != "plantilla"], key=lambda r: -r.get("id", 0))
+    """Usuario con concepto, usuario sin concepto (recientes primero), y por último las de serie."""
+    usuario = sorted([r for r in reglas if r.get("origen") != "plantilla"], key=lambda r: (not bool(r.get("concepto")), -r.get("id", 0)))
     return usuario + [r for r in reglas if r.get("origen") == "plantilla"]
 
 # Coletillas que añaden los bancos y que no dicen nada del movimiento (y confundirían a las reglas: «COMISION 0,00»).
@@ -27,8 +27,9 @@ def limpio(texto):
     return re.sub(r"\s+", " ", t).strip(" ,")
 
 def regla_para(texto, reglas):
-    t = limpio(texto)
-    return next((r for r in reglas if casa(r["patron"], t)), None)
+    t, b = limpio(texto), bizum_de(texto)
+    return next((r for r in ordenar_reglas(reglas) if casa(r["patron"], t)
+                 and (not r.get("concepto") or b and casa(r["concepto"], norm(b["concepto"])))), None)
 
 def titulo(s):
     s = re.sub(r"\s+", " ", str(s)).strip(" ,./")
@@ -49,9 +50,15 @@ def comercio(texto):
     nombre = RE_PASARELA.sub("", m.group(1).strip()).strip() or m.group(1).strip()
     return titulo(re.sub(r"\s+\d{3,}$", "", nombre))
 
+
+def bizum_de(texto):
+    m = re.search(r"bizum (?:a favor de|enviado a|recibido de|a|de)\s+(.+?)(?:\s+concepto:?\s*(.*))?$", texto or "", re.I)
+    return {"persona": titulo(m.group(1)), "concepto": (m.group(2) or "").strip()} if m else None
 def patron_sugerido(texto):
     """Texto corto que identifica el movimiento, para ofrecer «recordar para la próxima vez»."""
     c = comercio(texto)
+    b = bizum_de(texto)
+    if b: return norm(b["persona"])
     if c: return norm(c)
     t = limpio(texto)
     t = re.sub(r"^(recibo|adeudo|transferencia|bizum|cargo|abono|pago)( inmediata| recibida| emitida)?( a favor de| de| a)?\s+", "", t)
@@ -61,18 +68,26 @@ def patron_sugerido(texto):
     return " ".join(t.split(" ")[:3]).strip(" ,.;:")
 
 # Palabras del concepto de un Bizum → categoría
-KW_BIZUM = [(r"\b(cena|comida|comi|comer|copa|copas|cerve|cerveza|desayun|bocata|pizza|tapas|vermu|burger|chiringo|tinto|cocacola|refresco|cafe|helado|kebab|sushi|bar\b)", "Comer fuera"),
-            (r"\b(padel|cine|entrada|concierto|futbol|partido)", "Ocio"), (r"\b(cumple|regalo)", "Regalos"),
-            (r"\b(gasolina|gasofa|gasoil|diesel|peaje)", "Coche"),
-            (r"\b(wifi|luz|agua|gas\b|internet)", "Suministros"), (r"\b(alquiler|piso)", "Vivienda"), (r"\b(taxi|uber|cabify)", "Transporte"), (r"\b(viaje|hotel|vuelo|billete)", "Viajes"),
-            (r"\b(super|compra)", "Supermercado")]
+KW_BIZUM = [(r"\b(cenas?|comidas?|comi|comer|copas?|cerve\w*|desayun\w*|bocatas?|pizzas?|tapas|vermus?|burgers?|chiringos?|tintos?|cocacolas?|refrescos?|cafes?|helados?|kebabs?|sushi|bar|bares)\b", "Comer fuera"),
+            (r"\b(padel|cine|entradas?|conciertos?|futbol|partidos?)\b", "Ocio"), (r"\b(cumple\w*|regalos?)\b", "Regalos"),
+            (r"\b(gasolina|gasofa|gasoil|diesel|peajes?)\b", "Coche"),
+            (r"\b(wifi|luz|agua|gas|internet)\b", "Suministros"), (r"\b(alquiler(?:es)?|pisos?)\b", "Vivienda"), (r"\b(taxis?|uber|cabify)\b", "Transporte"), (r"\b(viajes?|hotel(?:es)?|vuelos?|billetes?)\b", "Viajes"),
+            (r"\b(super(?:mercados?)?|compras?)\b", "Supermercado")]
+
+def texto_para_pistas(texto):
+    """Solo el comercio o concepto, sin instrucciones ni datos técnicos del banco."""
+    b = bizum_de(texto)
+    if b: return norm(b["concepto"])
+    t = limpio(comercio(texto) or texto)
+    t = re.sub(r"\b(?:comision|fecha valor|fecha operacion|tarj(?:eta)?\.?).*$", "", t)
+    t = re.sub(r"\b(?:pago movil en|pago con tarjeta en|compra con tarjeta en|compra en|pago en)\b", " ", t)
+    return t.strip()
 
 def cat_por_palabras(s):
     return next((c for pat, c in KW_BIZUM if re.search(pat, norm(s))), None)
 
 # ───────────── lo aprendido de tu historial ─────────────
-# Sin crear reglas: si ya clasificaste antes movimientos del mismo comercio (misma clave de patron_sugerido), la
-# próxima vez se usa esa categoría. Así cada corrección, aunque no marques «recordar», sirve para la siguiente.
+# El historial solo propone categorías en Por revisar: nunca clasifica una importación.
 def clave(texto):
     return patron_sugerido(texto or "")
 
@@ -82,7 +97,6 @@ def memoria(movimientos):
     for m in movimientos:
         if m.get("clase") not in ("gasto", "ingreso", "reembolso") or not m.get("categoria") or not m.get("ext_texto"): continue
         if m.get("parte_de"): continue  # una parte de un movimiento dividido no dice de qué es el comercio
-        if m.get("sugerido"): continue  # una categoría sin confirmar no enseña nada (si no, una suposición se reforzaría a sí misma)
         k = clave(m["ext_texto"])
         if len(k) < 3: continue
         clase = "gasto" if m["clase"] == "reembolso" else m["clase"]
@@ -94,23 +108,16 @@ def _con_signo(clase, imp):
     if clase == "ingreso" and imp < 0: return "gasto"
     return clase
 
-def por_memoria(texto, imp, mem, minimo=1):
-    """(clase, categoría) si tu historial con ese comercio es claro (≥ 75 % la misma y al menos `minimo` veces)."""
-    c = (mem or {}).get(clave(texto))
-    if not c: return None
-    (clase, cat), n = c.most_common(1)[0]
-    if n < minimo or n / sum(c.values()) < 0.75: return None
-    if (clase == "ingreso") != (imp > 0) and not (clase == "gasto" and imp > 0): return None
-    return _con_signo(clase, imp), cat
 
-def sugerir(texto, imp, mem, cat_actual=""):
+def sugerir(texto, imp, mem, cat_actual="", contar=False):
     """Para «Por revisar»: la categoría más probable {clase, categoria, motivo} o None.
     Mismo comercio en tu historial → la más usada; si no, el comercio más parecido que conozcas."""
     k = clave(texto)
     signo = "ingreso" if imp > 0 else "gasto"
     def mejor(c, motivo):
-        for (clase, cat), _ in c.most_common():
-            if clase == signo or (clase == "gasto" and imp > 0): return {"clase": _con_signo(clase, imp), "categoria": cat, "motivo": motivo}
+        for (clase, cat), veces in c.most_common():
+            if clase == signo or (clase == "gasto" and imp > 0):
+                return {"clase": _con_signo(clase, imp), "categoria": cat, "motivo": motivo, **({"veces": veces} if contar else {})}
         return None
     if mem and k in mem:
         r = mejor(mem[k], "como las otras veces")
@@ -120,40 +127,40 @@ def sugerir(texto, imp, mem, cat_actual=""):
             r = mejor(mem[parecido], f"parecido a «{titulo(parecido)}»")
             if r: return r
     if cat_actual and cat_actual not in ("Otros", "Otros ingresos"):
-        return {"clase": signo if imp < 0 else "ingreso", "categoria": cat_actual, "motivo": "por el concepto"}
+        return {"clase": signo if imp < 0 else "ingreso", "categoria": cat_actual, "motivo": "por el concepto", "segura": False}
     return None
 
-# ───────────── guardar ya lo dudoso con la categoría sugerida ─────────────
-# Lo que clasificar_fila deja como duda pero tu historial sabe resolver con confianza razonable se guarda ya (marcado «sugerido»)
-# en vez de esperar en «Por revisar». Confianza (0-1): la parte de las veces que ese comercio fue a esa categoría, limitada por
-# cuánta evidencia hay (1 vez → 0,8; 2 → 0,9; 3 o más → sin límite) y, si solo hay un comercio «parecido», por lo parecido que es.
-UMBRAL_SUGERIDO = 0.8  # por defecto: basta un solo antecedente del mismo comercio, o un nombre ≥ 80 % parecido
-UMBRAL_MIN, UMBRAL_MAX = 0.6, 1.0
+def detalle_revision(f, movimientos, categorias):
+    """Contexto local de la tarjeta: historial, racha y categorías válidas, sin tomar decisiones."""
+    texto, imp = f.get("texto", ""), f.get("importe", 0)
+    b, k = bizum_de(texto), clave(texto)
+    ingreso = f.get("clase") == "ingreso" if f.get("clase") else imp > 0
+    validas = [c["nombre"] for c in categorias if not c.get("oculta") and (c.get("grupo") == "ingreso") == ingreso]
+    previos = [m for m in movimientos if not m.get("parte_de") and m.get("categoria") in validas
+               and (m.get("clase") == "ingreso") == ingreso and clave(m.get("ext_texto") or "") == k and k]
+    previos.sort(key=lambda m: (m.get("fecha", ""), m.get("id", 0)), reverse=True)
+    cuenta = Counter(m["categoria"] for m in previos)
+    historial = [{"categoria": cat, "n": n} for cat, n in cuenta.most_common()]
+    out = {"historial": historial, "botones": []}
+    if b: out["bizum"] = b
+    if previos:
+        cat, n = previos[0]["categoria"], 0
+        for m in previos:
+            if m["categoria"] != cat: break
+            n += 1
+        out["racha"] = {"categoria": cat, "n": n}
+    palabras_cat = []
+    for pat, cat in KW_BIZUM:
+        m = re.search(pat, texto_para_pistas(texto))
+        if m and cat in validas:
+            palabras_cat.append(cat)
+            if not historial and "palabra" not in out: out["palabra"] = {"palabra": m.group(0), "categoria": cat}
+    general = Counter(m["categoria"] for m in movimientos if not m.get("parte_de") and m.get("categoria") in validas)
+    for cat in [h["categoria"] for h in historial] + palabras_cat + [c for c, _ in general.most_common()] + validas:
+        if cat not in out["botones"]: out["botones"].append(cat)
+        if len(out["botones"]) == 6: break
+    return out
 
-def umbral_valido(v):
-    try: return min(UMBRAL_MAX, max(UMBRAL_MIN, float(v)))
-    except (TypeError, ValueError): return UMBRAL_SUGERIDO
-
-def sugerir_guardable(texto, imp, mem, umbral=UMBRAL_SUGERIDO):
-    """{clase, categoria, motivo, confianza} si la sugerencia del historial alcanza el umbral; si no, None."""
-    if not mem: return None
-    k, umbral = clave(texto), umbral_valido(umbral)
-    signo = "ingreso" if imp > 0 else "gasto"
-    def mejor(c, tope, motivo):
-        total = sum(c.values())
-        for (clase, cat), n in c.most_common():
-            if clase == signo or (clase == "gasto" and imp > 0):
-                conf = round(min(n / total, 0.7 + 0.1 * n, tope), 2)
-                return {"clase": _con_signo(clase, imp), "categoria": cat, "motivo": motivo, "confianza": conf} if conf >= umbral else None
-        return None
-    if k in mem:
-        r = mejor(mem[k], 1.0, "como las otras veces")
-        if r: return r
-    if len(k) >= 4:
-        for parecido in difflib.get_close_matches(k, list(mem), n=3, cutoff=max(0.78, umbral)):
-            r = mejor(mem[parecido], difflib.SequenceMatcher(None, k, parecido).ratio(), f"parecido a «{titulo(parecido)}»")
-            if r: return r
-    return None
 
 # ───────────── aconsejar una categoría nueva ─────────────
 # Cuando un pago no tiene una categoría clara (ni historial ni sugerencia fiable) y ninguna de las tuyas encaja, se puede ACONSEJAR
@@ -189,21 +196,6 @@ def proponer_categoria_nueva(texto, importe, categorias, fusionadas=None):
     if not mejor: return None
     return _consejo(mejor[1], categorias, fusionadas, mejor[2])
 
-def categorias_nuevas_posibles(categorias, fusionadas=None):
-    """Las del catálogo que se podrían aconsejar ahora (para ofrecérselas a Jev como lista cerrada): [{nombre, descripcion, clave…}]."""
-    from .plantilla import CATALOGO
-    out = []
-    for e in CATALOGO:
-        c = _consejo(e, categorias, fusionadas)
-        if c: out.append({**c, "descripcion": e.get("descripcion", ""), "clave": e["nombre"]})
-    return out
-
-def consejo_de_jev(clave, categorias, fusionadas=None):
-    """Lo que Jev ha sugerido (el nombre de una de las opciones que se le dieron) → consejo, o None si ya no procede."""
-    from .plantilla import CATALOGO
-    e = next((e for e in CATALOGO if e["nombre"] == clave), None)
-    c = _consejo(e, categorias, fusionadas) if e else None
-    return {**c, "fuente": "jev", "motivo": c["motivo"].replace("Esto parece", "Jev cree que esto parece")} if c else None
 
 # Categorías que no se reparten con amigos: un Bizum recibido no es «tu parte» de un recibo o de una suscripción.
 NO_COMPARTIDAS = {"Suscripciones", "Comisiones", "Efectivo", "Apuestas", "Seguros", "Suministros"}
@@ -220,7 +212,7 @@ def titulares_de(nombres):
     """Nombres de titular (config «titulares») → conjuntos de palabras para es_titular()."""
     return [{w for w in palabras(n) if len(w) >= 3} for n in nombres or [] if n]
 
-def clasificar_fila(f, todas, reglas, cuentas, recurrentes, cuenta_propia, categorias=None, mem=None, titulares=None, previos=None):
+def clasificar_fila(f, todas, reglas, cuentas, recurrentes, cuenta_propia, categorias=None, titulares=None, previos=None):
     """f: {op, texto, importe}. Devuelve {clase, cat, concepto, destino?/origen?, recurrente?, duda?}.
     todas: todas las filas del archivo ya clasificadas hasta aquí (para los Bizums recibidos).
     previos: gastos y Bizums ya guardados fuera de las fechas del archivo (bizums.previos)."""
@@ -228,12 +220,20 @@ def clasificar_fila(f, todas, reglas, cuentas, recurrentes, cuenta_propia, categ
     r = {"clase": "gasto" if imp < 0 else "ingreso", "cat": "", "concepto": titulo(comercio(t) or re.sub(r",.*$", "", t) or "Movimiento")}
     def con(**kw):
         r.update(kw)
+        if r.get("duda"): r.pop("auto", None)
         return r
     otras = [c for c in cuentas if c["nombre"] != cuenta_propia]
     # 1) Reglas (las del usuario mandan)
     regla = regla_para(t, reglas)
+    if regla and regla.get("accion") == "preguntar":
+        return con(preguntar=True, duda="Me pediste que te preguntara cada vez.")
+    if regla:
+        r["auto"] = {"regla": regla["id"], "serie": regla.get("origen") == "plantilla"}
     if regla and regla.get("clase") == "transferencia":
         otra = regla.get("cuenta_otra")
+        # Una regla de traspaso se aprende en una cuenta («a Ahorro») y vale también al importar la otra: en el extracto de
+        # Ahorro, «la otra cuenta» no puede ser Ahorro. Si solo hay otra cuenta, es esa; si hay más, se pregunta.
+        if otra and otra == cuenta_propia: otra = otras[0]["nombre"] if len(otras) == 1 else None
         if otra: return enlazar(con(clase="transferencia", **({"destino": otra} if imp < 0 else {"origen": otra}), concepto=f"{'A' if imp < 0 else 'Desde'} {otra}"), f, recurrentes)
         return con(clase="transferencia", duda="Traspaso: ¿a qué cuenta tuya va (o de cuál viene)?")
     if regla:
@@ -260,10 +260,7 @@ def clasificar_fila(f, todas, reglas, cuentas, recurrentes, cuenta_propia, categ
         quien, conc = titulo(m.group(1)), (m.group(2) or "").strip()
         base = titulo(conc) if conc and "sin concepto" not in norm(conc) else f"Bizum a {quien.split(' ')[0]}"
         cat = cat_por_palabras(conc)
-        if cat: return con(cat=cat, concepto=base)
-        aprendido = por_memoria(t, imp, mem, minimo=2)
-        if aprendido: return con(clase=aprendido[0], cat=aprendido[1], concepto=base, aprendido=True)
-        return con(cat="Otros", concepto=base, duda=f"Bizum a {quien} «{conc or 'sin concepto'}»: ¿de qué es?")
+        return con(cat=cat or "Otros", concepto=base, duda=f"Bizum a {quien} «{conc or 'sin concepto'}»: ¿de qué es?")
     # 4) Bizum recibido: la parte de un gasto compartido de ese día o el anterior → te lo devuelven
     m = re.search(r"bizum (?:de|recibido de)\s+(.+?)(?:\s+concepto:?\s*(.*))?$", t, re.I)
     if m and imp > 0:
@@ -279,8 +276,6 @@ def clasificar_fila(f, todas, reglas, cuentas, recurrentes, cuenta_propia, categ
             c = bizums.casar(imp, f["op"], gastos, recibidos, fijas)
             if c: cat = c["gasto"]["cat"]
         if cat: return con(clase="reembolso", cat=cat, concepto=f"Parte de {nombre}")
-        aprendido = por_memoria(t, imp, mem, minimo=2)
-        if aprendido: return con(clase=aprendido[0], cat=aprendido[1], concepto=f"Bizum de {nombre}", aprendido=True)
         n = bizums.iguales(imp, f["op"], recibidos)
         return con(clase="ingreso", cat="Otros ingresos", concepto=f"Bizum de {nombre}",
                    duda=f"Bizum de {quien} «{conc or 'sin concepto'}»: " + (f"{n} Bizums iguales a la vez, parece un reparto, pero no encuentro el gasto. ¿De qué era?" if n >= 2
@@ -288,9 +283,7 @@ def clasificar_fila(f, todas, reglas, cuentas, recurrentes, cuenta_propia, categ
     # 5) Devolución de una compra
     if tn.startswith("devolucion") or " devolucion" in tn:
         return con(clase="reembolso", cat="Compras", concepto=f"Devolución {comercio(t) or ''}".strip(), duda="Devolución: ¿de qué categoría era la compra?")
-    # 6) Sin regla: lo que ya clasificaste antes con ese comercio; si no, duda
-    aprendido = por_memoria(t, imp, mem)
-    if aprendido: return enlazar(con(clase=aprendido[0], cat=aprendido[1], aprendido=True), f, recurrentes)
+    # 6) Sin regla, siempre se pregunta; el historial solo sugiere en Por revisar.
     if imp > 0: return con(cat="Otros ingresos", duda="Ingreso sin identificar: ¿qué es?")
     return con(cat="Otros", duda="Comercio o recibo desconocido: ¿qué categoría es?")
 

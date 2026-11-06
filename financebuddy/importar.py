@@ -82,7 +82,8 @@ def categoria_del_archivo(f, grupos):
     if not cat or f.get("clase") == "transferencia" or not f["importe"]: return
     es_ingreso = grupos[cat] == "ingreso"
     if f["importe"] < 0 and es_ingreso: return
-    f.update(clase="gasto" if f["importe"] < 0 else "ingreso" if es_ingreso else "reembolso", cat=cat, aprendido=False)
+    f.update(clase="gasto" if f["importe"] < 0 else "ingreso" if es_ingreso else "reembolso", cat=cat)
+    f.pop("auto", None)
     f.pop("duda", None)
 
 def ordenar_y_comprobar_saldos(filas):
@@ -173,6 +174,21 @@ def recordar_cabecera(alm, info, cuenta):
     if info.get("titular") and not any(C.palabras(t) == C.palabras(info["titular"]) for t in tit):
         alm.set_config("titulares", tit + [info["titular"]])
 
+def anotar_saldo_extracto(alm, cuenta, saldo):
+    """Ancla bancaria por cuenta. Un extracto antiguo aporta historia, nunca sustituye un saldo posterior."""
+    regs = alm.todos("patrimonio")
+    if any(r["fecha"] > saldo["fecha"] and cuenta in r.get("saldos", {}) for r in regs): return False
+    ya = next((r for r in regs if r["fecha"] == saldo["fecha"]), None)
+    origenes = dict((ya or {}).get("origen_saldos") or {})
+    for c in (ya or {}).get("saldos", {}):
+        origenes.setdefault(c, "extracto" if (ya or {}).get("nota") in ("Saldo del extracto", "Saldo del primer extracto") else "manual")
+    origenes[cuenta] = "extracto"
+    alm.guardar("patrimonio", {**(ya or {}), "fecha": saldo["fecha"],
+                              "saldos": {**(ya or {}).get("saldos", {}), cuenta: saldo["saldo"]},
+                              "origen_saldos": origenes, "nota": (ya or {}).get("nota") or "Saldo del extracto"},
+                ya["id"] if ya else None)
+    return True
+
 def importar_banco(alm, ruta, cuenta=None, perfil_nombre=None):
     info = {}
     perfil, filas = leer(ruta, alm, "banco", perfil_nombre, info)
@@ -184,6 +200,7 @@ def importar_banco(alm, ruta, cuenta=None, perfil_nombre=None):
     cuenta = cuenta or por_iban or (None if otro_iban else del_perfil)
     if not cuenta or not any(c["nombre"] == cuenta for c in cuentas):
         raise NecesitaCuenta({"archivo": os.path.basename(ruta), "tipo": "banco", "perfil": perfil["nombre"],
+                              "iban": info.get("iban"),
                               "cuentas": [c["nombre"] for c in cuentas if c.get("tipo") != "broker"]})
     raras = info.get("ilegibles") or []
     filas, error = ordenar_y_comprobar_saldos(filas)
@@ -193,16 +210,15 @@ def importar_banco(alm, ruta, cuenta=None, perfil_nombre=None):
         return {"ok": False, "mensaje": error}
     reglas = C.ordenar_reglas(alm.todos("regla"))
     recs = alm.todos("recurrente")
-    mem = C.memoria(alm.todos("movimiento"))
     grupos = {c["nombre"]: c.get("grupo") for c in alm.todos("categoria")}
     titulares = C.titulares_de((alm.config("titulares") or []) + [info.get("titular")])
     # Clasificar de la más antigua a la más reciente (los Bizums recibidos miran los gastos de antes, también los de otros extractos)
     previos = bizums.previos(alm, min(f["op"] for f in filas), max(f["op"] for f in filas))
     for f in reversed(filas):
-        f.update(C.clasificar_fila(f, filas, reglas, cuentas, recs, cuenta, categorias=grupos, mem=mem, titulares=titulares, previos=previos))
-    for f in filas: categoria_del_archivo(f, grupos)
-    bizums.propagar(filas)  # los hermanos de un reparto heredan la categoría del que ya la tiene
-    sugeridas = guardar_sugeridos(alm, filas, mem)  # lo dudoso con categoría sugerida fiable se guarda ya, marcado «por confirmar»
+        f.update(C.clasificar_fila(f, filas, reglas, cuentas, recs, cuenta, categorias=grupos, titulares=titulares, previos=previos))
+    for f in filas:
+        if not f.get("preguntar"): categoria_del_archivo(f, grupos)
+    bizums.propagar([f for f in filas if not f.get("preguntar")])
     huellas = huellas_existentes(alm, cuenta)
     # Movimientos apuntados a mano (sin huella) en esa cuenta: mismo importe y sentido, fecha a ±3 días (el banco
     # suele cargarlo un par de días después). Al casar, el apunte manual se queda con la huella del extracto.
@@ -221,43 +237,59 @@ def importar_banco(alm, ruta, cuenta=None, perfil_nombre=None):
         m = manual_para(f)
         if m: manuales.remove(m); casadas.append((m, f)); existentes += 1; continue
         (dudas if f.get("duda") else nuevas).append(f)
+    if not nuevas and not dudas and not casadas:
+        return {"ok": True, "tipo": "banco", "cuenta": cuenta, "perfil": perfil["nombre"], "filas": len(filas),
+                "nuevas": 0, "dudas": 0, "existentes": existentes, "ya_importado": True,
+                "mensaje": "Este archivo ya está importado: no trae nada nuevo", "ilegibles": raras}
+    ajuste = {}
+    referencia = alm.config(f"saldo_extracto:{cuenta}") or {}
+    if not referencia:
+        anterior = max((p for p in alm.todos("patrimonio") if cuenta in p.get("saldos", {}) and p["fecha"] < filas[-1]["op"]),
+                       key=lambda p: p["fecha"], default=None)
+        if anterior: referencia = {"fecha": anterior["fecha"], "saldo": anterior["saldos"][cuenta], "manual": True}
     with alm.transaccion():
         for m, f in casadas: alm.guardar("movimiento", {**m, "ext_texto": f["texto"], "ext_importe": f["importe"], "ext_fecha": f["op"]}, m["id"])
         for f in nuevas: alm.insertar_crudo("movimiento", movimiento_de(f, cuenta))
         for f in dudas:
             f.setdefault("patron", C.patron_sugerido(f["texto"]))
             alm.insertar_crudo("pendiente", {"tipo_import": "banco", "cuenta": cuenta, "archivo": os.path.basename(ruta),
-                                             "perfil": perfil["nombre"], "fila": f, "duda": f.get("duda", "")})
+                                             "perfil": perfil["nombre"], "fila": f, "duda": f.get("duda", ""), "preguntar": bool(f.get("preguntar"))})
         saldo = {"fecha": filas[0]["op"], "saldo": filas[0]["saldo"]} if "saldo" in filas[0] else info.get("saldo_final")
         if saldo:
-            prev = alm.config(f"saldo_extracto:{cuenta}") or {}
-            if saldo["fecha"] >= prev.get("fecha", ""): alm.set_config(f"saldo_extracto:{cuenta}", saldo)
+            prev = referencia
+            if saldo["fecha"] >= prev.get("fecha", ""):
+                if prev:
+                    # Un extracto bajado a mediodía puede traer nuevos cargos del MISMO día que el anterior.
+                    neto = sum(imp * n for (fecha, imp), n in huellas_existentes(alm, cuenta).items() if prev["fecha"] < fecha <= saldo["fecha"])
+                    # La referencia ya incluye los movimientos de su día; solo los nuevos de ese mismo día la modifican.
+                    if not prev.get("manual"):
+                        neto += sum(f["importe"] for f in nuevas + dudas + [f for _, f in casadas] if f["op"] == prev["fecha"])
+                    for m in alm.todos("movimiento"):
+                        if m.get("cuenta") != cuenta or m.get("ext_fecha") or not prev["fecha"] < m["fecha"] <= saldo["fecha"]: continue
+                        signo = 1 if m["clase"] in ("ingreso", "reembolso") or m["clase"] == "transferencia" and m.get("origen") else -1
+                        neto += signo * m["importe"]
+                    dif = round(saldo["saldo"] - prev["saldo"] - neto, 2)
+                    if abs(dif) >= 0.01 and saldo["fecha"] > prev["fecha"]:
+                        inicio = (datetime.date.fromisoformat(prev["fecha"]) + datetime.timedelta(days=1)).isoformat()
+                        nuevas_posteriores = [f["op"] for f in nuevas + dudas if f["op"] > prev["fecha"]]
+                        fin = (datetime.date.fromisoformat(min(nuevas_posteriores or [saldo["fecha"]])) - datetime.timedelta(days=1)).isoformat()
+                        fin = max(inicio, fin)
+                        cantidad = f"{abs(dif):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+                        texto = f"Faltan movimientos del {fmt(inicio)[:5]} al {fmt(fin)[:5]} ({'−' if dif < 0 else '+'}{cantidad} €). Si tienes ese extracto, impórtalo; si no, no pasa nada."
+                        ajuste["hueco"] = {"desde": inicio, "hasta": fin, "importe": dif, "mensaje": texto}
+                alm.set_config(f"saldo_extracto:{cuenta}", saldo)
+                if anotar_saldo_extracto(alm, cuenta, saldo): ajuste["saldo_igualado"] = saldo
         if not perfil.get("cuenta") and perfil.get("id"):  # recordar la cuenta de este formato (Norma 43, OFX y QIF no tienen)
             alm.guardar("perfil", {**perfil, "cuenta": cuenta}, perfil["id"])
         recordar_cabecera(alm, info, cuenta)
-    aprendidas = sum(1 for f in nuevas if f.get("aprendido"))
-    return {"ok": True, "tipo": "banco", "cuenta": cuenta, "perfil": perfil["nombre"], "filas": len(filas), "nuevas": len(nuevas),
-            "existentes": existentes, "dudas": len(dudas), "aprendidas": aprendidas, "sugeridas": sugeridas, "desde": filas[-1]["op"], "hasta": filas[0]["op"],
+    return {"ok": True, "tipo": "banco", "cuenta": cuenta, "perfil": perfil["nombre"], "filas": len(filas), "nuevas": len(nuevas), **ajuste,
+            "existentes": existentes, "dudas": len(dudas), "desde": filas[-1]["op"], "hasta": filas[0]["op"],
             "ilegibles": raras,
-            "mensaje": f"{cuenta}: {len(nuevas)} movimientos nuevos" + (f" ({aprendidas} clasificados por lo que ya sabía de ti)" if aprendidas else "")
-                       + (f", {sugeridas} con categoría sugerida por confirmar" if sugeridas else "")
+            "mensaje": f"{cuenta}: {len(nuevas)} movimientos nuevos"
                        + (f", {len(dudas)} por revisar" if dudas else "")
                        + (f" ({existentes} ya estaban)" if existentes else "") + f" · del {fmt(filas[-1]['op'])} al {fmt(filas[0]['op'])}"
                        + aviso_ilegibles(raras, primera=True)}
 
-def guardar_sugeridos(alm, filas, mem):
-    """Ajuste «Guardar ya lo importado con la categoría sugerida» (config guardar_sugeridos, encendido de serie): las filas con duda
-    para las que tu historial propone una categoría con confianza ≥ umbral (config sugeridos_umbral) dejan de ser duda y llevan
-    `sugerido` (el motivo). Traspasos y repartos de Bizums se siguen preguntando. → nº de filas."""
-    if alm.config("guardar_sugeridos") is False: return 0
-    umbral, n = C.umbral_valido(alm.config("sugeridos_umbral") if alm.config("sugeridos_umbral") is not None else C.UMBRAL_SUGERIDO), 0
-    for f in filas:
-        if not f.get("duda") or f.get("clase") == "transferencia" or "reparto" in f["duda"]: continue
-        s = C.sugerir_guardable(f["texto"], f["importe"], mem, umbral)
-        if not s: continue
-        f.update(clase=s["clase"], cat=s["categoria"], sugerido=f"{s['motivo']} · {round(100 * s['confianza'])} %", aprendido=False)
-        f.pop("duda", None); n += 1
-    return n
 
 def movimiento_de(f, cuenta, **cambios):
     """Fila del extracto ya clasificada → registro de movimiento (validado)."""
@@ -265,7 +297,7 @@ def movimiento_de(f, cuenta, **cambios):
     d = {"fecha": min(f["op"], f.get("val") or f["op"]), "clase": f["clase"], "categoria": f.get("cat") if f["clase"] != "transferencia" else "",
          "importe": abs(f["importe"]), "cuenta": cuenta, "concepto": f.get("concepto") or C.titulo(f["texto"]),
          "ext_texto": f["texto"], "ext_importe": f["importe"], "ext_fecha": f["op"]}
-    for k in ("recurrente", "destino", "origen", "reembolsa", "sugerido"):
+    for k in ("recurrente", "destino", "origen", "reembolsa", "auto"):
         if f.get(k): d[k] = f[k]
     return modelo.limpiar("movimiento", d)
 
@@ -277,6 +309,7 @@ def plan_de(recs, activo, fecha, importe):
 
 # ───────────── inversión ─────────────
 def importar_inversion(alm, ruta, cuenta=None, perfil_nombre=None):
+    cambios_antes = alm.con.total_changes
     info = {}
     perfil, filas = leer(ruta, alm, "inversion", perfil_nombre, info)
     cuentas = alm.todos("cuenta")
@@ -284,6 +317,7 @@ def importar_inversion(alm, ruta, cuenta=None, perfil_nombre=None):
     cuenta = cuenta or cuenta_por_iban(cuentas, info.get("iban")) or perfil.get("cuenta") or (brokers[0] if len(brokers) == 1 else None)
     if not cuenta or not any(c["nombre"] == cuenta for c in cuentas):
         raise NecesitaCuenta({"archivo": os.path.basename(ruta), "tipo": "inversion", "perfil": perfil["nombre"],
+                              "iban": info.get("iban"),
                               "cuentas": [c["nombre"] for c in cuentas if c.get("tipo") == "broker"]})
     activos = [a for a in alm.todos("activo")]
     acciones = perfil.get("acciones") or []
@@ -296,6 +330,7 @@ def importar_inversion(alm, ruta, cuenta=None, perfil_nombre=None):
     manuales = Counter((a["fecha"], round(float(a["importe"]), 2), a["activo"]) for a in alm.todos("aportacion") if not a.get("ext_fecha"))
     recs = [r for r in alm.todos("recurrente") if r.get("clase") == "aportacion"]
     nuevas_ap, nuevos_mov, dudas, existentes, ignoradas = [], [], [], 0, 0
+    casadas = 0
     for f in sorted(filas, key=lambda x: x["op"]):
         k = (f["op"], round(f["importe"], 2))
         tn = L.norm(f["texto"])
@@ -310,7 +345,7 @@ def importar_inversion(alm, ruta, cuenta=None, perfil_nombre=None):
             if huellas_ap[k] > 0: huellas_ap[k] -= 1; existentes += 1; continue
             km = (f["op"], imp, activo["nombre"])
             if manuales[km] > 0: manuales[km] -= 1; existentes += 1; continue
-            if OP.casar_movimiento(alm, f, cuenta, activo["nombre"], signo): existentes += 1; continue  # ya vino en el archivo de órdenes
+            if OP.casar_movimiento(alm, f, cuenta, activo["nombre"], signo): existentes += 1; casadas += 1; continue
             d = {"fecha": f["op"], "activo": activo["nombre"], "importe": imp, "cuenta": cuenta, "participaciones": participaciones(f["texto"], imp),
                  "ext_texto": f["texto"], "ext_importe": f["importe"], "ext_fecha": f["op"]}
             rec = plan_de(recs, activo["nombre"], f["op"], imp)
@@ -328,7 +363,7 @@ def importar_inversion(alm, ruta, cuenta=None, perfil_nombre=None):
             ya = huellas_mov[hk] > 0 or huellas_ap[hk] > 0
             if ya:
                 (huellas_mov if huellas_mov[hk] > 0 else huellas_ap)[hk] -= 1; existentes += 1; continue
-            if OP.casar_movimiento(alm, f, cuenta, None, signo): existentes += 1; continue  # una orden ya importada (activo por su ISIN)
+            if OP.casar_movimiento(alm, f, cuenta, None, signo): existentes += 1; casadas += 1; continue
             duda = ("Entrada de dinero: ¿es un traspaso desde tu banco (se ignora aquí), intereses o la venta de un activo?" if f["importe"] > 0
                     else "Salida de dinero: ¿es la compra de un activo (¿cuál?), una comisión o un traspaso a tu banco?")
             dudas.append({**f, "patron": C.patron_sugerido(f["texto"]), "duda": duda})
@@ -345,6 +380,7 @@ def importar_inversion(alm, ruta, cuenta=None, perfil_nombre=None):
     n = len(nuevas_ap) + len(nuevos_mov) + len(nuevos_cobro)
     ops = sorted(f["op"] for f in filas)
     return {"ok": True, "tipo": "inversion", "cuenta": cuenta, "perfil": perfil["nombre"], "filas": len(filas), "nuevas": n,
+            **({"ya_importado": True} if not n and not dudas and existentes and not casadas and not con_titulos and alm.con.total_changes == cambios_antes else {}),
             "existentes": existentes, "dudas": len(dudas), "desde": ops[0], "hasta": ops[-1], "ilegibles": info.get("ilegibles") or [],
             "mensaje": f"{cuenta}: {len(nuevas_ap)} compras/ventas y {len(nuevos_mov)} intereses nuevos" + (f", {len(nuevos_cobro)} dividendos" if nuevos_cobro else "") + (f", {len(dudas)} por revisar" if dudas else "")
                        + (f" ({existentes} ya estaban)" if existentes else "") + (f" · {ignoradas} traspasos ignorados" if ignoradas else "")
@@ -420,7 +456,7 @@ def importar_archivo(alm, carpeta, ruta, tipo=None, cuenta=None, perfil_nombre=N
     lote = None if simulando else uuid.uuid4().hex[:10]  # la vista previa no deja lote: no hay nada que quitar
     with alm.con_lote(lote):
         r = {"banco": importar_banco, "inversion": importar_inversion, "operaciones": OP.importar}[tipo](alm, ruta, cuenta, perfil_nombre)
-        if r.get("ok") and r.get("tipo") != "operaciones":
+        if r.get("ok") and not r.get("ya_importado") and r.get("tipo") != "operaciones":
             t = emparejar_traspasos(alm)
             if t:
                 antes = r.get("dudas", 0)
@@ -436,15 +472,29 @@ def importar_archivo(alm, carpeta, ruta, tipo=None, cuenta=None, perfil_nombre=N
             lista.append({"id": lote, "cuando": datetime.datetime.now().isoformat(timespec="seconds"), "archivo": os.path.basename(ruta),
                           "tipo": r.get("tipo"), "cuenta": r.get("cuenta") or "", "registros": registros})
             alm.set_config("importaciones", lista[-LOTES_MAX:])
+    if r.get("ok") and not r.get("ya_importado") and lote and r.get("tipo") == "banco" and r.get("cuenta"):
+        # Si importas el extracto de una cuenta, esa cuenta ya «importa su extracto»: sus traspasos llegan en él y no hay que
+        # sumarlos además desde la otra cuenta (proyectar). Sin esto, el dinero que pasas a Ahorro contaría dos veces.
+        c = next((x for x in alm.todos("cuenta") if x.get("nombre") == r["cuenta"]), None)
+        if c and not c.get("extracto"): alm.guardar("cuenta", {**{k: v for k, v in c.items() if k != "id"}, "extracto": True}, c["id"])
+    if r.get("ok") and r.get("cuenta"):
+        cuenta_r = r["cuenta"]
+        c = next((c for c in alm.todos("cuenta") if c["nombre"] == cuenta_r), {})
+        if c.get("tipo") == "broker" and not alm.config(f"efectivo_preguntado:{cuenta_r}") and not any(cuenta_r in p.get("saldos", {}) for p in alm.todos("patrimonio")):
+            r["preguntar_efectivo"] = cuenta_r
+        if r.get("ya_importado"): r["mensaje"] = "Este archivo ya está importado: no trae nada nuevo"
     if r.get("ok") and not simulando:
-        destino = os.path.join(carpeta.procesados, f"{datetime.date.today().isoformat()} {os.path.basename(ruta)}")
-        n = 2
-        while os.path.exists(destino):
-            base, ext = os.path.splitext(os.path.basename(ruta))
-            destino = os.path.join(carpeta.procesados, f"{datetime.date.today().isoformat()} {base} ({n}){ext}"); n += 1
-        try: shutil.move(ruta, destino)
-        except OSError: pass
+        archivar(carpeta, ruta)
     return r
+
+def archivar(carpeta, ruta):
+    """Aparta un archivo ya resuelto, incluida una repetición detectada en vista previa."""
+    destino = os.path.join(carpeta.procesados, f"{datetime.date.today().isoformat()} {os.path.basename(ruta)}")
+    n = 2
+    while os.path.exists(destino):
+        base, ext = os.path.splitext(os.path.basename(ruta))
+        destino = os.path.join(carpeta.procesados, f"{datetime.date.today().isoformat()} {base} ({n}){ext}"); n += 1
+    shutil.move(ruta, destino)
 
 # ───────────── quitar una importación entera ─────────────
 LOTES_MAX = 20  # las importaciones recientes que se recuerdan (config.importaciones)
@@ -585,20 +635,24 @@ def sugerencia_inversion(p, activos):
 
 # ───────────── resolver lo pendiente ─────────────
 def resolver(alm, pid, d):
-    """d (banco): {accion: guardar|ignorar, clase, categoria, concepto, cuenta_otra, recordar, patron}
-       d (inversión): {accion: activo|interes|ignorar, activo, nuevo_activo, recordar, patron}
-    Con «recordar», la decisión se guarda (regla del banco, patrón del activo o acción del formato del bróker) y se
-    aplica también a las demás dudas del mismo tipo y cuenta cuyo texto casa con el patrón."""
+    """Resuelve la selección. En banco `proxima` decide si se guarda una regla; el bróker conserva `recordar`."""
     p = alm.obtener("pendiente", pid)
     if not p: raise ValueError("Ese movimiento ya no está pendiente.")
     patron = L.norm(d.get("patron") or "")
-    recordar = bool(d.get("recordar") and patron)
+    proxima = d.get("proxima", "preguntar")
+    if p["tipo_import"] == "banco" and proxima != "preguntar" and not patron:
+        raise ValueError("Escribe el texto que identifica a la persona o comercio.")
+    if p["tipo_import"] == "banco" and proxima not in ("preguntar", "siempre", "concepto"):
+        raise ValueError("Elige qué hacer la próxima vez.")
+    concepto = L.norm(d.get("palabra") or "") if proxima == "concepto" else ""
+    if p["tipo_import"] == "banco" and proxima == "concepto" and (not concepto or not C.bizum_de(p["fila"]["texto"])):
+        raise ValueError("Escribe una palabra del concepto del Bizum.")
+    recordar = bool(patron and (proxima != "preguntar" if p["tipo_import"] == "banco" else d.get("recordar")))
     with alm.transaccion():
         if p["tipo_import"] == "inversion" and d.get("accion") == "activo" and d.get("nuevo_activo"):
             nombre = str(d["nuevo_activo"]).strip()
             if not any(a["nombre"].lower() == nombre.lower() for a in alm.todos("activo")):
                 clase = clase_activo(p["fila"]["texto"] + " " + nombre)
-                if clase == "otro" and d.get("clase") in modelo.CAMPOS["activo"]["clase"]: clase = d["clase"]  # el tipo que proponía Jev
                 nuevo = {"nombre": nombre, "clase": clase, "cuenta": p["cuenta"], "fecha_inicio": p["fila"]["op"], "aportado_inicial": 0}
                 cat = del_catalogo(L.norm(p["fila"]["texto"]))
                 if cat and L.norm(cat[1][0]) == L.norm(nombre): nuevo.update(clase=cat[1][1], isin=cat[0], patrones=list(cat[1][2]))
@@ -614,14 +668,16 @@ def resolver(alm, pid, d):
             else: _accion_perfil(alm, p["perfil"], patron, d["accion"])
         elif recordar and p["tipo_import"] == "banco" and d.get("accion", "guardar") == "guardar":
             clase = d.get("clase")
-            alm.guardar("regla", {"patron": patron, "categoria": d.get("categoria") if clase != "transferencia" else "", "clase": clase,
-                                  "cuenta_otra": d.get("cuenta_otra") if clase == "transferencia" else "", "origen": "usuario"})
+            guardar_regla(alm, {"patron": patron, "concepto": concepto, "accion": "clasificar",
+                               "categoria": d.get("categoria") if clase != "transferencia" else "", "clase": clase,
+                               "cuenta_otra": d.get("cuenta_otra") if clase == "transferencia" else "", "origen": "usuario"})
         # Las demás dudas iguales (con «recordar») y las que se han elegido a la vez (`ids`: un grupo de «Por revisar»)
         otras = 0
         ids = {int(x) for x in d.get("ids") or [] if str(x).isdigit()} - {pid}
         for q in alm.todos("pendiente"):
             if q["tipo_import"] != p["tipo_import"]: continue
-            if not (q["id"] in ids or (recordar and q["cuenta"] == p["cuenta"] and C.aplica(patron, q["fila"]["texto"]))): continue
+            if not (q["id"] in ids or (recordar and q["cuenta"] == p["cuenta"] and C.aplica(patron, q["fila"]["texto"])
+                    and (not concepto or (C.bizum_de(q["fila"]["texto"]) and C.casa(concepto, L.norm(C.bizum_de(q["fila"]["texto"])["concepto"])))))): continue
             dq = {**d, "concepto": None} if p["tipo_import"] == "banco" else d
             if p["tipo_import"] == "banco" and d.get("clase") == "transferencia" and (q["fila"]["importe"] < 0) != (p["fila"]["importe"] < 0): continue
             _resolver_uno(alm, q, dq); otras += 1
@@ -660,6 +716,7 @@ def _resolver_sin_lote(alm, p, d):
         if clase == "transferencia":
             otra = d.get("cuenta_otra")
             if not otra: raise ValueError("Elige la otra cuenta del traspaso.")
+            if otra == p.get("cuenta"): raise ValueError("Un traspaso va a otra cuenta tuya: elige una distinta de esta.")
             cambios["destino" if f["importe"] < 0 else "origen"] = otra
             cambios["cat"] = ""
         elif not cambios["cat"]: raise ValueError("Elige una categoría.")
@@ -669,6 +726,7 @@ def _resolver_sin_lote(alm, p, d):
             g = alm.obtener("movimiento", int(d["reembolsa"]))
             if g and g.get("clase") == "gasto": cambios["reembolsa"] = g["id"]
         fila = {**f, **cambios}
+        fila.pop("auto", None)
         fila = C.enlazar({"clase": fila["clase"], "cat": fila["cat"], "concepto": fila["concepto"]}, f, alm.todos("recurrente")) | {k: v for k, v in fila.items() if k not in ("clase", "cat", "concepto")}
         alm.insertar_crudo("movimiento", movimiento_de(fila, cuenta))
         msg = f"Guardado: {cambios['concepto']}"
@@ -707,14 +765,21 @@ def _accion_perfil(alm, perfil_nombre, patron, accion):
     acc = [a for a in (p.get("acciones") or []) if a.get("patron") != patron] + [{"patron": patron, "accion": accion}]
     alm.guardar("perfil", {**p, "acciones": acc}, p["id"])
 
-def confirmar_sugeridos(alm, ids=None):
-    """Da por buenas las categorías sugeridas (todas, o solo las de `ids`). → nº de movimientos confirmados."""
-    ids = None if ids is None else {int(x) for x in ids if str(x).isdigit()}
-    n = 0
-    with alm.transaccion():
-        for m in alm.todos("movimiento"):
-            if m.get("sugerido") and (ids is None or m["id"] in ids): alm.guardar("movimiento", {**m, "sugerido": ""}, m["id"]); n += 1
-    return n
+def guardar_regla(alm, datos):
+    existente = next((r for r in C.ordenar_reglas(alm.todos("regla")) if r.get("origen") != "plantilla"
+                      and L.norm(r["patron"]) == L.norm(datos["patron"])
+                      and L.norm(r.get("concepto") or "") == L.norm(datos.get("concepto") or "")), None)
+    return alm.guardar("regla", {**(existente or {}), **datos}, existente["id"] if existente else None)
+
+def preguntar_movimiento(alm, mid):
+    m = alm.obtener("movimiento", mid)
+    if not m or not m.get("auto"): raise ValueError("Ese movimiento no se clasificó solo.")
+    r = alm.obtener("regla", m["auto"].get("regla")) if m["auto"].get("regla") else None
+    if r and r.get("origen") != "plantilla":
+        alm.guardar("regla", {**r, "accion": "preguntar", "categoria": ""}, r["id"])
+    else:
+        guardar_regla(alm, {"patron": C.patron_sugerido(m.get("ext_texto") or m["concepto"]), "accion": "preguntar", "origen": "usuario"})
+    return "Te preguntaré la próxima vez"
 
 # ───────────── cambiar la categoría de un movimiento (y de los parecidos) ─────────────
 def _parecidos(alm, m):
@@ -746,19 +811,18 @@ def recategorizar(alm, mid, d):
     if not any(c["nombre"] == cat for c in alm.todos("categoria")): raise ValueError("Elige una categoría.")
     n = 0
     with alm.transaccion():
-        alm.guardar("movimiento", {**m, "categoria": cat, "sugerido": ""}, m["id"])  # elegirla tú la confirma
+        alm.guardar("movimiento", {**m, "categoria": cat}, m["id"])
         patron, otros = _parecidos(alm, m)
         if d.get("parecidos") and patron:
             for x in otros:
-                if x.get("categoria") != cat or x.get("sugerido"): alm.guardar("movimiento", {**x, "categoria": cat, "sugerido": ""}, x["id"]); n += (x.get("categoria") != cat)
+                if x.get("categoria") != cat: alm.guardar("movimiento", {**x, "categoria": cat}, x["id"]); n += 1
             clase = "ingreso" if m["clase"] == "ingreso" else "gasto"
             for q in alm.todos("pendiente"):
                 if q["tipo_import"] == "banco" and (q["fila"]["importe"] > 0) == (clase == "ingreso") and C.aplica(patron, q["fila"]["texto"]):
                     _resolver_uno(alm, q, {"accion": "guardar", "clase": clase, "categoria": cat}); n += 1
         if d.get("recordar") and patron:
             clase = "ingreso" if m["clase"] == "ingreso" else "gasto"
-            r = next((x for x in alm.todos("regla") if x.get("origen") != "plantilla" and L.norm(x["patron"]) == patron), None)
-            alm.guardar("regla", {**(r or {}), "patron": patron, "categoria": cat, "clase": clase, "origen": "usuario"}, r["id"] if r else None)
+            guardar_regla(alm, {"patron": patron, "categoria": cat, "clase": clase, "origen": "usuario", "accion": "clasificar"})
     return f"Ahora es {cat}" + (f" · y {n} más de «{C.titulo(patron)}»" if n else "") + (" · lo recordaré" if d.get("recordar") and patron else "")
 
 def cambiar_categoria(alm, ids, categoria):
@@ -782,7 +846,7 @@ def cambiar_categoria(alm, ids, categoria):
             m = alm.obtener("movimiento", mid)
             if m and m.get("parte_de"): partes += 1; continue
             if not m or m.get("clase") not in ("gasto", "ingreso", "reembolso") or (m["clase"] == "ingreso") != de_ingreso: otros += 1; continue
-            if m.get("categoria") != cat or m.get("sugerido"): recategorizar(alm, mid, {"categoria": cat})
+            if m.get("categoria") != cat: recategorizar(alm, mid, {"categoria": cat})
             n += 1
     if not n: raise ValueError("Ninguno de los elegidos se puede pasar a esa categoría: " + ("son partes de un movimiento dividido: cámbialas una a una, en su fila." if partes and not otros else f"tienen que ser {'ingresos' if de_ingreso else 'gastos'}."))
     tipo = ("un ingreso" if de_ingreso else "un gasto") if otros == 1 else ("ingresos" if de_ingreso else "gastos")
@@ -834,7 +898,7 @@ def dividir(alm, mid, partes):
     total = round(sum(p["importe"] for p in limpias), 2)
     if abs(total - m["importe"]) >= 0.005:
         raise ValueError(f"Las partes suman {total:.2f} € y el movimiento es de {m['importe']:.2f} €".replace(".", ",") + ".")
-    base = {k: v for k, v in m.items() if k not in ("id", "nota", "sugerido", "sin_gasto")}
+    base = {k: v for k, v in m.items() if k not in ("id", "nota", "auto", "sin_gasto")}
     with alm.transaccion():
         for i, p in enumerate(limpias):
             alm.guardar("movimiento", {**base, **p, "parte_de": m["id"]}, m["id"] if i == 0 else None)

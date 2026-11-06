@@ -1,11 +1,12 @@
 // ───────────── render ─────────────
 const TODAS = { ...VISTAS, bienvenida: vistaBienvenida, importar: vistaImportar, revisar: vistaRevisar, apuntar: vistaApuntar, cerrar: vistaCerrar,
-  valores: vistaCerrar, ajustes: vistaAjustes, gestionar: vistaGestionar, editar: vistaEditar, fijos: vistaFijos, activo: vistaActivo, revision: vistaRevision, renta: vistaRenta, reparto: vistaReparto, anual: vistaAnual, independencia: vistaIndependencia };
+  cuentas: vistaCuentas, repaso: vistaRepaso, valores: vistaCerrar, ajustes: vistaAjustes, gestionar: vistaGestionar, editar: vistaEditar, fijos: vistaFijos, activo: vistaActivo, renta: vistaRenta, reparto: vistaReparto, anual: vistaAnual, independencia: vistaIndependencia };
 function render() {
   reiniciarCachesCalculo();
   FB.nPorRevisar = porRevisar().length;  // la insignia del menú cuenta lo mismo que el aviso del Inicio (nucleo.js la pinta tras montar la pantalla)
   root.empty();
-  const sinConfigurar = !cuentas().length && !["bienvenida", "ajustes", "gestionar", "editar", "importar"].includes(vista);
+  if (vista !== "repaso") FB.estado.repasoDirecto = null;  // #repaso/dudas o /saldos saltan a su paso cada vez que se llega (repaso.js)
+  const sinConfigurar = !cuentas().length && !["bienvenida", "ajustes", "gestionar", "editar", "importar", "cuentas"].includes(vista);
   (sinConfigurar ? vistaBienvenida : TODAS[vista] || vistaInicio)();
   etiquetar(root);
   // La pestaña copia el título de la pantalla (su único h1): un solo nombre por pantalla
@@ -13,7 +14,6 @@ function render() {
   document.title = "FinanceBuddy" + (titular ? " · " + (titular.dataset.titulo || titular.textContent.trim()) : "");
 }
 render();
-if (!(input && input.exponer)) autoCuadre();
 // Para las pruebas automáticas.
 if (input && input.exponer) {
   window.__fin = { periodoKey, periodoInicio, rentabilidadPeriodo, planReparto, DateTime, finMes, repartoAhorro, estimacion, conciliacion, prevision, resumenInversion, fondoEmergencia, gastoVariable, tasa12, repartoObjetivo, repartoAportacion, validarObjetivos, resumenMes, subidasFijos, xirr, mesPagoDe,

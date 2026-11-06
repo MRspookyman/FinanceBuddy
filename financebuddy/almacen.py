@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS registros(id INTEGER PRIMARY KEY, tipo TEXT NOT NULL,
 CREATE INDEX IF NOT EXISTS registros_tipo ON registros(tipo);
 CREATE TABLE IF NOT EXISTS config(clave TEXT PRIMARY KEY, valor TEXT);
 """
-VERSION_ESQUEMA = 4  # 4: campos nuevos en movimiento (divisa, a_medias, etiquetas…) y en otros registros; una app de la 3 los borraría al editar
+VERSION_ESQUEMA = 7  # 7: reglas por concepto/preguntar y procedencia de clasificación
 COPIAS_MAX = 30
 
 RE_COPIA = re.compile(r"datos (\d{4}-\d{2}-\d{2})(?: (\d{6}))?")
@@ -90,6 +90,29 @@ class Almacen:
             self.con.close()
             raise BaseDañada(ruta, str(e))
         self.con.execute("DELETE FROM registros WHERE tipo='composicion'")  # informes X-Ray de versiones anteriores
+        self.quitar_restos_jev()
+        self.migrar_revision()
+
+    def quitar_restos_jev(self):
+        """Quita la configuración y las sugerencias del servicio retirado, también al restaurar una copia antigua."""
+        with self.transaccion():
+            self.con.execute("DELETE FROM config WHERE clave IN ('jev', 'jev_uso', 'jev_enviado', 'jev_revision', 'jev_fijos')")
+            for p in self.todos("pendiente"):
+                if "jev" not in p: continue
+                del p["jev"]
+                id = p.pop("id")
+                self.con.execute("UPDATE registros SET datos=? WHERE id=?", (json.dumps(p, ensure_ascii=False), id))
+
+    def migrar_revision(self):
+        """Retira el autoguardado por historial; sirve también para las copias restauradas."""
+        with self.transaccion():
+            self.con.execute("DELETE FROM config WHERE clave IN ('guardar_sugeridos', 'sugeridos_umbral')")
+            for m in self.todos("movimiento"):
+                if "sugerido" not in m: continue
+                if m.pop("sugerido"): m.setdefault("auto", {"historial": True})
+                id = m.pop("id")
+                self.con.execute("UPDATE registros SET datos=? WHERE id=?", (json.dumps(m, ensure_ascii=False), id))
+            self.set_config("version_esquema", VERSION_ESQUEMA)
 
     # ───── transacciones (anidables: solo la más externa hace COMMIT) ─────
     @contextmanager
@@ -227,6 +250,8 @@ class Almacen:
             self.con.execute("DELETE FROM registros"); self.con.execute("DELETE FROM config")
             self.con.executemany("INSERT INTO registros(id,tipo,datos) VALUES(?,?,?)", regs)
             self.con.executemany("INSERT INTO config(clave,valor) VALUES(?,?)", cfg)
+            self.quitar_restos_jev()
+            self.migrar_revision()
 
     def copia(self, carpeta, motivo="diaria", forzar=False, extra=None):
         """Copia datos.db en carpeta/datos AAAA-MM-DD[ motivo].db (una al día salvo `forzar`). Guarda las últimas 30.
@@ -269,13 +294,13 @@ class Almacen:
         if not nombre or tipo not in modelo.REFERENCIAS: return []
         cuenta = {}
         for t, campo in modelo.REFERENCIAS[tipo]:
-            n = 0
+            ids = cuenta.setdefault(t, set())
             for r in self.todos(t):
-                if campo.endswith("[]"): n += nombre in (r.get(campo[:-2]) or [])
-                elif campo.endswith("*"): n += nombre in (r.get(campo[:-1]) or {})
-                else: n += r.get(campo) == nombre
-            if n: cuenta[t] = cuenta.get(t, 0) + n
-        return sorted(cuenta.items(), key=lambda x: -x[1])
+                if campo.endswith("[]"): usado = nombre in (r.get(campo[:-2]) or [])
+                elif campo.endswith("*"): usado = nombre in (r.get(campo[:-1]) or {})
+                else: usado = r.get(campo) == nombre
+                if usado: ids.add(r["id"])
+        return sorted(((t, len(ids)) for t, ids in cuenta.items() if ids), key=lambda x: -x[1])
 
     def cerrar(self):
         with self.lock: self.con.close()

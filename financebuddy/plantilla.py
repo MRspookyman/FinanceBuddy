@@ -130,8 +130,7 @@ CATALOGO = [
      "palabras": ["ayuntamiento", "agencia tributaria", "hacienda", "tasa", "dgt", "multa", "tributos", "registro civil"],
      "descripcion": "impuestos, tasas y multas"},
 ]
-# Qué entra en cada categoría de serie: se lo explica al asistente Jev (jev.py) para que elija bien. Las tuyas pueden
-# tener su propia descripción (campo «descripcion»).
+# Qué entra en cada categoría de serie. Las tuyas pueden tener su propia descripción (campo «descripcion»).
 DESCRIPCIONES = {
     "Vivienda": "alquiler, hipoteca, comunidad, IBI", "Suministros": "luz, agua, gas, internet, teléfono móvil",
     "Seguros": "seguros de coche, hogar, salud o vida", "Suscripciones": "plataformas de vídeo o música, gimnasio, apps y servicios mensuales",

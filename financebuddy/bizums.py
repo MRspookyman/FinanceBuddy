@@ -8,7 +8,7 @@
 #   · reparto: varios Bizums iguales el mismo día (o al siguiente) y un gasto tuyo cuyo total ÷ (n o n+1 o n+2) es justo
 #     ese importe: 5 Bizums de 19,56 € = Mercadona 97,84 € ÷ 5;
 #   · cercano: sin esa cuenta, el gasto compartible más grande del día o el anterior que cubre el Bizum.
-# Todo esto es aritmética local: no usa Jev. Jev entra solo cuando esto no decide (jev.py, candidatos()).
+# Todo esto es aritmética local.
 import datetime, re
 from collections import Counter
 from . import clasificar as C

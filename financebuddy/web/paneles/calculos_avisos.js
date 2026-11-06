@@ -114,13 +114,12 @@ function cambiosDesdeVista(prev, ahora) {
   const dif = snap.neto != null && isFinite(prev.neto) && Math.abs(snap.neto - prev.neto) >= 1 ? snap.neto - prev.neto : null;
   return { primera: false, hay: nuevos.length > 0 || avisosNuevos.length > 0, nuevos: nuevos.length, desde: fechas[0] || null, hasta: fechas[fechas.length - 1] || null, dif, avisosNuevos, fecha: prev.fecha || null, snap };
 }
-// Qué avisos van a la vista en el Inicio y cuáles plegados («y N avisos más»). Arriba, como mucho `max` de los que piden
-// actuar (warn); el resto de esos y las notas (info), plegados. Fuera: lo de «Por revisar» (ya está en el menú, con su número)
-// y las notas que repiten una de las acciones que ya salen arriba (`rutasArriba`).
-function repartirAvisos(lista, rutasArriba = [], max = 2) {
+// Qué avisos van a la vista en el Inicio y cuáles plegados («y N avisos más»): hasta tres, primero warn y después info.
+// Fuera: lo de «Por revisar» (ya está en el menú, con su número) y las notas que repiten una acción de `rutasArriba`.
+function repartirAvisos(lista, rutasArriba = [], max = 3) {
   const L = lista.filter((a) => a.ruta !== "#revisar" && !(a.nivel !== "warn" && rutasArriba.includes(a.ruta)));
-  const warn = L.filter((a) => a.nivel === "warn");
-  return { arriba: warn.slice(0, max), resto: [...warn.slice(max), ...L.filter((a) => a.nivel !== "warn")] };
+  const ordenados = [...L.filter((a) => a.nivel === "warn"), ...L.filter((a) => a.nivel !== "warn")];
+  return { arriba: ordenados.slice(0, max), resto: ordenados.slice(max) };
 }
 // Cuánto hay que apartar al mes para llegar a un objetivo con fecha (0 si no tiene fecha, ya pasó o ya está conseguido).
 function ritmoObjetivo(o, hoyF) {
@@ -202,7 +201,7 @@ function avisos() {
   // Cada uno lleva el movimiento en su clave: quitado con su ×, no vuelve.
   for (const m of comisionesRecientes(movimientos(), hoy).sort((a, b) => a.fecha - b.fecha).slice(-3)) add("warn", `Te han cobrado una comisión: ${m.concepto} · ${eur(m.importe, 2)} el ${m.fecha.toFormat("dd/MM")}`, `#editar/movimiento/${m.p.id}`, `comision:${m.p.id}`);
   for (const { a, b } of cobrosRepetidos(movimientos(), hoy).slice(-3)) add("info", `Posible cobro repetido: ${b.concepto} · dos de ${eur(b.importe, 2)} (el ${a.fecha.toFormat("dd/MM")} y el ${b.fecha.toFormat("dd/MM")}) · si son dos compras de verdad, quita este aviso`, `#editar/movimiento/${b.p.id}`, `repetido:${a.p.id}:${b.p.id}`);
-  if (faltaSegundaCopia(DB.config, DB.info, registros("movimiento").length)) add("info", "Tus copias de seguridad están en el mismo disco que tus datos: si ese disco falla, se pierden las dos cosas · guárdalas también en otro sitio (un USB, otro disco)", "#ajustes/datos", "copias:mismodisco");
+  if (faltaSegundaCopia(DB.config, DB.info, registros("movimiento").length)) add("info", "Tus copias de seguridad están en el mismo disco que tus datos: si ese disco falla, se pierden las dos cosas · guárdalas también en otro sitio (un USB, otro disco)", "#ajustes/copias", "copias:mismodisco");
   const nArch = ((DB.info || {}).archivos || []).length;
   if (nArch) add("warn", `${nArch} archivo${nArch > 1 ? "s" : ""} en la carpeta Importar sin procesar`, "#importar", `archivos:${nArch}:${hoy.toISODate()}`);
   const K = conciliacion();
@@ -222,7 +221,7 @@ function avisos() {
   if (cuentas().some((c) => c.extracto) && (!fd || diasDesde(fd) > 8)) add("info", fd ? `Movimientos hasta el ${fd.toFormat("dd/MM")}: importa el extracto de tu banco para ver cómo vas` : "Importa el extracto de tu banco para empezar", "#importar", `importar:${fd ? fd.toISODate() : ""}`);
   const A = activos().filter((a) => !vendidoDelTodo(a));  // de lo que ya vendiste o traspasaste entero no hay valor que actualizar
   const viejos = A.filter((a) => !a.fechaValor || diasDesde(a.fechaValor) > 35);
-  if (viejos.length) add("info", `Valor de la inversión sin actualizar hace más de un mes: ${viejos.map((a) => a.nombre).join(", ")}`, "#valores", `valores:${hoyCal}`);
+  if (viejos.length) add("info", `Valor de la inversión sin actualizar hace más de un mes: ${viejos.map((a) => a.nombre).join(", ")}`, "#inversion/anotar", `valores:${hoyCal}`);
   const malos = saludInversion().filter((x) => x.nivel === "error");
   if (malos.length) add("warn", `Tu inversión: ${malos.length === 1 ? "hay algo que no cuadra" : `${malos.length} cosas no cuadran`} (${malos.map((x) => x.activo.nombre).join(", ")}) · revísalo`, "#inversion", `salud:${hoyCal}:${malos.length}`);
   // Tu reparto se ha alejado del objetivo que pusiste en Inversión (sin objetivo, nada)

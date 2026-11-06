@@ -277,5 +277,6 @@ def importar(alm, ruta, cuenta=None, perfil_nombre=None):
     fechas = [o["fecha"] for o in ops] or ["", ""]
     return {"ok": True, "tipo": "operaciones", "cuenta": cuenta, "perfil": perfil["nombre"], "filas": len(ops) + descartadas,
             "nuevas": n["nueva"], "existentes": n["existente"], "dudas": 0, "desde": min(fechas), "hasta": max(fechas),
+            "ya_importado": bool(ops) and n["existente"] == len(ops) and not n["completada"] and not n["desde_revisar"] and not n["revisadas"],
             "activos_nuevos": nuevos_activos, "ilegibles": info["ilegibles"],
             "mensaje": f"Operaciones ({cuenta}): " + " · ".join(p for p in partes if p) + aviso_ilegibles(info["ilegibles"], primera=True)}

@@ -7,11 +7,16 @@ Tus finanzas personales **en tu ordenador**. Importas los extractos de tu banco 
 - a dónde va tu dinero (gastos por categoría) y de dónde viene;
 - cuánto tienes en cada cuenta y cómo va tu **inversión**.
 
-Pantallas: **Inicio**, **Movimientos** (con **Mi año**), **Inversión** (con tus **metas de patrimonio** y **Para la renta**), **Importar** y **Ajustes**.
+Pantallas: **Inicio**, **Cuentas**, **Movimientos** (con **Mi año**), **Inversión** (con tus **metas de patrimonio** y **Para la renta**), **Importar** y **Ajustes**.
+
+Te acompaña **Nubo**, una nube con dos ojos que te dice cómo vas y qué conviene hacer ahora: «antes de fiarte de la cifra del
+mes, revisa estos 4 movimientos», «tus saldos son de hace un mes», «todo al día». Nunca riñe y celebra lo que terminas (una
+revisión, un mes cerrado), no las subidas o bajadas del mercado. Funciona sin internet; en *Ajustes → Apariencia → Tu
+compañero* puedes cambiarle el nombre u ocultarlo (la app funciona igual).
 
 Nada sale de tu ordenador: no hay cuentas, ni nube, ni conexión con el banco. Los datos se guardan en un archivo de tu carpeta Documentos.
-Hay tres cosas **opcionales y apagadas de serie** que sí se conectan a internet si tú las activas, cada una con su explicación de
-qué sale: el asistente **Jev**, los **precios por internet** y el **aviso de versión nueva** (*Ajustes*). Sin ellas, la app no sale a la red.
+Hay dos cosas **opcionales y apagadas de serie** que sí se conectan a internet si tú las activas, cada una con su explicación de
+qué sale: los **precios por internet** y el **aviso de versión nueva** (*Ajustes*). Sin ellas, la app no sale a la red.
 
 Solo para **Windows**. Todo en español y en euros.
 
@@ -29,25 +34,57 @@ Solo para **Windows**. Todo en español y en euros.
    - **Vista previa**: antes de guardar nada te enseña lo que va a importar (movimientos nuevos, los que ya estaban, dudas, ingresos y
      gastos, saldo final y una muestra) para compararlo con tu banco. No se guarda hasta que lo confirmas (se puede desactivar).
      Si no hay nada raro (ni filas que no se pueden leer, ni dudas por revisar, ni activos nuevos), se resume en una línea con
-     el saldo del extracto y se confirma con un solo botón, **Importar**; el detalle queda plegado. Si queda algo por revisar,
-     el resultado lleva un botón **Revisar las N dudas →**.
+     el saldo del extracto y se confirma con un solo botón, **Importar**; el detalle queda plegado.
    - ¿Sin extracto? *Importar → Descargar la plantilla de Excel*: fecha, concepto, importe y un desplegable con tus categorías.
-4. **Por revisar**: lo que la app no sabe clasificar sola te lo pregunta, agrupado por comercio.
-   - Un clic en la categoría (la más probable sale la primera, marcada con ✨) resuelve el grupo entero y lo recuerda.
-   - **Aprende sola**: lo que ya clasificaste antes de un comercio se usa la siguiente vez, aunque no marques «recordar».
-   - Si una categoría está mal, pulsa el movimiento y elige otra: puedes cambiar a la vez todos los del mismo comercio.
+4. **Revisión del extracto**: al confirmar una importación, Nubo te lleva por tres pasos que puedes dejar a medias y retomar
+   («Seguir donde lo dejaste»): **qué ha entrado** (nuevos, los que ya estaban, entradas y salidas, y la lista plegada),
+   **qué necesita revisión** (primero las dudas **de este extracto**; lo pendiente de antes va aparte y plegado, y si el extracto
+   no deja dudas puedes ir directo a saldos) y **comprobar saldos**: escribes el saldo que ves en tu banco
+   (el campo empieza vacío) y te dice «✓ Cuadra» o «No cuadra por X €». «Guardar estos saldos» los anota como saldos de hoy sin
+   cerrar el mes (las cuentas que no escribas se quedan con su saldo estimado). Al terminar, el resumen separa los saldos que
+   cuadran, los que tienen diferencia y los **sin comprobar** (los que dejaste vacíos); terminar no guarda nada.
+   **Por revisar** sigue en el menú: agrupa comercios; cada Bizum tiene su tarjeta (solo se juntan con la misma cuenta, persona y concepto).
+   - El historial **solo sugiere**: seis categorías a mano y un buscador para las demás; nada se guarda por una sugerencia.
+   - **La próxima vez** va encima de las categorías (al elegir una categoría se guarda): «Pregúntame» resuelve solo la selección; «Siempre» crea o actualiza tu regla; en Bizums puedes limitarla a una palabra del concepto.
+     Con tres decisiones seguidas iguales, «Siempre» aparece premarcado: puedes cambiarlo antes de elegir categoría.
+   - Las pistas por palabras solo miran el nombre del comercio o el concepto (no el texto técnico del banco, como «COMISION 0,00») y nunca salen marcadas para aceptar en bloque.
+   - En *Movimientos*, pulsar uno sin revisar abre su tarjeta en *Por revisar*; «← Volver a Movimientos» te deja la lista con los mismos filtros.
+   - Si una categoría está mal, pulsa el movimiento y elige otra: cambia **solo ese** y se puede deshacer. Si quieres, una
+     casilla (sin marcar) cambia también los demás de ese comercio y lo recuerda para los próximos.
+   - **Corregir se puede deshacer**: cambiar un movimiento, una cuenta o un fijo, borrar algo, anotar saldos o valores, cerrar
+     el mes o crear los fijos que te propone la app. El aviso de abajo trae «Deshacer» y, hasta que guardes otra cosa, también
+     está en *Ajustes → Copias y archivos*. En la ficha de un movimiento, lo menos usado va plegado: *Pago de un fijo*,
+     *Compartir o devolver* y *Más datos*.
    - O sin salir de *Movimientos → Lista*: cada fila lleva su categoría en un desplegable, y con las casillas eliges varios
      y los pasas a otra de golpe (las partes de un movimiento dividido se cambian una a una). Se puede deshacer.
      En *Movimientos → Lista*, **Más filtros** (plegado) acota por cuenta, por importe (desde/hasta, sin contar el signo) o solo lo sin revisar.
-5. Una vez al mes, *Ajustes → Actualizar saldos*: anotas lo que tienes en cada cuenta y el valor de tu inversión.
-   - Así la app comprueba que no falta ningún movimiento.
+5. Al acabar el mes, **Cerrar el mes** (*Inicio* o *Ajustes → Actualizar saldos*): anotas lo que tienes en cada cuenta y el valor de tu inversión.
+   - Así la app comprueba que no falta ningún movimiento. Antes te enseña **así ha ido el mes** (lo que entró y salió, el ahorro
+     y cuánto te pasaste o te sobró del límite), tus metas y lo que queda sin revisar (informa, no bloquea).
+   - Si te pasaste, te propone **bajar tu límite 50 €**: solo si lo pulsas, y vale para los meses siguientes (se cambia en *Ajustes*).
    - Un mes queda cerrado con los saldos de su último día (o de después). Si los anotas a mitad de mes se guardan igual, pero
      ese mes se te volverá a pedir cuando acabe.
-6. Con dos o más meses importados, *Ajustes → Detectar fijos*: la app encuentra tus nóminas, alquiler y recibos (lo que se repite cada mes) y te los propone; también te enseña **de dónde viene tu dinero** y, si tienes fijos que no son mensuales (un seguro anual, el IBI…), **cuánto apartar al mes** para ellos.
+6. Con dos o más meses importados, *Ajustes → Tu dinero → Fijos → Posibles fijos en tus movimientos*: la app encuentra tus nóminas, alquiler y recibos (lo que se repite cada mes) y te los propone; también te enseña **de dónde viene tu dinero** y, si tienes fijos que no son mensuales (un seguro anual, el IBI…), **cuánto apartar al mes** para ellos.
+
+**Inicio**: arriba, lo que dice Nubo cambia según lo que toca: si hay movimientos sin revisar, te pide revisarlos antes de fiarte
+de la cifra del mes; si la previsión dice que tus cuentas no llegan, cuánto gastar menos al mes para llegar; si tus saldos son
+antiguos o no cuadran, comprobarlos; al acabar el mes, cerrarlo; y si no, «Todo al día». Siempre a la vista, dos medidores
+distintos: **Tu presupuesto** (tu propio límite de gasto variable, con el ritmo del mes) y **Lo que tus cuentas aguantan**
+(lo más bajo que llegarán tus cuentas en los próximos meses, y en el escenario prudente). Al lado, **Qué conviene mirar**: los
+avisos agrupados en *Necesita atención*, *Próximamente* y *Para cuando puedas*, cada uno con su señal en palabras y color
+(rosa si algo no cuadra o no llega, coral si es gasto, ámbar si está pendiente) y «Nuevo» en los que no habías visto.
+Debajo, **Tus cuentas** en tarjetas y los paneles de dos en dos: el ritmo del mes con a dónde va tu dinero, la previsión con
+los próximos cargos, tu dinero total con tus metas (la sugerencia de cuánto pasar al ahorro va junto a su meta) y «¿Me puedo
+permitir un gasto?». Todas las cajas miden lo mismo y van en dos columnas iguales; lo que no cabe en una se resume y lleva
+«Ver todo →».
+
+**Cuentas**: una tarjeta por cuenta con su saldo estimado hoy y de cuándo es el último saldo anotado. Al elegir una ves sus
+movimientos del mes y puedes **personalizarla**: nombre visible, icono y color (el nombre de la cuenta en tus movimientos no
+cambia; se puede deshacer).
 
 Mientras empiezas, el Inicio enseña **Primeros pasos**: estos pasos en una lista que se tacha sola según los vas haciendo. Con «Ocultar» no vuelve a salir.
 
-Cuando vuelves y hay movimientos o avisos nuevos desde la última vez, el Inicio pone bajo los avisos una línea plegada: «Desde la última vez: 12 movimientos nuevos (del 04/09 al 29/09)». Al desplegarla ves cuánto ha cambiado tu dinero total y qué avisos son nuevos; con «Entendido» desaparece hasta el siguiente cambio. La primera vez no sale.
+Cuando vuelves y hay movimientos o avisos nuevos desde la última vez, el Inicio pone bajo los avisos una línea: «Desde la última vez: 12 movimientos nuevos (del 04/09 al 29/09)» y cuánto ha cambiado tu dinero total; los avisos nuevos van marcados «Nuevo» en la lista, sin repetirse aquí. Con «Entendido» desaparece hasta el siguiente cambio. La primera vez no sale.
 
 **Inversión**: lo que vale y lo que has metido en cada activo, ganancia y rentabilidad anual, evolución, cuánto
 aportas cada mes (y cuántos meses seguidos), reparto por tipo (fondos, ETF, cripto, materias primas), participaciones y
@@ -59,7 +96,7 @@ rendimiento de cada activo (dividendos de los últimos 12 meses ÷ lo que vale h
 participaciones) añade las participaciones de cada compra y los **traspasos entre fondos** (vender uno para comprar otro:
 no cuentan como dinero nuevo), que no salen en la cuenta de efectivo. Un Excel de **operaciones con títulos** (Fecha,
 Tipo, Activo, Estado, Títulos) completa las participaciones de ETF y cripto. Nada se duplica con el extracto de la
-cuenta, se importe antes uno u otro. Con las participaciones, en *Actualizar valores* basta con poner el precio.
+cuenta, se importe antes uno u otro. Con las participaciones, en *Inversión → Anotar valores a mano* basta con poner el precio.
 Sin valor anotado, un activo con participaciones se estima con el precio de su última compra o venta (marcado «≈»).
 
 **Reparto ideal** (*Inversión*): dices qué porcentaje quieres en cada activo y la app te enseña en cuánto te has desviado y
@@ -124,45 +161,21 @@ salir en Inversión, en los avisos y al anotar valores, pero sus operaciones se 
 renta* y para el coste de lo que pasó por traspaso al fondo nuevo. No lo borres para quitarlo de en medio; y si lo marcaste sin
 querer, *Inversión → Tus activos → verlos* te lleva a ellos para volver atrás.
 
-**Asistente Jev (opcional)**: con tu clave de [Jev](https://typesafe.ai) (TypeSafe AI) en *Ajustes → Asistente Jev*, la
-app le pregunta:
-- **Por revisar (banco)**: la categoría de lo que tu historial no reconoce (y, si entra dinero, si es un ingreso o te
-  devuelven algo que pagaste).
-- **Por revisar (bróker)**: qué es un texto que la app no reconoce —compra, venta, intereses, comisión o traspaso— y
-  qué tipo de activo es (fondo, ETF, acción, cripto…), para crearlo con su tipo.
-- **Revisar tus categorías** (*Ajustes → Revisar tus categorías*): repasa lo ya clasificado, un comercio cada vez, y
-  avisa de lo que está en «Otros» o de lo que cree con ≥ 85 % que es de otra categoría. «Cambiar» lo aplica a todo el
-  comercio y lo recuerda como regla. Al importar el banco repasa también lo nuevo que se ha clasificado solo.
-- **Apuntar**: al escribir el concepto propone la categoría (tus reglas y tu historial primero; Jev si no lo saben).
-- **Bizums recibidos**: de qué gasto tuyo es la parte que te devuelven. Se le enseñan tus gastos de los días anteriores como
-  opciones y elige uno (o «ninguno»).
-- **Fijos**: si algo que se repite en una categoría de gasto variable parece una cuota (academia, clases…) o solo coincide.
-- **Un banco nuevo**: si el archivo es del banco o del bróker y qué columna es cada cosa.
+**Apuntar**: al escribir el concepto, la app propone una categoría según tus reglas y lo que has clasificado otras veces.
+Todo se calcula en tu ordenador. Puedes cambiar la sugerencia antes de guardar.
 
-**Qué contexto recibe**, además del concepto y el importe: cómo has clasificado cosas parecidas, tus Bizums más habituales por
-concepto, qué ha pasado antes con esa persona (sin su nombre) y que el Bizum que envías suele ser tu parte de algo y el que
-recibes la parte que te devuelven. En *Ajustes → Asistente Jev → Ver lo último que se ha enviado* ves, consulta a consulta,
-exactamente lo que ha salido de tu ordenador. Tu nombre (titulares) y las direcciones («C/ Linares 4») también se quitan.
-
-Solo sugiere, con su confianza («Jev · 91 %»; desde el 85 % sale marcada al aceptar en bloque). Si no hay conexión o la
-clave falla, deja de preguntar y no marca nada (se reintenta la próxima vez). En Ajustes ves las consultas del mes y
-lo que cuestan (céntimos). Se envía solo el concepto saneado —sin
-nombres de personas en Bizums y transferencias, números de tarjeta, IBAN ni correos— y el importe; la clave se guarda
-solo en tu carpeta de datos, cifrada para tu usuario de Windows (si llevas los datos a otro ordenador, hay que pegarla otra vez). Para medir cuánto acierta con tus movimientos antes de fiarte:
-`python pruebas\evaluar_jev.py` (con `--mostrar` enseña lo que se enviaría sin enviar nada). Sin clave, todo igual.
-
-**Bizums**: tus Bizums enviados son tu parte de un gasto (categoría por el concepto). Los recibidos son lo que te devuelven de un
+**Bizums**: en los enviados, las palabras del concepto sugieren una categoría, pero tú decides. Los recibidos son lo que te devuelven de un
 gasto que pagaste tú: se restan de su categoría y se enlazan con él (*Movimientos*: «te devolvieron X»; en su ficha, «Tu parte
 real»). La app lo casa sola con aritmética: varios Bizums iguales que cuadran con un gasto (5 × 19,56 € = 97,84 € ÷ 5), hasta
 10 días después y también si el gasto está en otro extracto; los iguales del mismo día heredan la categoría del que ya la tiene.
 Lo que no cuadra aparece en *Por revisar* como un **reparto** (un solo grupo) con los gastos candidatos, con su fecha, importe,
 categoría, cuánto te han devuelto ya y cuánto te costó de verdad: eliges uno y queda enlazado.
 
-**Por revisar**: filtros (banco, bróker, con sugerencia) y **Revisar y aceptar las sugerencias** de una vez, con una
-casilla por grupo (las dudosas, sin marcar). Lo que tu historial resuelve con bastante seguridad **se guarda ya** con esa
-categoría y cuenta en el mes, marcado «categoría por confirmar» (se apaga en *Ajustes → General → Importar*). Y si ninguna
-categoría tuya encaja, te propone **crear una nueva** (Mascotas, Viajes, Salud…) con su emoji: solo se crea si la pulsas. Las entradas de dinero al bróker con un concepto tuyo («ahorro», «Inicio»)
-se proponen como traspaso desde tu banco, no como la venta de un activo.
+**Por revisar**: «Todo» y «Con sugerencia» permiten revisar y aceptar varias sugerencias juntas. Solo se crean reglas donde
+marques «Siempre»; «Pregúntame» nunca recuerda la categoría. «N se clasificaron solos · Ver y corregir» muestra los movimientos
+del último archivo clasificados por reglas: puedes cambiar su categoría o elegir «Pregúntame en adelante», sin tocar lo ya guardado.
+Tus reglas mandan sobre las de serie; una regla de persona y concepto manda sobre la de solo persona. Si ninguna categoría encaja,
+se propone crear una nueva (solo se crea si la eliges). Las entradas al bróker con un concepto tuyo se proponen como traspaso desde tu banco.
 
 **Dividir un movimiento**: si un cargo son varias cosas (una compra que mezcla comida y cosas de casa, dinero del cajero), ábrelo
 y en *Dividir en varias categorías* pon el importe y la categoría de cada parte; lo que no repartas se queda en la primera, así
@@ -178,7 +191,17 @@ no usas (no se borra nada y sus movimientos siguen contando). Todo con vista pre
 **Todos tus datos en Excel** (*Ajustes → Tus datos*): un `.xlsx` con una hoja por cosa (movimientos, cuentas, saldos, fijos,
 categorías, reglas, inversión, aportaciones, dividendos, objetivos y recordatorios) para consultarlo fuera de la app.
 
-**A tu gusto** (*Ajustes*): tema automático, claro u oscuro y color de acento; qué paneles ves en el Inicio y en qué orden;
+**Ajustes**, por tareas: *Tu dinero* (límite, meta de ahorro, tu mes y colchón; cuentas, fijos, metas, recordatorios e inversión),
+*Clasificación* (categorías, reglas, formatos y tus nombres en el banco), *Aspecto y avisos*,
+*Servicios opcionales* (precios por internet) y *Copias y archivos* (deshacer lo último, copias, exportar,
+cambiar de carpeta). Todo se guarda solo al cambiarlo.
+
+**Reglas** (*Ajustes → Clasificación → Reglas*): «si el texto contiene…, es esta categoría». *Guardar para próximas
+importaciones* vale para lo que importes después; *Guardar la regla y corregir los N ya importados* también arregla lo que ya
+tienes (y se puede deshacer).
+
+**A tu gusto** (*Ajustes*): tema automático, claro u oscuro y color de acento (violeta de serie); el nombre de tu compañero o
+esconderlo; qué paneles ves en el Inicio y en qué orden;
 cuántos registros por página en las listas largas; el día en que empieza tu mes y tu colchón;
 icono, color y presupuesto de cada categoría (con aviso si te pasas). *Ajustes → Categorías → Proponer presupuestos* te propone
 para cada categoría de gasto variable lo que gastas de media (redondeado a 10 €): marcas las que quieras y solo se guardan esas.
@@ -189,7 +212,7 @@ frente a tu media de los meses anteriores, y en el Inicio, el ritmo de gasto del
 
 **Lo que viene** (*Inicio*): «Tus próximos meses» enseña cuánto tendrás en tus cuentas al acabar cada uno de los próximos doce
 meses: cuenta tus fijos, tus aportaciones, lo que sueles gastar de verdad (tu media, no tu límite) y también los gastos fijos
-que no tienes dados de alta (un seguro, un recibo que no llega cada mes), y te dice cuánto es cada cosa. Bajo la barra de la portada, **¿Me puedo permitir un gasto?** (plegado): escribes un importe y te dice cuánto te quedaría de tu límite del mes (o por cuánto te pasarías), cuánto tendrías al acabar el mes y cuál sería el saldo más bajo de los próximos meses; es solo una cuenta, no apunta nada. Los avisos se quitan con su **×** (vuelven a salir cuando cambia lo que los provoca: otro mes, otra subida); cada objetivo con fecha dice cuánto apartar al mes; los recordatorios pueden **repetirse** (cada año, cada 3 meses o cada
+que no tienes dados de alta (un seguro, un recibo que no llega cada mes), y te dice cuánto es cada cosa. En «Tu presupuesto», **¿Me puedo permitir un gasto?** (plegado): escribes un importe y te dice cuánto te quedaría de tu límite del mes (o por cuánto te pasarías), cuánto tendrías al acabar el mes y cuál sería el saldo más bajo de los próximos meses; es solo una cuenta, no apunta nada. Los avisos se quitan con su **×** (vuelven a salir cuando cambia lo que los provoca: otro mes, otra subida); cada objetivo con fecha dice cuánto apartar al mes; los recordatorios pueden **repetirse** (cada año, cada 3 meses o cada
 mes) y con «Hecho» pasan solos a su siguiente fecha. En *Fijos* ves lo que suman al mes y al año.
 
 **Avisos** (*Inicio*): además de lo de siempre, la app te dice si **te han cobrado una comisión**, si un **cobro parece repetido**
@@ -206,12 +229,27 @@ Cerrar la pestaña del navegador no cierra la app: para cerrarla, clic derecho e
 ## Uso semanal
 
 1. Descarga el extracto de tu banco: en la web o la app del banco, *Movimientos → Exportar a Excel*.
-2. Arrástralo a *Importar*, o guárdalo en la carpeta `Importar\Banco` y pulsa «Importar la carpeta».
+2. Arrástralo a *Importar* (puedes soltar **varios a la vez**: banco, ahorro y bróker), o guárdalo en la carpeta `Importar\Banco` y pulsa «Importar la carpeta».
    - Los movimientos del bróker van a `Importar\Inversión`.
+   - Cada archivo va solo a su cuenta (por el IBAN o el formato) y sale un único resumen. Si uno necesita algo (un formato nuevo, o
+     no sabe de qué cuenta es), los demás se importan igual y ese queda en el resumen con su pregunta.
+   - Si varios archivos traen la misma identidad de cuenta, eliges o creas la cuenta una sola vez para ese grupo; sus nombres
+     quedan plegados. Números de cuenta distintos se resuelven por separado, aunque sean del mismo banco.
+   - Puedes cambiar de pantalla mientras se importan: el lote y sus resultados se conservan. Al terminar aparece un aviso
+     para volver a Importar, sin sacarte de donde estés. Reintentar un archivo sustituye su resultado anterior.
 3. Revisa lo pendiente, si hay algo.
 4. Mira el *Inicio*.
 
-Importar dos veces el mismo periodo **no duplica nada**: cada movimiento se reconoce por su fecha e importe en el extracto.
+Importar dos veces el mismo periodo **no duplica nada**: cada movimiento se reconoce por su fecha e importe en el extracto. Un
+archivo que ya estaba entero lo dice en el momento: «Este archivo ya está importado: no trae nada nuevo».
+
+**No hace falta tener todos los extractos.** La app se fía del saldo que trae tu banco: el resumen dice «Santander: saldo igualado
+al del banco (665,16 €)», con *Deshacer*. Si entre dos extractos faltan días, lo dice en gris («Faltan movimientos del 12/10 al 19/10
+(−83,20 €). Si tienes ese extracto, impórtalo; si no, no pasa nada») y esa diferencia solo corrige el saldo: no se inventa ningún
+gasto. Un extracto más antiguo que los que ya tienes solo añade historial: no cambia tus saldos de hoy. «No cuadra» solo sale
+entre dos saldos que **escribiste tú** (al comprobar saldos o al cerrar el mes). Un bróker cuyo archivo no trae saldo (MyInvestor)
+te pregunta una vez, si quieres, cuánto tienes sin invertir; hasta entonces sus compras no se restan de ninguna cuenta e *Inversión*
+dice «Sin saldo anotado» (con un enlace para anotarlo), no 0,00 €. Si solo conoces el de algunas, dice de cuáles es la cifra.
 
 ## Bancos y brókers
 
@@ -283,7 +321,7 @@ financebuddy/
   modelo.py        tipos de registro, campos y validación
   importar.py      importación de extractos: formatos, cadena de saldos, duplicados, dudas
   lectura.py       lectura de Excel/CSV, fechas, importes y reconocimiento del formato
-  clasificar.py    clasificación automática (reglas, traspasos, Bizum, recurrentes, lo aprendido de tu historial)
+  clasificar.py    reglas, traspasos, Bizum, recurrentes y sugerencias locales del historial
   detectar.py      fijos que se repiten cada mes y de dónde viene el dinero
   operaciones.py   órdenes y operaciones del bróker con participaciones (ISIN, traspasos entre fondos)
   cartera.py       arreglos a mano: unir activos, deshacer un traspaso tomado por venta, cuadrar participaciones
@@ -292,10 +330,9 @@ financebuddy/
   exportar.py      plantilla de Excel con desplegable de categorías y exportación de todos tus datos a Excel
   ordenar.py       poner orden en las categorías: probar una regla antes de guardarla, fusionar y ocultar categorías
   bizums.py        Bizums recibidos: casar con el gasto que devuelven (aritmética de repartos) y enlazarlo
-  secreto.py       cifra las claves de Jev y CoinGecko con la protección de datos de Windows
+  secreto.py       cifra la clave de CoinGecko con la protección de datos de Windows
   recordar.py      avisos de Windows desde el icono de la bandeja (opcional): recordatorios y días sin importar
   autoarranque.py  que Windows abra la app en la bandeja al iniciar sesión (opcional)
-  jev.py           asistente opcional Jev (TypeSafe AI): dudas del banco y del bróker, repaso de categorías, apuntar, fijos y formatos nuevos
   plantilla.py     categorías, reglas y formatos de serie
   ejemplo.py       datos de ejemplo
   web/             la interfaz: index.html, nucleo.js, estilos.css y paneles/*.js

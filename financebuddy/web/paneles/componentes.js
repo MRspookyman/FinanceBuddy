@@ -13,6 +13,47 @@ const colorActivo = (nombre) => {
 };
 const GOOD = "var(--fin-good)", BAD = "var(--fin-bad)", WARN = "var(--fin-warn)";
 
+
+function nombreMascota() { return (FB.DB.config || {}).mascota_nombre || "Nubo"; }
+function mascotaVisible() { return (FB.DB.config || {}).mascota !== "no"; }
+function movimientoMascota() {
+  return !matchMedia("(prefers-reduced-motion: reduce)").matches && !new URLSearchParams(location.search).has("pruebas") && !new URLSearchParams(location.search).has("quieto");
+}
+function mascota(pose = "normal", opts = {}) {
+  if (!mascotaVisible()) return "";
+  const poses = { normal: "saludando", pensando: "pensando", preocupado: "preocupado", celebra: "celebrando" };
+  if (!poses[pose]) pose = "normal";
+  const c = "#8B6CF2", ojo = "#1E1A2B";
+  const cuerpo = `<g fill="${c}"><circle cx="38" cy="74" r="25"/><circle cx="82" cy="74" r="25"/><circle cx="60" cy="56" r="32"/><circle cx="60" cy="82" r="26"/><circle cx="36" cy="54" r="16"/><circle cx="84" cy="54" r="16"/></g>`;
+  const brillo = '<ellipse cx="42" cy="44" rx="12" ry="7" fill="#FFFFFF" opacity=".35" transform="rotate(-25 42 44)"/>';
+  let cara = `<rect x="45" y="58" width="10" height="20" rx="5" fill="${ojo}"/><rect x="65" y="58" width="10" height="20" rx="5" fill="${ojo}"/>`, extra = "";
+  if (pose === "pensando") {
+    cara = `<rect x="43" y="64" width="10" height="14" rx="5" fill="${ojo}"/><rect x="63" y="64" width="10" height="14" rx="5" fill="${ojo}"/>`;
+    extra = `<rect x="30" y="84" width="60" height="34" rx="7" fill="#2B2A36"/><rect x="36" y="89" width="48" height="24" rx="4" fill="#FFE9B0"/><g fill="${c}"><circle cx="31" cy="99" r="7"/><circle cx="89" cy="99" r="7"/></g>`;
+  } else if (pose === "preocupado") {
+    cara = `<g fill="${ojo}"><rect x="45" y="62" width="10" height="14" rx="5"/><rect x="65" y="62" width="10" height="14" rx="5"/></g><g fill="none" stroke="${ojo}" stroke-width="3.5" stroke-linecap="round"><path d="M41 56L54 51M79 56L66 51M53 85Q56.5 82 60 85T67 85"/></g>`;
+  } else if (pose === "celebra") {
+    cara = `<g fill="none" stroke="${ojo}" stroke-width="5" stroke-linecap="round"><path d="M43 72Q49 62 55 72M65 72Q71 62 77 72"/></g>`;
+    extra = '<path d="m14 18 3 6 5 2-5 3-3 5-3-5-5-3 5-2Zm90-7 3 6 6 3-6 3-3 6-3-6-6-3 6-3Zm6 47 2 4 4 2-4 2-2 4-2-4-4-2 4-2Z" fill="var(--acento-2)"/>';
+  }
+  const acc = opts.etiqueta ? `role="img" aria-label="${esc(nombreMascota())}, el compañero de FinanceBuddy, ${poses[pose]}"` : 'aria-hidden="true"';
+  const tam = Number.isFinite(opts.tam) && opts.tam > 0 ? ` style="--mascota-tam:${opts.tam}px"` : "";
+  return `<span class="fb-mascota${opts.clase ? " " + esc(opts.clase) : ""}${movimientoMascota() ? " fb-mascota-entra" : ""}" data-pose="${pose}"${tam} ${acc}><svg viewBox="0 0 120 124" aria-hidden="true" focusable="false"><g${pose === "celebra" ? ' transform="translate(0 -6)"' : ""}>${cuerpo}${brillo}${cara}</g>${extra}</svg></span>`;
+}
+function vozMascota(texto, pose = "normal", opts = {}) {
+  return `<div class="fb-voz${opts.clase ? " " + esc(opts.clase) : ""}">${mascota(pose, opts)}<div>${mascotaVisible() ? `<b class="fb-voz-nombre">${esc(nombreMascota())} dice</b>` : ""}<p>${esc(texto)}</p></div></div>`;
+}
+function celebrarMascota(el) {
+  if (!movimientoMascota() || !mascotaVisible() || !el) return;
+  const m = el.matches(".fb-mascota") ? el : el.querySelector(".fb-mascota");
+  if (!m || m.dataset.celebrando) return;
+  const antes = m.innerHTML, pose = m.dataset.pose, etiqueta = m.getAttribute("aria-label");
+  m.dataset.celebrando = "si"; m.dataset.pose = "celebra";
+  m.innerHTML = mascota("celebra").match(/<svg[\s\S]*<\/svg>/)[0];
+  if (etiqueta) m.setAttribute("aria-label", `${nombreMascota()}, el compañero de FinanceBuddy, celebrando`);
+  m.classList.remove("fb-mascota-entra"); m.classList.add("fb-mascota-rebote");
+  setTimeout(() => { m.innerHTML = antes; m.dataset.pose = pose; delete m.dataset.celebrando; m.classList.remove("fb-mascota-rebote"); if (etiqueta) m.setAttribute("aria-label", etiqueta); }, 1200);
+}
 const root = FB.container.createDiv({ cls: "fin" });
 const setVar = (el, k, v) => (el.style.setProperty ? el.style.setProperty(k, v) : (el.style[k] = v));
 // Enlace a otra pantalla de la app: «#movimientos», «#editar/movimiento/12»…
@@ -100,6 +141,7 @@ const panel = (padre, titulo, extra, h_ayuda) => {
 const rejilla = (padre = root) => padre.createDiv({ cls: "fin-grid" });
 function vacio(padre, titulo, pista, accion) {  // accion: { texto, ruta } = un único botón hacia lo que toca hacer
   const e = padre.createDiv({ cls: "fin-empty" });
+  e.insertAdjacentHTML("beforeend", mascota("normal", { tam: 60 }));
   e.createEl("b", { text: titulo });
   if (pista) e.appendText(pista);
   if (accion) {

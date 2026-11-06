@@ -98,12 +98,12 @@
 .fin .fin-search{flex:1 1 260px;min-width:0}
 
 /* ── botones y formularios ── */
-.fb-btn{all:unset;box-sizing:border-box;cursor:pointer;display:inline-block;padding:8px 16px;border-radius:8px;font-size:.9em;font-weight:650;color:var(--on-brand);background:var(--brand);text-align:center;text-decoration:none;transition:transform .08s,filter .12s}
+.fb-btn{all:unset;box-sizing:border-box;cursor:pointer;display:inline-block;padding:9px 17px;border-radius:var(--r-s);font-size:.9em;font-weight:650;color:var(--on-brand);background:var(--brand);text-align:center;text-decoration:none;transition:transform .08s,filter .12s}
 .fb-btn:hover{filter:brightness(1.1)} .fb-btn:active{transform:scale(.98)} .fb-btn[disabled]{opacity:.55;cursor:progress}
 .fin .fin-mes button,.fb-chips button,.fin .fb-seg a,.fin .fb-seg button,.fin .fb-cats button,.fin .fb-cands button.fb-cand{transition:transform 120ms var(--ease-out),color 140ms var(--ease-out),background-color 140ms var(--ease-out),border-color 140ms var(--ease-out)}
 .fin .fin-mes button:active,.fb-chips button:active,.fin .fb-seg a:active,.fin .fb-seg button:active,.fin .fb-cats button:active,.fin .fb-cands button.fb-cand:active{transform:scale(.98)}
 a.fb-btn,.fin a.fb-btn.internal-link,.fin a.fb-btn.internal-link:hover{color:var(--on-brand)}
-.fb-btn.apuntar,a.fb-btn.apuntar{color:var(--bg);background:var(--ink)}
+.fb-btn.apuntar,a.fb-btn.apuntar{color:var(--on-brand);background:var(--brand)}
 .fb-btn.sec,.fin a.fb-btn.sec,.fin a.fb-btn.sec:hover{color:var(--ink);background:var(--surface);box-shadow:inset 0 0 0 1px var(--line)}
 .fb-btn.sec:hover{filter:none;box-shadow:inset 0 0 0 1px var(--ink-3)}
 .fb-btn.peligro,.fin a.fb-btn.peligro{color:var(--fin-down)}
@@ -125,7 +125,7 @@ a.fb-btn,.fin a.fb-btn.internal-link,.fin a.fb-btn.internal-link:hover{color:var
 .fb-fila .fb-et{min-width:70px;font-size:.9em}
 .fin select,.fin input[type=text],.fin input[type=password],.fin input[type=number],.fin input[type=date],.fin input[type=search],.fin textarea{height:38px;padding:0 11px;border-radius:8px;font:inherit;font-size:.92em;color:var(--ink);background:var(--surface);border:1px solid color-mix(in srgb,var(--ink-3) 40%,var(--line));min-width:0}
 .fin textarea{height:auto;padding:10px 12px;resize:vertical;width:100%}
-.fin input:focus,.fin select:focus,.fin textarea:focus{outline:2px solid var(--brand);outline-offset:-2px;border-color:var(--brand)}
+.fin input:focus,.fin select:focus,.fin textarea:focus{outline:3px solid var(--brand);outline-offset:2px;border-color:var(--brand)}
 .fb-fila input[type=text],.fb-fila input[type=password]{flex:1 1 180px}
 .fin input.corto{width:140px} .fin input.mini{width:72px}
 .fb-fila label,.fb-check{font-size:.88em;color:var(--ink-2);display:flex;align-items:center;gap:6px}
@@ -177,7 +177,55 @@ a.fb-btn,.fin a.fb-btn.internal-link,.fin a.fb-btn.internal-link:hover{color:var
 .fb-bienvenida{padding:32px;border-radius:16px;margin-bottom:var(--g)}
 .fb-bienvenida h1{margin:0 0 8px;font-size:2.2em;font-weight:650}
 .fb-bienvenida p{margin:0 0 12px;max-width:620px;color:var(--ink-2)}
-.fb-bienvenida a{color:#fff;border-bottom-color:rgba(255,255,255,.6)}
+.fb-bienvenida a{color:var(--brand);border-bottom-color:var(--brand)}
 .fb-var{display:inline-block;margin-right:6px;padding:0 6px;border-radius:5px;font-size:max(13px,.92em);font-weight:700;background:var(--surface-2)}
 .fb-var.sube{color:var(--fin-down)} .fb-var.baja{color:var(--fin-up)}
 
+/* Nubo se integra en la tarea: nunca flota ni se mueve en bucle. */
+.fb-mascota{display:inline-block;flex:none;width:var(--mascota-tam,100px);line-height:0;vertical-align:middle;filter:drop-shadow(0 5px 10px color-mix(in srgb,var(--brand) 18%,transparent))}
+.fb-mascota svg{display:block;width:100%;height:auto}
+.fb-voz{display:flex;align-items:center;gap:20px;padding:20px 24px;margin-bottom:var(--g);border:1px solid var(--line);border-radius:var(--r);background:var(--brand-soft);color:var(--ink)}
+.fb-voz>div{min-width:0}.fb-voz-nombre{display:block;margin-bottom:5px;padding-left:8px;border-left:3px solid var(--brand);color:var(--ink);font-size:.87em}.fb-voz p{margin:0;color:var(--ink);max-width:72ch}
+.fin-empty>.fb-mascota{display:block;margin:0 auto 10px}
+.fb-salud h3>span:first-child{display:inline-flex;align-items:center}.fb-salud h3 .fb-mascota{margin-right:10px}
+@keyframes nubo-entra{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+@keyframes nubo-rebote{0%,100%{transform:translateY(0)}45%{transform:translateY(-9px)}75%{transform:translateY(2px)}}
+@media(prefers-reduced-motion:no-preference){.fb-mascota-entra{animation:nubo-entra 300ms var(--ease-out) both}.fb-mascota-rebote{animation:nubo-rebote 400ms var(--ease-out)}}
+.fb-cierre-resumen{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--g);margin:20px 0}
+.fb-cierre-resumen .fb-total{padding:18px;border:1px solid var(--line);border-radius:var(--r);background:var(--surface)}
+.fb-cierre-resumen .l{color:var(--ink-2);font-size:.9em}.fb-cierre-resumen .v{font-size:1.8em;font-weight:650;margin-top:6px;font-variant-numeric:tabular-nums}
+.fb-cierre-resumen .gasto .v,.fb-cierre-resumen .v.gasto{color:var(--coral-t)}
+.fb-cierre-intro,.fb-cierre-final{margin-bottom:var(--g)}
+.fb-obj progress{accent-color:var(--brand)}
+.fb-pasos{display:flex;gap:12px;list-style:none;padding:0;margin:0 0 22px}
+.fb-pasos li{flex:1;padding:12px 16px;border:1px solid var(--line);border-radius:var(--r-s);color:var(--ink-2);background:var(--surface)}
+.fb-pasos li[aria-current=step]{color:var(--ink);background:var(--brand-soft);border-color:var(--brand);box-shadow:inset 0 -3px 0 var(--brand);font-weight:700}
+/* ── Ajustes por tareas: grupos arriba y una sola columna de paneles a su altura natural ── */
+.fin .fb-grupos-ajustes{display:flex;flex-wrap:wrap;margin-bottom:18px}
+.fin .fb-grupos-ajustes a{padding:8px 16px;font-size:.92em}
+.fb-ajustes{display:grid;gap:var(--g);max-width:920px}
+.fb-ajustes>.fin-panel{margin:0}
+.fb-salir-ejemplo{gap:12px;align-items:center;margin:0 0 14px;padding:10px 14px;border-radius:var(--r-s);background:var(--surface);border:1px solid var(--line);font-size:.92em}
+/* Una fila: nombre a la izquierda, campo con su unidad a la derecha; la ayuda debajo, a todo lo ancho */
+.fb-ajuste{display:grid;grid-template-columns:minmax(180px,260px) minmax(0,1fr);gap:6px 18px;align-items:center;padding:10px 0;border-top:1px solid var(--line)}
+.fb-ajuste:first-of-type{border-top:0}
+.fb-ajuste>label{font-weight:600;font-size:.93em;color:var(--ink)}
+.fb-ajuste .c{display:flex;align-items:center;gap:8px;min-width:0}
+.fb-ajuste .c input:not(.corto):not(.mini){flex:1;max-width:420px}
+.fb-ajuste .u{font-size:.9em;color:var(--ink-2)}
+.fb-ajuste>.fin-note{grid-column:2;margin:0}
+/* Casilla con su texto al lado (no debajo); la ayuda, bajo el texto */
+.fin label.fb-casilla{display:grid;grid-template-columns:17px minmax(0,1fr);gap:4px 10px;align-items:start;padding:8px 0;font-size:.93em;color:var(--ink);cursor:pointer}
+.fin label.fb-casilla>input{margin:2px 0 0}
+.fin label.fb-casilla>span{display:grid;gap:3px}
+.fin label.fb-casilla .fin-note{margin:0;font-size:.92em}
+.fin label.fb-casilla.off{color:var(--ink-3);cursor:default}
+/* Tu inicio: lista estrecha, flechas junto al nombre */
+.fb-orden{max-width:560px}
+.fb-orden .r button:focus-visible{outline:3px solid var(--brand);outline-offset:1px}
+/* Formularios: lo menos usado, plegado en su grupo */
+.fb-form>details.fb-form-grupo{grid-column:1/-1;margin:4px 0;border-radius:var(--r-s);border:1px solid var(--line);background:var(--surface-2)}
+.fb-form>details.fb-form-grupo>summary{cursor:pointer;padding:9px 14px;font-size:.92em;font-weight:650;color:var(--ink)}
+.fb-form>details.fb-form-grupo>.fb-form{padding:4px 14px 14px;max-width:none}
+.fb-posibles{margin:0 0 var(--g)}
+.fb-posibles>.cuerpo{padding:4px 16px 14px}

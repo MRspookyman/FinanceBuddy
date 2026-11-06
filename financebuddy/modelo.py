@@ -8,7 +8,8 @@ CAMPOS = {
     # Cuentas del usuario. tipo: corriente (día a día) · ahorro · broker (efectivo del bróker) · otro (fianza, depósito…).
     # extracto: el usuario importa los movimientos de esta cuenta (si no, sus saldos se deducen de los traspasos).
     # iban: sus 4 últimas cifras (para saber de qué cuenta es un extracto sin preguntar).
-    "cuenta": {"nombre": "texto*", "tipo": ("corriente", "ahorro", "broker", "otro"), "extracto": "bool", "iban": "texto", "notas": "texto"},
+    "cuenta": {"nombre": "texto*", "tipo": ("corriente", "ahorro", "broker", "otro"), "extracto": "bool", "iban": "texto", "notas": "texto",
+               "alias": "texto", "icono": "texto", "color": "texto"},
     # icono: un emoji · color: #RRGGBB (si faltan, la app pone uno propio de la categoría).
     "categoria": {"nombre": "texto*", "grupo": ("variable", "fijo", "ingreso"), "presupuesto": "num+", "icono": "texto", "color": "texto", "descripcion": "texto", "oculta": "bool"},  # oculta: no sale al elegir categoría (se conserva)
     # importe siempre positivo: la clase da el signo. Transferencias con destino (sale) u origen (entra) = otra cuenta.
@@ -16,9 +17,9 @@ CAMPOS = {
     "movimiento": {"fecha": "fecha*", "clase": ("gasto", "ingreso", "reembolso", "transferencia"), "categoria": "texto",
                    "importe": "num+*", "cuenta": "texto", "concepto": "texto*", "recurrente": "texto", "destino": "texto",
                    "origen": "texto", "nota": "texto", "ext_texto": "texto", "ext_importe": "num", "ext_fecha": "fecha",
-                   "reembolsa": "int", "sugerido": "texto", "sin_gasto": "bool", "parte_de": "int", "lote": "texto",
+                   "reembolsa": "int", "auto": "mapa", "sin_gasto": "bool", "parte_de": "int", "lote": "texto",
                    "divisa": "texto", "importe_divisa": "num+", "a_medias": "bool", "mi_parte": "num+", "cobrado": "bool", "etiquetas": "lista"},
-                                                               # parte_de: id del movimiento que se dividió (importar.dividir); sugerido: por qué se eligió sola la categoría (vacío = confirmada);
+                                                               # parte_de: id del movimiento dividido; auto: regla que lo clasificó al importar;
                                                                # reembolsa: id del gasto que devuelve este reembolso (Bizums, bizums.py);
                                                                # sin_gasto: quitaste el enlace a mano, que no se vuelva a enlazar solo
                                                                # divisa + importe_divisa: lo que costó en otra moneda (50 USD); `importe` sigue siendo lo que salió en euros y lo que cuenta
@@ -50,7 +51,7 @@ CAMPOS = {
     "aportacion": {"fecha": "fecha*", "activo": "texto*", "importe": "num*", "participaciones": "cant", "cuenta": "texto", "recurrente": "texto",
                    "ext_texto": "texto", "ext_importe": "num", "ext_fecha": "fecha", "orden": "texto", "supuesta": "texto", "traspaso": "texto", "ajuste": "texto", "nota": "texto", "lote": "texto"},
     # saldos: {cuenta: saldo} · valores: {activo: valor} a esa fecha.
-    "patrimonio": {"fecha": "fecha*", "saldos": "mapa", "valores": "mapa", "otros": "num", "deudas": "num+", "nota": "texto"},
+    "patrimonio": {"fecha": "fecha*", "saldos": "mapa", "origen_saldos": "mapa", "valores": "mapa", "otros": "num", "deudas": "num+", "nota": "texto"},
     # cuenta: lo ahorrado es el saldo de esa cuenta · meta_meses: la meta es N meses de gasto.
     "objetivo": {"nombre": "texto*", "meta": "num+", "meta_meses": "num+", "ahorrado": "num+", "cuenta": "texto",
                  "fecha_limite": "fecha", "prioridad": ("media", "alta", "baja"), "estado": ("activo", "conseguido")},
@@ -59,7 +60,7 @@ CAMPOS = {
                      "repetir": ("no", "anual", "trimestral", "mensual")},
     # Si el texto del movimiento contiene `patron` → categoría/clase. cuenta_otra: para traspasos, la otra cuenta.
     "regla": {"patron": "texto*", "categoria": "texto", "clase": ("gasto", "ingreso", "reembolso", "transferencia"),
-              "recurrente": "texto", "cuenta_otra": "texto", "origen": ("usuario", "plantilla")},
+              "recurrente": "texto", "cuenta_otra": "texto", "origen": ("usuario", "plantilla"), "concepto": "texto", "accion": ("clasificar", "preguntar")},
     # Cómo leer el Excel/CSV de un banco o bróker. columnas: {campo: texto de la cabecera}.
     # acciones (inversión): [{patron, accion: interes|ignorar}] aprendidas al revisar.
     # operaciones: órdenes con participaciones (fecha, isin | activo, importe?, participaciones, tipo?, estado?).
@@ -69,9 +70,8 @@ CAMPOS = {
     # categorias: {categoría: gasto neto}} (FOTO_NUM). La calcula la pantalla (fotoCierre) y el servidor solo la valida; sin ella (cierres de antes) no pasa nada.
     "cierre": {"mes": "texto*", "fecha": "fecha", "notas": "texto", "foto": "mapa"},
     # Internos (solo los escribe el servidor)
-    # jev: lo que propone el asistente Jev (jev.py): {clase, categoria, confianza, modelo} o {sin_decision: true}.
     "pendiente": {"tipo_import": ("banco", "inversion"), "cuenta": "texto", "archivo": "texto", "perfil": "texto",
-                  "fila": "mapa", "duda": "texto", "jev": "mapa", "lote": "texto"},
+                  "fila": "mapa", "duda": "texto", "lote": "texto", "preguntar": "bool"},
     "ignorado": {"cuenta": "texto", "ext_fecha": "fecha", "ext_importe": "num", "ext_texto": "texto", "lote": "texto"},
     # Operación con participaciones pero sin importe (Excel de operaciones) que espera a su movimiento de la cuenta del bróker.
     "operacion": {"fecha": "fecha*", "activo": "texto*", "participaciones": "cant*", "orden": "texto", "lote": "texto"},
@@ -85,7 +85,7 @@ EDITABLES = set(CAMPOS) - {"pendiente", "ignorado", "operacion"}
 REFERENCIAS = {
     "cuenta": [("movimiento", "cuenta"), ("movimiento", "destino"), ("movimiento", "origen"), ("recurrente", "cuenta"),
                ("activo", "cuenta"), ("aportacion", "cuenta"), ("cobro", "cuenta"), ("objetivo", "cuenta"), ("perfil", "cuenta"),
-               ("regla", "cuenta_otra"), ("pendiente", "cuenta"), ("patrimonio", "saldos*")],
+               ("regla", "cuenta_otra"), ("pendiente", "cuenta"), ("patrimonio", "saldos*"), ("patrimonio", "origen_saldos*")],
     "categoria": [("movimiento", "categoria"), ("recurrente", "categoria"), ("regla", "categoria")],
     "activo": [("aportacion", "activo"), ("recurrente", "activo_inversion"), ("patrimonio", "valores*"), ("operacion", "activo"), ("cobro", "activo")],
     "recurrente": [("movimiento", "recurrente"), ("aportacion", "recurrente"), ("regla", "recurrente")],
@@ -176,6 +176,13 @@ def limpiar(tipo, datos):
         if v not in (None, "", [], {}): out[k] = v
         elif isinstance(t, tuple) or t == "bool": out[k] = v
     if tipo == "movimiento": _limpiar_movimiento(out)
+    if tipo == "cuenta":
+        if len(out.get("alias", "")) > 24: raise ValueError("alias: como mucho 24 caracteres")
+        if out.get("icono") and out["icono"] not in ("🏦", "🌱", "📈", "💼", "🏠", "✈️", "🎯", "💶"):
+            raise ValueError("icono: elige uno de los ocho iconos de cuenta")
+        # color: "1"…"6" (cadena, como el <select> del formulario); se acepta también el número
+        if out.get("color") and (isinstance(datos.get("color"), bool) or out["color"] not in ("1", "2", "3", "4", "5", "6")):
+            raise ValueError("color: elige un número del 1 al 6")
     if tipo == "categoria":
         if out.get("color") and not re.fullmatch(r"#[0-9a-fA-F]{6}", out["color"]): raise ValueError("color: usa el formato #RRGGBB")
         if len(out.get("icono", "")) > 8: raise ValueError("icono: pon un solo emoji")
@@ -187,6 +194,10 @@ def limpiar(tipo, datos):
     # Mapas numéricos
     for k in ("saldos", "valores"):
         if k in out: out[k] = {str(a): numero(b) for a, b in out[k].items() if numero(b) is not None}
+    if tipo == "patrimonio":
+        origenes = out.get("origen_saldos", {})
+        if any(v not in ("manual", "extracto") for v in origenes.values()): raise ValueError("origen_saldos: origen no válido")
+        if origenes: out["origen_saldos"] = {c: v for c, v in origenes.items() if c in out.get("saldos", {})}
     if tipo == "cierre" and "foto" in out:  # solo las cifras conocidas y lo que es un número: lo demás no entra
         def cifra(v):
             try: return None if isinstance(v, (bool, dict, list)) else numero(v)

@@ -44,6 +44,68 @@ class TestFlujo(unittest.TestCase):
         if r.get("necesita") == "cuenta": r = self.api("/api/importar/reintentar", {"archivo": r["archivo"], "tipo": "banco", "cuenta": "Nómina", "perfil": r["perfil"]})
         return r
 
+    def test_repaso_guarda_comprobaciones_manuales_y_conserva_otros_origenes(self):
+        a = self.app.alm
+        a.guardar("patrimonio", {"fecha": "2026-09-30", "saldos": {"Ahorro": 200}, "origen_saldos": {"Ahorro": "extracto"}})
+        r = self.api("/api/saldo_banco", {"fecha": "2026-09-30", "saldos": {"Nómina": 1000}})
+        self.assertTrue(r["ok"], r)
+        p, = a.todos("patrimonio")
+        self.assertEqual(p["origen_saldos"], {"Nómina": "manual", "Ahorro": "extracto"})
+        # Confirmar explícitamente una estimación tiene el mismo significado que escribirla.
+        self.api("/api/saldo_banco", {"fecha": "2026-09-30", "saldos": {"Ahorro": 200}})
+        self.assertEqual(a.todos("patrimonio")[0]["origen_saldos"]["Ahorro"], "manual")
+
+    def test_previa_de_repetido_archiva_sin_escribir_ni_anular_deshacer(self):
+        self.importar_ejemplo()
+        foto = self.app.alm.instantanea()
+        deshacer = self.app.deshacer
+        ruta = os.path.join(self.app.carpeta.banco, "repetido.xlsx")
+        excel_santander(ruta, FILAS)
+        r = self.api("/api/importar/carpeta", {"previa": True})
+        self.assertTrue(r["resultados"][0].get("ya_importado"), r)
+        self.assertFalse(os.path.exists(ruta))
+        self.assertEqual(self.app.alm.instantanea(), foto)
+        self.assertIs(self.app.deshacer, deshacer)
+        self.assertEqual(self.api("/api/importar/carpeta", {"previa": True})["resultados"], [])
+
+    def test_deshacer_carpeta_repone_todos_los_archivos(self):
+        self.importar_ejemplo()  # fija la cuenta del formato
+        foto = self.app.alm.instantanea()
+        for nombre, fecha in (("a.xlsx", "2026-10-01"), ("b.xlsx", "2026-10-02")):
+            excel_santander(os.path.join(self.app.carpeta.banco, nombre), [(fecha, "Compra Lidl", -10)])
+        r = self.api("/api/importar/carpeta")
+        self.assertTrue(all(x["ok"] for x in r["resultados"]), r)
+        self.assertEqual(self.app.deshacer_que, "Importación completa de la carpeta")
+        self.assertTrue(self.api("/api/deshacer")["ok"])
+        self.assertEqual(self.app.alm.instantanea(), foto)
+
+    def test_importacion_posterior_sin_saldo_anula_deshacer_anterior(self):
+        self.app.alm.guardar("cuenta", {"nombre": "Nómina", "tipo": "corriente"})
+        self.importar_ejemplo()
+        self.assertTrue(self.app.deshacer)
+        self.app.alm.guardar("perfil", {"nombre": "Sin saldo inventado", "tipo": "banco", "cuenta": "Nómina",
+                                      "columnas": {"fecha": "día", "concepto": "detalle", "importe": "cantidad"}})
+        contenido = "día;detalle;cantidad\n01/10/2026;Compra Lidl;-7,00\n".encode("utf-8")
+        r = self.api("/api/importar/subir", {"nombre": "nuevo.csv", "tipo": "banco", "contenido": base64.b64encode(contenido).decode()})
+        self.assertTrue(r["ok"] and r["nuevas"], r)
+        self.assertEqual(self.app.datos()["info"]["deshacer"], "")
+        self.assertFalse(self.api("/api/deshacer")["ok"])
+
+    def test_casar_orden_es_escritura_y_anula_deshacer(self):
+        from pruebas.test_importar import TestOperaciones
+        a = self.app.alm
+        a.guardar("cuenta", {"nombre": "Bróker", "tipo": "broker"})
+        for nombre, contenido in (("ordenes.csv", TestOperaciones.ORDENES), ("cuenta.csv", TestOperaciones.CUENTA)):
+            if nombre == "cuenta.csv":
+                self.app.deshacer = a.instantanea()
+                self.assertTrue(self.app.deshacer)
+            r = self.api("/api/importar/subir", {"nombre": nombre, "tipo": "inversion",
+                                               "contenido": base64.b64encode(contenido.encode("cp1252")).decode()})
+            self.assertTrue(r["ok"], r)
+        self.assertFalse(r.get("ya_importado"), r)
+        self.assertEqual(self.app.datos()["info"]["deshacer"], "")
+        self.assertTrue(any(x.get("ext_fecha") for x in a.todos("aportacion")))
+
     def test_quitar_una_importacion_se_puede_deshacer_y_la_pagina_la_recibe(self):
         r = self.importar_ejemplo()
         self.assertTrue(r["ok"] and r["lote"], r)
@@ -157,15 +219,15 @@ class TestFlujo(unittest.TestCase):
         p = self.app.alm.todos("pendiente")[0]
         antes = len(self.app.alm.todos("movimiento"))
         self.api("/api/resolver", {"id": p["id"], "accion": "ignorar"})
-        self.assertEqual(len(self.app.alm.todos("pendiente")), 2)
+        self.assertEqual(len(self.app.alm.todos("pendiente")), 3)
         self.assertTrue(self.api("/api/deshacer")["ok"])
-        self.assertEqual((len(self.app.alm.todos("pendiente")), len(self.app.alm.todos("movimiento"))), (3, antes))
+        self.assertEqual((len(self.app.alm.todos("pendiente")), len(self.app.alm.todos("movimiento"))), (4, antes))
         self.assertFalse(self.api("/api/deshacer")["ok"])
 
     def test_deshacer_no_se_lleva_lo_que_se_hizo_despues(self):
         # «Deshacer» repone la foto entera de antes: si después se guarda otra cosa, ya no se ofrece (se perdería).
         self.api("/api/bienvenida", {"cuentas": [{"nombre": "Nómina", "tipo": "corriente", "saldo": 1000}]})
-        self.api("/api/confirmar_sugeridos", {})
+        self.app.deshacer, self.app.deshacer_que = self.app.alm.instantanea(), "Decisión anterior"
         self.assertTrue(self.app.datos()["info"]["deshacer"])
         # consultar no anula nada…
         self.api("/api/categoria/uso", {})
@@ -177,7 +239,7 @@ class TestFlujo(unittest.TestCase):
         self.assertFalse(self.api("/api/deshacer")["ok"])
         self.assertEqual([m["concepto"] for m in self.app.alm.todos("movimiento")], ["Después"])
         # una tanda de «Por revisar» (mantener) sigue deshaciéndose junta
-        self.api("/api/confirmar_sugeridos", {})
+        self.app.deshacer, self.app.deshacer_que = self.app.alm.instantanea(), "Decisión anterior"
         foto = self.app.deshacer
         self.app.manejar("/api/config", {"mantener": True, "acento": "azul"})
         self.assertIs(self.app.deshacer, foto)
@@ -186,18 +248,18 @@ class TestFlujo(unittest.TestCase):
         self.api("/api/bienvenida", {"cuentas": [{"nombre": "Nómina", "tipo": "corriente", "saldo": 1000}]})
         nuevo = lambda c, cat, clase="gasto", **x: self.api("/api/guardar", {"tipo": "movimiento", "datos": {"fecha": "2026-09-10", "concepto": c, "importe": 20,
                                                                                                             "clase": clase, "categoria": cat, "cuenta": "Nómina", **x}})["id"]
-        a, b = nuevo("Tienda A", "Otros", sugerido=True), nuevo("Tienda B", "Otros")
+        a, b = nuevo("Tienda A", "Otros", auto={"historial": True}), nuevo("Tienda B", "Otros")
         ing = nuevo("Cobro", "Otros ingresos", "ingreso")
         div = nuevo("Compra grande", "Otros", importe=50)
         partes = self.api("/api/movimiento/dividir", {"id": div, "partes": [{"importe": 30, "categoria": "Hogar"}, {"importe": 20, "categoria": "Ocio"}]})
         self.assertTrue(partes["ok"], partes)
         p1, p2 = sorted(m["id"] for m in self.app.alm.todos("movimiento") if m.get("parte_de"))
         cat = lambda i: self.app.alm.obtener("movimiento", i)["categoria"]
-        # Una fila: cambia la categoría, la confirma (el historial aprende de ella) y se puede deshacer
-        self.assertTrue(self.app.alm.obtener("movimiento", a).get("sugerido"))
+        # Una fila cambia de categoría, conserva su procedencia y se puede deshacer.
+        self.assertTrue(self.app.alm.obtener("movimiento", a).get("auto"))
         r = self.api("/api/movimiento/categoria", {"ids": [a], "categoria": "Ocio"})
         self.assertEqual(r["mensaje"], "Ahora es Ocio")
-        self.assertEqual(cat(a), "Ocio"); self.assertFalse(self.app.alm.obtener("movimiento", a).get("sugerido"))
+        self.assertEqual(cat(a), "Ocio"); self.assertTrue(self.app.alm.obtener("movimiento", a).get("auto"))
         self.assertTrue(self.app.datos()["info"]["deshacer"])
         self.assertTrue(self.api("/api/deshacer")["ok"])
         self.assertEqual(cat(a), "Otros")
@@ -322,7 +384,7 @@ class TestFlujo(unittest.TestCase):
         self.assertEqual(r["necesita"], "cuenta")
         r = self.api("/api/importar/reintentar", {"archivo": r["archivo"], "tipo": "banco", "cuenta": "Nómina", "perfil": r["perfil"]})
         self.assertTrue(r["ok"], r)
-        self.assertEqual(len(self.app.datos()["pendientes"]), 2)
+        self.assertEqual(len(self.app.datos()["pendientes"]), 3)
         for p in self.app.datos()["pendientes"]:
             self.api("/api/resolver", {"id": p["id"], "accion": "guardar", "clase": "gasto" if p["fila"]["importe"] < 0 else "ingreso",
                                        "categoria": "Hogar" if p["fila"]["importe"] < 0 else "Otros ingresos"})
@@ -358,7 +420,15 @@ class TestFlujo(unittest.TestCase):
         c = self.app.datos()["config"]
         self.assertEqual((c["acento"], c["inicio"]), ("verde", ["gasto", "semana"]))
         self.api("/api/config", {"acento": "url(x)"})
-        self.assertEqual(self.app.datos()["config"]["acento"], "salvia")
+        self.assertEqual(self.app.datos()["config"]["acento"], "violeta")
+
+    def test_config_del_companero(self):
+        for valor, esperado in (("no", "no"), ("si", "si"), ("desconocido", "si"), (None, "si")):
+            self.api("/api/config", {"mascota": valor})
+            self.assertEqual(self.app.datos()["config"]["mascota"], esperado)
+        for valor, esperado in (("  Bruma  ", "Bruma"), ("abcdefghijklmnopq", "abcdefghijklmnop"), ("", ""), (None, "")):
+            self.api("/api/config", {"mascota_nombre": valor})
+            self.assertEqual(self.app.datos()["config"]["mascota_nombre"], esperado)
 
     def test_registros_por_pagina_acotado(self):
         for dado, esperado in ((25, 25), (5, 10), (500, 200), ("abc", 40)):
@@ -387,6 +457,28 @@ class TestFlujo(unittest.TestCase):
         m["reembolsa"] = g; self.api("/api/guardar", {"tipo": "movimiento", "id": b, "datos": m})  # volver a elegirlo lo desmarca
         self.assertFalse(self.app.alm.obtener("movimiento", b).get("sin_gasto"))
 
+    def test_corregir_borrar_y_anotar_saldos_se_puede_deshacer(self):
+        # Corregir un movimiento, borrarlo, cambiarle la categoría desde su ficha o anotar saldos deja «Deshacer», que lo repone
+        self.api("/api/bienvenida", {"cuentas": [{"nombre": "Nómina", "tipo": "corriente", "saldo": 1000}]})
+        g = self.api("/api/guardar", {"tipo": "movimiento", "datos": {"fecha": "2026-09-10", "clase": "gasto", "categoria": "Supermercado", "importe": 40, "concepto": "Super", "cuenta": "Nómina"}})
+        self.assertFalse(g.get("deshacer"))  # apuntar uno nuevo no (se borra)
+        m = self.app.alm.obtener("movimiento", g["id"])
+        r = self.api("/api/guardar", {"tipo": "movimiento", "id": g["id"], "datos": {**m, "importe": 45}})
+        self.assertTrue(r["deshacer"]); self.assertEqual(self.app.datos()["info"]["deshacer"], "Cambios en el movimiento")
+        self.assertTrue(self.api("/api/deshacer")["ok"])
+        self.assertEqual(self.app.alm.obtener("movimiento", g["id"])["importe"], 40)
+        self.api("/api/recategorizar", {"id": g["id"], "categoria": "Ocio"})
+        self.assertTrue(self.api("/api/deshacer")["ok"])
+        self.assertEqual(self.app.alm.obtener("movimiento", g["id"])["categoria"], "Supermercado")
+        self.assertTrue(self.api("/api/borrar", {"tipo": "movimiento", "id": g["id"]})["deshacer"])
+        self.assertIsNone(self.app.alm.obtener("movimiento", g["id"]))
+        self.assertTrue(self.api("/api/deshacer")["ok"])
+        self.assertIsNotNone(self.app.alm.obtener("movimiento", g["id"]))
+        antes = len(self.app.alm.todos("patrimonio"))
+        self.assertTrue(self.api("/api/saldo_banco", {"fecha": "2026-09-30", "saldos": {"Nómina": 960}})["deshacer"])
+        self.assertTrue(self.api("/api/deshacer")["ok"])
+        self.assertEqual(len(self.app.alm.todos("patrimonio")), antes)
+
     def test_subida_rechaza_otros_formatos(self):
         r = self.api("/api/importar/subir", {"nombre": "virus.exe", "contenido": ""})
         self.assertFalse(r["ok"])
@@ -398,13 +490,13 @@ class TestSeguridad(unittest.TestCase):
     def setUpClass(cls):
         cls.dir = tempfile.mkdtemp()
         cls.app = servidor.App(cls.dir)
-        cls.srv = servidor.crear(cls.app, 8797)
+        cls.srv = servidor.crear(cls.app, 8796)  # no 8797/8798: tandas.py los usa a la vez para las pantallas y los flujos
         threading.Thread(target=cls.srv.serve_forever, daemon=True).start()
     @classmethod
     def tearDownClass(cls):
         cls.srv.shutdown(); cls.srv.server_close(); cls.app.alm.cerrar(); shutil.rmtree(cls.dir, ignore_errors=True)
-    def pedir(self, metodo, ruta, token=None, host="127.0.0.1:8797", cuerpo=None):
-        c = http.client.HTTPConnection("127.0.0.1", 8797, timeout=5)
+    def pedir(self, metodo, ruta, token=None, host="127.0.0.1:8796", cuerpo=None):
+        c = http.client.HTTPConnection("127.0.0.1", 8796, timeout=5)
         h = {"Host": host}
         if token: h["X-FB-Token"] = token
         c.request(metodo, ruta, body=json.dumps(cuerpo) if cuerpo is not None else None, headers=h)

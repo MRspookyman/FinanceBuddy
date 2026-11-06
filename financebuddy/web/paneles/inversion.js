@@ -1,7 +1,7 @@
 // ═════════════ pantalla de Inversión ═════════════
 // Lo que has metido y lo que vale cada activo, cómo evoluciona, cuánto aportas cada mes, cómo está repartido y lo
 // que rinde el dinero sin invertir. Los datos salen de las aportaciones (importadas del bróker), del valor de cada
-// activo (Anotar valores a mano) y de los registros de saldos (evolución).
+// activo («Anotar valores a mano», aquí mismo: #inversion/anotar) y de los registros de saldos (evolución).
 const TIPO_ACTIVO = { fondo: "Fondo", etf: "ETF / ETC", accion: "Acción", cripto: "Cripto", materia: "Materias primas", pension: "Plan de pensiones", bono: "Bono / renta fija", inmueble: "Inmueble", otro: "Otro" };
 const ICONO_ACTIVO = { fondo: "📊", etf: "🧺", accion: "🏢", cripto: "🪙", materia: "🥇", pension: "🏖️", bono: "📜", inmueble: "🏠", otro: "💼" };
 
@@ -13,7 +13,7 @@ function vistaInversion() {
   const I = resumenInversion(solo);
   if (!I.filas.length) {
     const v = root.createDiv({ cls: "fb-hecho" });
-    v.createDiv({ cls: "i", text: "🌱" });
+    v.insertAdjacentHTML("beforeend", mascota("normal", { tam: 100 }));
     v.createEl("b", { text: "Aún no hay activos" });
     v.createDiv({ text: "Importa los movimientos de tu bróker: la app te propondrá crear cada activo con un clic." });
     const f = v.createDiv({ cls: "fb-fila" });
@@ -22,15 +22,18 @@ function vistaInversion() {
     return;
   }
   const E = estimacion();
-  const efectivo = E ? E.c["Efectivo bróker"] : null;
+  const brokers = cuentasTipo("broker");
+  const conocidos = brokers.filter((n) => E && E.cuentas.saldos[n] != null);
+  const pendientes = brokers.filter((n) => !conocidos.includes(n));
+  const efectivo = conocidos.length ? E.c["Efectivo bróker"] : null;
   const INT = interesesBroker();
   const botones = root.createDiv({ cls: "fb-filtros" });
   if (preciosActivos()) { const b = botones.createEl("button", { cls: "fb-btn", text: cfg.precios.en_marcha ? "Actualizando…" : "Actualizar precios" }); b.title = "Pone al día el precio de mercado de los activos con fuente en internet"; b.onclick = () => FB.actualizarPrecios({ boton: b }); }
-  else enlace(botones, "Anotar valores a mano", "#valores").className = "fb-btn";
+  else enlace(botones, "Anotar valores a mano", "#inversion/anotar").className = "fb-btn";
   const mas = botones.createEl("details", { cls: "fb-menu" });
   mas.createEl("summary", { cls: "fb-btn sec", text: "Más" });
   const ops = mas.createDiv({ cls: "ops" });
-  for (const [t, r] of [preciosActivos() ? ["Anotar valores a mano", "#valores"] : ["Activar precios automáticos", "#ajustes/precios"],
+  for (const [t, r] of [preciosActivos() ? ["Anotar valores a mano", "#inversion/anotar"] : ["Activar precios por internet", "#ajustes/precios"],
     ["Añadir un activo", "#editar/activo/nuevo"], ["Compras y ventas", "#gestionar/aportacion"], ["Para la renta", "#renta"]]) enlace(ops, t, r);
   // Periodo de la ganancia y la rentabilidad: desde el inicio (TIR), el último año o este mes
   const per = FB.estado.periodoInv || "total", PERIODOS = [["total", "Desde el inicio"], ["12", "1 año"], ["1", "Este mes"]];
@@ -43,6 +46,7 @@ function vistaInversion() {
       b.onclick = () => { FB.estado.soloLargo = k; montar(); };
     }
   }
+  if (params[0] === "anotar") panelAnotarValores(root);
 
   if (preciosActivos()) estadoPrecios(root, I);
   const pct0 = I.aportado > 0 ? I.gan / I.aportado : NaN;
@@ -54,9 +58,10 @@ function vistaInversion() {
     isFinite(I.gan) && I.aportado > 0 ? { l: "Ganancia", v: (I.estimados ? "≈ " : "") + eurS(I.gan, 2), t: tone(I.gan), s: `${pct(pct0, true)} sobre lo metido${I.estimados ? " · estimada" : ""}${I.dividendos ? ` · con ${eur(I.dividendos, 2)} de dividendos` : ""}` } : null,
     isFinite(I.tir) ? { l: "Rentabilidad anual", v: pct(I.tir, true), t: tone(I.tir), s: I.tirCorta ? "menos de un año: orientativa" : I.tirParcial ? "de los activos con datos" : "cuenta cuándo metiste cada euro" } : null,
     ] : tilesPeriodo(rentabilidadPeriodo(evolucionInversion(solo), Number(per)), per === "1" ? "este mes" : "1 año")),
-    efectivo != null ? { l: "Sin invertir", v: eur(efectivo, 2), s: nombresBroker() } : null,
+    brokers.length ? { l: pendientes.length && conocidos.length ? "Sin invertir · saldo conocido" : "Sin invertir", v: efectivo == null ? "Sin saldo anotado" : eur(efectivo, 2), s: pendientes.length ? `${conocidos.length ? `Con saldo: ${conocidos.join(", ")} · ` : ""}Sin saldo: ${pendientes.join(", ")}` : nombresBroker() } : null,
     INT.n ? { l: `Intereses ${hoy.year}`, v: eur(INT.año, 2), s: INT.comisiones ? `comisiones ${eur(INT.comisiones, 2)}` : "del dinero sin invertir" } : null,
   ]);
+  if (pendientes.length) enlace(root.createDiv({ cls: "fin-note" }), "Anotar el saldo del bróker", "#cerrar");
   panelSalud(root, saludInversion());
 
   const g1 = root.createDiv({ cls: "fin-grid dos" });
@@ -68,8 +73,62 @@ function vistaInversion() {
 
   const g2 = root.createDiv({ cls: "fin-grid dos" });
   tarjetaAportaciones(panel(g2, "Lo que metes cada mes"), solo);
-  tarjetaSinInvertir(panel(g2, "Tu dinero sin invertir", { text: "Aportaciones periódicas", ruta: "#gestionar/recurrente" }), efectivo, INT);
+  tarjetaSinInvertir(panel(g2, "Tu dinero sin invertir", { text: "Aportaciones fijas", ruta: "#gestionar/recurrente" }), efectivo, INT, conocidos, pendientes);
   panelHitos(root);
+}
+
+// «Anotar valores a mano» en la propia pantalla: lo que vale hoy cada activo según tu bróker (/api/valores, lo mismo que guarda
+// «Ajustar participaciones» en la ficha). Lo que se deja en blanco no cambia. Los meses pasados de la gráfica de evolución salen
+// de los saldos que actualizas (cierre.js), que también piden estos valores.
+function panelAnotarValores(padre) {
+  const A = activos().filter((a) => !vendidoDelTodo(a));
+  const filas = new Map(resumenInversion().filas.map((f) => [f.nombre, f]));
+  const p = panel(padre, "Anotar valores a mano");
+  p.classList.add("fb-anotar");
+  p.createDiv({ cls: "fin-note", text: "Escribe lo que vale hoy cada activo en tu bróker. Lo que dejes en blanco no cambia." });
+  const form = p.createEl("form");
+  const campos = [];
+  A.forEach((a, n) => {
+    const V = valorInfo(a), f = filas.get(a.nombre);
+    const fila = form.createDiv({ cls: "fb-anotar-f" });
+    const l = fila.createEl("label", { cls: "n", attr: { for: `fb-anotar-${n}` } });
+    setVar(l.createSpan({ cls: "fin-dot" }), "--dc", colorActivo(a.nombre));
+    l.appendText(a.nombre);
+    l.createSpan({ cls: "s", text: V.fuente === "mercado" ? `ahora ${eur(V.valor, 2)}, al precio de mercado del ${V.precio.fecha.toFormat("dd/MM")}`
+      : V.fuente === "anotado" ? `ahora ${eur(V.valor, 2)}, anotado ${a.fechaValor ? `el ${a.fechaValor.toFormat("dd/MM/yy")}` : "sin fecha"}`
+      : V.fuente === "precio" ? `ahora ≈ ${eur(V.valor, 2)}, con el precio de tu última operación` : "sin valor: cuenta por lo que has metido" });
+    const i = fila.createEl("input", { cls: "corto", attr: { id: `fb-anotar-${n}`, type: "number", step: "0.01", min: "0", inputmode: "decimal", placeholder: "€" } });
+    fila.createSpan({ text: "€" });
+    if (f && f.participaciones > 0) {  // con las participaciones basta el precio: el valor se calcula
+      const pr = fila.createEl("input", { cls: "corto", attr: { type: "number", step: "0.0001", min: "0", inputmode: "decimal", placeholder: "precio", "aria-label": `Precio de ${a.nombre} (opcional)` } });
+      fila.createSpan({ cls: "s", text: `€ × ${nf(f.participaciones, 0, 4)} particip.` });
+      pr.oninput = () => { const v = parseFloat(pr.value); if (v > 0) i.value = (Math.round(v * f.participaciones * 100) / 100).toFixed(2); };
+    }
+    campos.push([a, i]);
+  });
+  const bot = form.createDiv({ cls: "fb-fila" });
+  const b = bot.createEl("button", { cls: "fb-btn", text: "Guardar valores", attr: { type: "submit" } });
+  enlace(bot, "Cancelar", "#inversion").className = "fb-btn sec";
+  const res = form.createDiv({ attr: { role: "status" } });
+  const n2 = p.createDiv({ cls: "fin-note" });
+  n2.appendText("Para que también queden en la gráfica de evolución, anótalos a fin de mes en ");
+  enlace(n2, "Actualizar saldos", "#cerrar").className = "fin-link";
+  n2.appendText(".");
+  form.onsubmit = async (e) => {
+    e.preventDefault();
+    res.empty();
+    const valores = {};
+    for (const [a, i] of campos) if (i.value !== "") valores[a.nombre] = i.value;
+    if (!Object.keys(valores).length) { mensaje(res, "Escribe al menos un valor.", "err"); if (campos.length) campos[0][1].focus(); return; }
+    b.disabled = true;
+    const r = await FB.api("/api/valores", { fecha: hoy.toISODate(), valores });
+    b.disabled = false;
+    if (!r.ok) { mensaje(res, r.mensaje || "No se ha podido guardar", "err"); return; }
+    FB.aviso(`${r.mensaje || "Valores guardados."} «Vale hoy» ya los cuenta.`, false, r.deshacer ? avisoDeshacer() : undefined);
+    await FB.recargar();
+    FB.ir("#inversion");
+  };
+  if (campos.length) setTimeout(() => campos[0][1].focus(), 60);
 }
 
 // Lo que metes al mes de media el último año y tu rentabilidad (la TIR, con un tope prudente del 5 %): base de las metas y de la calculadora de independencia.
@@ -137,7 +196,7 @@ function tarjetaEvolucion(p, solo) {
   leyenda(p, series.map((s) => [s.nombre, s.color]));
   const conValor = EV.valor.filter((v) => v != null).length;
   if (conValor < 2) p.createDiv({ cls: "fin-note", text: (conValor === 1 ? "De momento solo se sabe el valor de hoy (el punto de la derecha): " : "Aún no hay valores anotados: ")
-    + "la línea se va dibujando cada vez que actualizas los valores o cierras un mes." });
+    + "la línea se va dibujando cada vez que actualizas saldos o cierras un mes." });
 }
 
 function tarjetaReparto(p, I) {
@@ -156,9 +215,11 @@ function tarjetaReparto(p, I) {
     const b = el.querySelector(".n").createDiv({ cls: "fb-barra fina reparto" });
     const d = b.createDiv(); d.style.width = `${((100 * f.valor) / total).toFixed(1)}%`; d.style.background = colorActivo(f.nombre);
   }
-  if (!repartoAportacion(I.filas, 0)) {  // sin reparto objetivo: solo un enlace discreto para definirlo
+  if (!repartoAportacion(I.filas, 0)) {  // sin reparto ideal: una frase con el enlace para definirlo
     const n = p.createDiv({ cls: "fin-note fb-objetivo-ini" });
-    enlace(n, "Definir un reparto ideal", "#reparto");
+    n.appendText("¿Dónde meter tu próxima aportación? ");
+    enlace(n, "Definir un reparto ideal", "#reparto").className = "fin-link";
+    n.appendText(" y la app te lo dice.");
     ayuda(n, AYUDA_REBALANCEO);
   }
   const top = tipos[0];
@@ -169,7 +230,7 @@ function tarjetaReparto(p, I) {
 // próxima aportación. Nada se vende: solo se reparte lo nuevo. Sin objetivo definido solo aparece un enlace en «Cómo está repartido».
 const AYUDA_REBALANCEO = "Rebalancear es acercar tu reparto real al que querías (por ejemplo 70 % en un fondo y 30 % en otro). Aquí no hace falta vender nada: la app te dice cómo repartir tu próxima aportación para acercarte, empezando por lo que está por debajo.";
 function panelObjetivo(padre, filas) {
-  const p = panel(padre, "Tu reparto frente al ideal", { text: "Cambiar", ruta: "#reparto" }, AYUDA_REBALANCEO);
+  const p = panel(padre, "Dónde meter tu próxima aportación", { text: "Cambiar el reparto ideal", ruta: "#reparto" }, AYUDA_REBALANCEO);
   const fila = p.createDiv({ cls: "fb-fila fb-aportar" });
   fila.createEl("label", { text: "Si aportas", attr: { for: "fb-aporta-obj" } });
   const inp = fila.createEl("input", { cls: "corto", attr: { id: "fb-aporta-obj", type: "number", min: "0", step: "0.01", placeholder: "300", inputmode: "decimal" } });
@@ -189,7 +250,7 @@ function panelObjetivo(padre, filas) {
       con && (l.aporta > 0 ? { text: "+" + eur(l.aporta), cls: "fb-aporta" } : "—"),
       con && `${nf(l.despues, 1, 1)} % (${puntos(l.difDespues)})`,
     ].filter((c) => c !== false)));
-    if (R.normalizado) cuerpo.createDiv({ cls: "fin-note", text: `Tus porcentajes suman ${nf(R.sumaObjetivos, 0, 1)} %, no 100 %: para el cálculo se han escalado. Ajústalos en «Cambiar».` });
+    if (R.normalizado) cuerpo.createDiv({ cls: "fin-note", text: `Tus porcentajes suman ${nf(R.sumaObjetivos, 0, 1)} %, no 100 %: para el cálculo se han escalado. Ajústalos en «Cambiar el reparto ideal».` });
     if (R.lineas.length < filas.filter((f) => f.valor > 0.5).length) cuerpo.createDiv({ cls: "fin-note", text: "Los activos sin porcentaje objetivo no cuentan en este cálculo." });
     cuerpo.createDiv({ cls: "fin-note", text: con ? "Reparto orientativo para acercarte al objetivo sin vender nada. Es información, no asesoramiento financiero." : R.dentro ? "Todo está a menos de 5 puntos de tu objetivo: sigue aportando como hasta ahora. Es información, no asesoramiento financiero." : "Escribe cuánto vas a aportar y verás a dónde llevarlo. Es información, no asesoramiento financiero." });
   };
@@ -197,9 +258,9 @@ function panelObjetivo(padre, filas) {
   pintar();
 }
 
-// Pantalla «Reparto objetivo»: el % ideal de cada activo. Vacío = sin objetivo para ese activo; si pones alguno, suman 100 %.
+// Pantalla «Tu reparto ideal»: el % ideal de cada activo. Vacío = sin objetivo para ese activo; si pones alguno, suman 100 %.
 function vistaReparto() {
-  cabecera("Reparto objetivo", false, "Qué parte de tu inversión querrías en cada activo");
+  cabecera("Tu reparto ideal", false, "Qué parte de tu inversión querrías en cada activo");
   const bot = root.createDiv({ cls: "fb-filtros" });
   enlace(bot, "← Inversión", "#inversion").className = "fb-btn sec";
   const I = resumenInversion(), valor = new Map(I.filas.map((f) => [f.nombre, f.valor])), total = I.total;
@@ -216,7 +277,7 @@ function vistaReparto() {
   const revisar = () => {
     const V = validarObjetivos(campos.map((c) => c.i.value));
     marca.empty();
-    if (V.vacio) marca.createSpan({ text: "Sin reparto objetivo: no se mostrará nada en Inversión." });
+    if (V.vacio) marca.createSpan({ text: "Sin reparto ideal: Inversión no te dirá dónde meter la próxima aportación." });
     else { marca.createEl("b", { text: `Suman ${nf(V.suma || 0, 0, 2)} %` }); marca.appendText(V.ok ? " ✓" : ` · ${V.mensaje.replace(/^Suman [^:]*: /, "")}`); }
     marca.className = "fb-suma" + (V.ok ? (V.vacio ? "" : " ok") : " mal");
     campos.forEach((c) => c.i.setAttribute("aria-invalid", String(!V.ok)));
@@ -325,10 +386,16 @@ function tarjetaAportaciones(p, solo) {
   if (series.length > 1) leyenda(p, series.map((s) => [s.nombre, s.color]));
 }
 
-function tarjetaSinInvertir(p, efectivo, INT) {
-  if (efectivo == null && !INT.n) { vacio(p, "Anota el saldo de tu bróker", " Al actualizar saldos, pon el dinero sin invertir de tu cuenta del bróker."); return; }
+function tarjetaSinInvertir(p, efectivo, INT, conocidos = [], pendientes = []) {
+  if (efectivo == null) {
+    p.createDiv({ cls: "fin-note", text: `Sin saldo anotado${pendientes.length ? `: ${pendientes.join(", ")}` : ""}. Anota el dinero sin invertir de tu cuenta del bróker.` });
+    enlace(p, "Anotar el saldo del bróker", "#cerrar");
+  } else if (pendientes.length) {
+    const nota = p.createDiv({ cls: "fin-note", text: `Sin saldo anotado: ${pendientes.join(", ")}. ` });
+    enlace(nota, "Anotar los saldos pendientes", "#cerrar");
+  }
   filasDato(p, [
-    efectivo != null ? { l: "En la cuenta del bróker", v: eur(efectivo, 2), s: "estimado hoy: saldo anotado + traspasos − compras" } : null,
+    efectivo != null ? { l: pendientes.length ? "En las cuentas con saldo conocido" : "En la cuenta del bróker", v: eur(efectivo, 2), s: `estimado hoy: saldo anotado + traspasos − compras${pendientes.length ? ` · solo ${conocidos.join(", ")}` : ""}` } : null,
     INT.n ? { l: `Intereses cobrados en ${hoy.year}`, v: eur(INT.año, 2), s: INT.total > INT.año ? `${eur(INT.total, 2)} desde el principio` : "" } : null,
     INT.comisiones ? { l: `Comisiones en ${hoy.year}`, v: eur(-INT.comisiones, 2) } : null,
   ]);
@@ -340,7 +407,7 @@ function tarjetaSinInvertir(p, efectivo, INT) {
       : F.agota ? `Se acaba en ${mesLbl(F.agota.key).toLowerCase()}: ese mes faltan ${eur(F.agota.apoBanco, 2)} para las aportaciones`
       : F.brokerIni > 0 ? `Cubre las aportaciones hasta ${mesLbl(ult.key).toLowerCase()}`
       : "No cubre las aportaciones: no hay dinero sin invertir en el bróker";
-    p.createDiv({ cls: "fin-note", text: texto });
+    p.createDiv({ cls: "fin-note", text: pendientes.length && efectivo != null ? `Con el saldo conocido: ${texto.charAt(0).toLowerCase()}${texto.slice(1)}. Faltan los saldos de ${pendientes.join(", ")}.` : texto });
   }
   const prox = aportaciones().filter((a) => a.previsto && a.auto && a.fecha <= hoy.plus({ days: 40 })).slice(0, 4);
   if (prox.length) {
@@ -357,6 +424,8 @@ function panelSalud(padre, S, { titulo = "Revisa tu inversión", max = 4 } = {})
   if (!S.length) return;
   const p = panel(padre, titulo, { text: `${S.length} ${S.length === 1 ? "cosa" : "cosas"}` }, "Lo importado de los extractos puede venir incompleto o mal (un traspaso tomado por venta, operaciones sin participaciones, duplicados…). Aquí tienes lo que conviene mirar. ✕ si está bien así.");
   p.classList.add("fb-salud");
+  const t = p.querySelector("h3 > span");
+  if (t) t.insertAdjacentHTML("afterbegin", mascota("pensando", { tam: 40 }));
   const l = p.createDiv({ cls: "fb-salud-l" });
   let todos = false;
   const pintar = () => {
@@ -567,7 +636,7 @@ function estadoPrecios(padre, I) {
     const fallo = ((C.resultado || {}).fallos || []).find((f) => String(f.que).split(", ").includes(a.nombre));
     if (!m) motivos.push([a, fallo ? `no se pudo obtener su precio (${fallo.motivo})` : "aún no tiene precio: pulsa «Actualizar precios»", `#editar/activo/${a.id}`, "Revisar"]);
     else if (act && !posicion(act).conPart) motivos.push([a, "tiene precio, pero no se sabe cuántas participaciones tienes", `#activo/${a.id}/cuadrar`, "Ajustar participaciones"]);
-    else motivos.push([a, "su precio es antiguo y hay un valor anotado más nuevo", "#valores", "Ver"]);
+    else motivos.push([a, "su precio es antiguo y hay un valor anotado más nuevo", "#inversion/anotar", "Anotar valores a mano"]);
   }
   for (const a of A.filter((x) => !x.fuente_precio).slice(0, 6)) motivos.push([a, "no tiene fuente de precio", `#editar/activo/${a.id}`, "Buscar el precio"]);
   for (const [a, texto, ruta, boton] of motivos) { const f = caja.createDiv({ cls: "s" }); f.appendText(`${a.nombre}: ${texto}. `); enlace(f, boton + " →", ruta); }

@@ -52,6 +52,22 @@ class Base(unittest.TestCase):
     def movs(self): return self.a.todos("movimiento")
 
 class TestBanco(Base):
+    def test_referencia_de_extracto_cuenta_movimientos_intermedios(self):
+        self.a.set_config("saldo_extracto:Nómina", {"fecha": "2026-07-31", "saldo": 1000})
+        # Agosto ya entró de un archivo sin saldo, además de un gasto escrito a mano.
+        self.a.guardar("movimiento", {"fecha": "2026-08-15", "cuenta": "Nómina", "clase": "gasto", "importe": 100, "concepto": "Compra inventada",
+                                      "ext_fecha": "2026-08-15", "ext_importe": -100, "ext_texto": "Compra inventada"})
+        self.a.guardar("movimiento", {"fecha": "2026-08-20", "cuenta": "Nómina", "clase": "gasto", "importe": 20, "concepto": "Gasto manual"})
+        r = self.importar(self.extracto([("2026-09-01", "Compra Lidl", -10)], saldo_inicial=880))
+        self.assertTrue(r["ok"], r)
+        self.assertNotIn("hueco", r)
+        self.assertEqual(r["saldo_igualado"]["saldo"], 870)
+
+    def test_usos_no_cuenta_dos_veces_la_procedencia_del_saldo(self):
+        self.a.guardar("patrimonio", {"fecha": "2026-08-31", "saldos": {"Nómina": 1000}, "origen_saldos": {"Nómina": "manual"}})
+        cuenta = next(c for c in self.a.todos("cuenta") if c["nombre"] == "Nómina")
+        self.assertEqual(dict(self.a.usos("cuenta", cuenta))["patrimonio"], 1)
+
     def test_pide_la_cuenta_la_primera_vez(self):
         with self.assertRaises(IM.NecesitaCuenta): IM.importar_archivo(self.a, self.c, self.extracto(), "banco")
         r = self.importar(self.extracto())
@@ -62,14 +78,14 @@ class TestBanco(Base):
 
     def test_clasifica(self):
         r = self.importar(self.extracto())
-        self.assertEqual((r["nuevas"], r["dudas"]), (6, 2))
+        self.assertEqual((r["nuevas"], r["dudas"]), (5, 3))
         por = {m["ext_texto"]: m for m in self.movs()}
         self.assertEqual(por["Compra Mercadona, Madrid, Tarj. :*1234"]["categoria"], "Supermercado")
-        self.assertEqual(por["Bizum a favor de Ana Ruiz concepto cena"]["categoria"], "Comer fuera")
+        self.assertEqual(next(p for p in self.a.todos("pendiente") if "Ana Ruiz" in p["fila"]["texto"])["fila"]["cat"], "Comer fuera")
         self.assertEqual((por["Traspaso: Ahorro"]["clase"], por["Traspaso: Ahorro"].get("destino")), ("transferencia", "Ahorro"))
         self.assertEqual((por["Transferencia Nomina Empresa SL"]["clase"], por["Transferencia Nomina Empresa SL"]["categoria"]), ("ingreso", "Nómina"))
         self.assertEqual(sum(1 for m in self.movs() if m["ext_texto"] == "Compra Lidl, Madrid"), 2)
-        self.assertEqual(len(self.a.todos("pendiente")), 2)
+        self.assertEqual(len(self.a.todos("pendiente")), 3)
         self.assertFalse(os.path.exists(os.path.join(self.c.banco, "movs.xlsx")))  # movido a Procesados
         self.assertEqual(self.a.config("saldo_extracto:Nómina"), {"fecha": "2026-09-11", "saldo": 2542.3})
 
@@ -86,14 +102,16 @@ class TestBanco(Base):
         self.importar(self.extracto())
         r = self.importar(self.extracto())
         self.assertEqual((r["nuevas"], r["dudas"], r["existentes"]), (0, 0, 8))
-        self.assertEqual((len(self.movs()), len(self.a.todos("pendiente"))), (6, 2))
+        self.assertEqual((len(self.movs()), len(self.a.todos("pendiente"))), (5, 3))
 
     def test_resolver_y_aprender(self):
         self.importar(self.extracto())
         p = next(x for x in self.a.todos("pendiente") if "Ferreteria" in x["fila"]["texto"])
-        IM.resolver(self.a, p["id"], {"accion": "guardar", "clase": "gasto", "categoria": "Hogar", "concepto": "Ferretería", "recordar": True, "patron": "ferreteria lopez"})
+        IM.resolver(self.a, p["id"], {"accion": "guardar", "clase": "gasto", "categoria": "Hogar", "concepto": "Ferretería", "proxima": "siempre", "patron": "ferreteria lopez"})
         q = next(x for x in self.a.todos("pendiente") if "Juan" in x["fila"]["texto"])
         IM.resolver(self.a, q["id"], {"accion": "ignorar"})
+        b = next(x for x in self.a.todos("pendiente") if "Ana Ruiz" in x["fila"]["texto"])
+        IM.resolver(self.a, b["id"], {"clase": "gasto", "categoria": "Comer fuera", "proxima": "preguntar"})
         self.assertEqual(len(self.a.todos("pendiente")), 0)
         # Reimportar el mismo extracto: nada nuevo, nada por revisar (lo resuelto y lo descartado se reconoce)
         r = self.importar(self.extracto())
@@ -114,18 +132,33 @@ class TestBanco(Base):
         filas = [("2026-09-01", "Pago Movil En Ferreteria Lopez, Madrid", -5.0), ("2026-09-02", "Pago Movil En Ferreteria Lopez, Madrid", -7.0)]
         self.importar(self.extracto(filas))
         p = self.a.todos("pendiente")[0]
-        msg = IM.resolver(self.a, p["id"], {"accion": "guardar", "clase": "gasto", "categoria": "Hogar", "recordar": True, "patron": "ferreteria lopez"})
+        msg = IM.resolver(self.a, p["id"], {"accion": "guardar", "clase": "gasto", "categoria": "Hogar", "proxima": "siempre", "patron": "ferreteria lopez"})
         self.assertIn("1 más", msg)
         self.assertEqual((len(self.a.todos("pendiente")), sorted(m["importe"] for m in self.movs())), (0, [5.0, 7.0]))
 
     def test_traspaso_desconocido_a_otra_cuenta(self):
         self.importar(self.extracto([("2026-09-01", "Traspaso interno cuenta 9999", -100.0)]))
         p = self.a.todos("pendiente")[0]
-        IM.resolver(self.a, p["id"], {"accion": "guardar", "clase": "transferencia", "cuenta_otra": "Bróker", "recordar": True, "patron": "cuenta 9999"})
+        IM.resolver(self.a, p["id"], {"accion": "guardar", "clase": "transferencia", "cuenta_otra": "Bróker", "proxima": "siempre", "patron": "cuenta 9999"})
         m = self.movs()[0]
         self.assertEqual((m["clase"], m.get("destino")), ("transferencia", "Bróker"))
         self.importar(self.extracto([("2026-09-01", "Traspaso interno cuenta 9999", -100.0), ("2026-10-01", "Traspaso interno cuenta 9999", -100.0)], nombre="c.xlsx"))
         self.assertEqual(sum(1 for m in self.movs() if m.get("destino") == "Bróker"), 2)
+
+    def test_regla_de_traspaso_al_importar_la_otra_cuenta_no_es_un_traspaso_a_si_misma(self):
+        # La regla se aprendió en Nómina («Traspaso: ahorro» → Ahorro). Al importar el extracto de Ahorro, el mismo texto no puede
+        # ser un traspaso de Ahorro a Ahorro: con más de una cuenta posible se pregunta; con una sola, es esa.
+        self.a.guardar("regla", {"patron": "traspaso: ahorro", "clase": "transferencia", "cuenta_otra": "Ahorro", "origen": "usuario"})
+        self.importar(self.extracto([("2026-09-01", "Traspaso: Ahorro", 100.0)], nombre="ahorro.xlsx"), cuenta="Ahorro")
+        self.assertFalse([m for m in self.movs() if m["cuenta"] == m.get("origen") or m["cuenta"] == m.get("destino")])
+        self.assertEqual(len([p for p in self.a.todos("pendiente") if p["cuenta"] == "Ahorro"]), 1)
+        # importar su extracto marca la cuenta como «importa extracto» (sus traspasos llegan en él, no se suman desde la otra)
+        self.assertTrue(next(c for c in self.a.todos("cuenta") if c["nombre"] == "Ahorro").get("extracto"))
+        broker = next(c for c in self.a.todos("cuenta") if c["nombre"] == "Bróker")
+        self.a.borrar("cuenta", broker["id"])
+        self.importar(self.extracto([("2026-09-15", "Traspaso: Ahorro", 50.0)], nombre="ahorro2.xlsx"), cuenta="Ahorro")
+        m = next(m for m in self.movs() if m["fecha"] == "2026-09-15")
+        self.assertEqual((m["cuenta"], m.get("origen")), ("Ahorro", "Nómina"))
 
     def test_saldos_rotos_no_importa_nada(self):
         r = self.importar(self.extracto(romper=True))
@@ -150,7 +183,7 @@ class TestBanco(Base):
     def test_apuntado_a_mano_no_se_duplica(self):
         self.a.guardar("movimiento", {"fecha": "2026-09-01", "clase": "gasto", "categoria": "Supermercado", "importe": 45.2, "concepto": "Súper", "cuenta": "Nómina"})
         r = self.importar(self.extracto())
-        self.assertEqual(r["nuevas"], 5)
+        self.assertEqual(r["nuevas"], 4)
 
     def test_apuntado_a_mano_dias_antes_se_enlaza(self):
         self.a.guardar("movimiento", {"fecha": "2026-09-03", "clase": "gasto", "categoria": "Hogar", "importe": 12.5, "concepto": "Tornillos", "cuenta": "Nómina"})
@@ -245,14 +278,14 @@ class TestAprender(Base):
         self.assertEqual(C.comercio("TRANSACCION CONTACTLESS EN BAR PEPE 00123, MADRID ES"), "Bar Pepe")
 
     def test_recuerda_sin_regla(self):
-        # La primera vez es duda; se resuelve SIN «recordar»; la siguiente vez ya no pregunta (lo saca del historial)
+        # Resolver sin regla no autoriza clasificar la próxima importación.
         self.importar(self.extracto([("2026-09-05", "Pago Movil En Ferreteria Lopez, Madrid", -12.5)]))
         p = self.a.todos("pendiente")[0]
         IM.resolver(self.a, p["id"], {"accion": "guardar", "clase": "gasto", "categoria": "Hogar"})
         r = self.importar(self.extracto([("2026-09-05", "Pago Movil En Ferreteria Lopez, Madrid", -12.5), ("2026-09-20", "Pago Movil En Ferreteria Lopez, Madrid", -8.0)], nombre="b.xlsx"))
-        self.assertEqual((r["nuevas"], r["dudas"], r["aprendidas"]), (1, 0, 1))
-        self.assertEqual([m["categoria"] for m in self.movs() if m["fecha"] == "2026-09-20"], ["Hogar"])
-        self.assertFalse(any(x.get("origen") == "usuario" for x in self.a.todos("regla")))  # no ha hecho falta una regla
+        self.assertEqual((r["nuevas"], r["dudas"]), (0, 1))
+        self.assertEqual([m for m in self.movs() if m["fecha"] == "2026-09-20"], [])
+        self.assertFalse(any(x.get("origen") == "usuario" for x in self.a.todos("regla")))
 
     def test_sugerencia_por_parecido(self):
         from financebuddy import clasificar as C
@@ -318,9 +351,9 @@ class TestExtractosReales(Base):
                  ("2026-09-02", "Bizum de Pedro Gil concepto sin concepto", 7.0)]
         self.importar(self.extracto(filas))
         cat = {m["ext_texto"][:10]: (m["clase"], m.get("categoria")) for m in self.movs()}
-        self.assertEqual(cat["Bizum a fa"], ("gasto", "Coche"))
+        self.assertEqual(next(p for p in self.a.todos("pendiente") if "gasofa" in p["fila"]["texto"])["fila"]["cat"], "Coche")
         self.assertNotIn("Bizum de P", cat)  # sin gasto que repartir cerca (la suscripción no cuenta): se pregunta
-        self.assertEqual(len(self.a.todos("pendiente")), 1)
+        self.assertEqual(len(self.a.todos("pendiente")), 2)
 
     def test_reglas_nuevas_y_prefijos_de_pago(self):
         from financebuddy import clasificar as C
@@ -345,6 +378,15 @@ class TestExtractosReales(Base):
         self.assertTrue(any(r["patron"] == "bet365" for r in self.a.todos("regla")))
         self.assertEqual(sum(r["patron"] == "mercadona" for r in self.a.todos("regla")), 2)  # la del usuario sigue, no se duplica la de serie
         n = len(self.a.todos("regla")); plantilla.instalar(self.a); self.assertEqual(len(self.a.todos("regla")), n)
+
+    def test_b137_pregunta_incluye_identidad_sin_agrupar_otras_cuentas(self):
+        for numero in ("4444", "5555"):
+            ruta = self.extracto(nombre=f"identidad-{numero}.xlsx", iban=f"ES12 0049 1111 2222 3333 {numero}")
+            with self.assertRaises(IM.NecesitaCuenta) as error:
+                IM.importar_archivo(self.a, self.c, ruta, "banco")
+            self.assertEqual(error.exception.info["iban"], numero)
+            self.assertEqual(error.exception.info["perfil"], "Santander")
+        self.assertFalse(self.movs())
 
     def test_cuenta_por_iban_y_titular(self):
         self.a.guardar("cuenta", {"nombre": "Otra", "tipo": "corriente", "extracto": True})
@@ -391,72 +433,6 @@ class TestExtractosReales(Base):
         self.assertEqual((a["clase"], a["patrones"]), ("cripto", ["fidelity physical bitcoin"]))
         self.assertEqual(sorted(x["importe"] for x in self.a.todos("aportacion")), [55.43, 55.45])
 
-class TestSugeridos(Base):
-    """Lo dudoso con categoría sugerida fiable se guarda ya (marcado «sugerido»); lo demás sigue en «Por revisar»."""
-    def historial(self):
-        self.a.guardar("movimiento", {"fecha": "2026-08-01", "clase": "gasto", "categoria": "Hogar", "importe": 9.0, "cuenta": "Nómina", "concepto": "Ferretería",
-                                      "ext_texto": "Pago Movil En Ferreteria Lopez, Madrid", "ext_importe": -9.0, "ext_fecha": "2026-08-01"})
-    FILAS_S = [("2026-09-05", "Pago Movil En Ferreteria Lopes, Madrid", -12.0),  # nombre parecido al del historial
-               ("2026-09-06", "Pago Movil En Taller Raro Sur, Madrid", -30.0),  # sin pistas
-               ("2026-09-07", "Traspaso interno cuenta 9999", -100.0)]  # un traspaso se sigue preguntando
-
-    def test_se_guarda_ya_con_la_categoria_sugerida(self):
-        self.historial()
-        r = self.importar(self.extracto(self.FILAS_S))
-        self.assertEqual((r["nuevas"], r["dudas"], r["sugeridas"]), (1, 2, 1))
-        m = next(m for m in self.movs() if "Lopes" in m.get("ext_texto", ""))
-        self.assertEqual((m["clase"], m["categoria"]), ("gasto", "Hogar"))
-        self.assertIn("parecido", m["sugerido"])
-        self.assertEqual(len(self.a.todos("pendiente")), 2)
-        self.assertIn("1 con categoría sugerida", r["mensaje"])
-
-    def test_apagado_lo_deja_por_revisar(self):
-        self.historial(); self.a.set_config("guardar_sugeridos", False)
-        r = self.importar(self.extracto(self.FILAS_S))
-        self.assertEqual((r["nuevas"], r["dudas"], r["sugeridas"]), (0, 3, 0))
-        self.assertFalse(any(m.get("sugerido") for m in self.movs()))
-
-    def test_umbral_mas_alto_exige_mas(self):
-        self.historial(); self.a.set_config("sugeridos_umbral", 1.0)
-        self.assertEqual(self.importar(self.extracto(self.FILAS_S))["sugeridas"], 0)
-
-    def test_lo_sugerido_no_ensena_ni_se_duplica(self):
-        from financebuddy import clasificar as C
-        self.historial(); self.importar(self.extracto(self.FILAS_S))
-        mem = C.memoria(self.movs())
-        self.assertNotIn("ferreteria lopes", mem)  # una suposición sin confirmar no aprende
-        r = self.importar(self.extracto(self.FILAS_S))
-        self.assertEqual((r["nuevas"], r["dudas"], r["existentes"]), (0, 0, 3))
-        self.assertEqual(sum(1 for m in self.movs() if "Lopes" in m.get("ext_texto", "")), 1)
-
-    def test_confirmar_y_cambiar(self):
-        self.historial(); self.importar(self.extracto(self.FILAS_S))
-        m = next(m for m in self.movs() if m.get("sugerido"))
-        self.assertEqual(IM.confirmar_sugeridos(self.a, [m["id"]]), 1)
-        self.assertFalse(self.a.obtener("movimiento", m["id"]).get("sugerido"))
-        self.assertEqual(IM.confirmar_sugeridos(self.a), 0)
-        # Cambiar la categoría también confirma
-        self.a.set_config("sugeridos_umbral", 0.6)
-        self.importar(self.extracto(self.FILAS_S + [("2026-09-08", "Pago Movil En Ferreteria Lopex, Madrid", -4.0)], nombre="b.xlsx"))
-        n = next(m for m in self.movs() if "Lopex" in m.get("ext_texto", ""))
-        self.assertTrue(n.get("sugerido"))
-        IM.recategorizar(self.a, n["id"], {"categoria": "Compras"})
-        self.assertEqual((self.a.obtener("movimiento", n["id"]).get("sugerido"), self.a.obtener("movimiento", n["id"])["categoria"]), (None, "Compras"))
-
-    def test_vista_previa_cuenta_los_sugeridos_y_no_guarda(self):
-        from financebuddy.servidor import App
-        self.historial(); self.a.cerrar()
-        app = App(self.dir)
-        try:
-            app.alm.guardar("cuenta", {"nombre": "Nómina", "tipo": "corriente", "extracto": True}) if not any(c["nombre"] == "Nómina" for c in app.alm.todos("cuenta")) else None
-            ruta = self.extracto(self.FILAS_S)
-            r = app._importar(ruta, "banco", "Nómina", previa=True)
-            self.assertEqual(r["previa"]["sugeridos"], 1)
-            self.assertTrue(any(x["sugerido"] for x in r["previa"]["muestra"]))
-            self.assertEqual(sum(1 for m in app.alm.todos("movimiento") if m.get("sugerido")), 0)
-            self.assertEqual(app.alm.todos("pendiente"), [])
-        finally: app.alm.cerrar()
-        self.a = Almacen(self.c.db)
 
 class TestBizums(Base):
     """Bizums recibidos: la parte que te devuelven de un gasto que pagaste tú (bizums.py)."""
@@ -614,6 +590,15 @@ class TestOperaciones(Base):
         ruta = os.path.join(self.c.inversion, nombre); escribir(ruta, enc, texto); return ruta
     def aps(self, activo=None): return sorted((a["fecha"], a["activo"], a["importe"], a.get("participaciones")) for a in self.a.todos("aportacion") if not activo or a["activo"] == activo)
 
+    def test_repetir_extracto_que_completa_titulos_no_es_ya_importado(self):
+        csv = "Fecha de operación;Fecha valor;Concepto;Importe\n10/09/2026;10/09/2026;MSCI WORLD;-150,00\n"
+        self.importar(self.archivo("compra.csv", csv), "inversion", "Bróker")
+        self.a.guardar("operacion", {"fecha": "2026-09-10", "activo": "Fondo MSCI", "participaciones": 2, "cuenta": "Bróker"})
+        r = self.importar(self.archivo("repetida.csv", csv), "inversion", "Bróker")
+        self.assertFalse(r.get("ya_importado"), r)
+        self.assertEqual(self.a.todos("operacion"), [])
+        self.assertEqual(self.a.todos("aportacion")[0]["participaciones"], 2)
+
     def test_ordenes_y_traspaso_entre_fondos(self):
         r = IM.importar_archivo(self.a, self.c, self.archivo("ordenes.csv", self.ORDENES), None, "Bróker")
         self.assertEqual(r["tipo"], "operaciones"); self.assertEqual(r["nuevas"], 4)
@@ -630,8 +615,11 @@ class TestOperaciones(Base):
         # El extracto de la cuenta trae la compra de Groupama: es la misma, no se duplica (y deja de ser «supuesta»)
         r = IM.importar_archivo(self.a, self.c, self.archivo("cuenta.csv", self.CUENTA), "inversion", "Bróker")
         self.assertEqual((r["nuevas"], r["existentes"], r["dudas"]), (0, 1, 0))
+        self.assertFalse(r.get("ya_importado"), r)  # casar la orden escribe la huella: no es una repetición
         g = next(a for a in self.a.todos("aportacion") if a["fecha"] == "2026-03-04")
         self.assertEqual((g["ext_importe"], g.get("supuesta", "")), (-999.5, ""))
+        repetido = IM.importar_archivo(self.a, self.c, self.archivo("repetido.csv", self.CUENTA), "inversion", "Bróker")
+        self.assertTrue(repetido.get("ya_importado"), repetido)
 
     def test_cuenta_antes_que_las_ordenes(self):
         r = IM.importar_archivo(self.a, self.c, self.archivo("cuenta.csv", self.CUENTA), "inversion", "Bróker")
@@ -1093,7 +1081,7 @@ class TestLotes(Base):
         self.assertTrue(r["lote"])
         self.assertEqual({m["lote"] for m in self.movs()}, {r["lote"]})
         self.assertEqual({p["lote"] for p in self.a.todos("pendiente")}, {r["lote"]})  # también las dudas
-        self.assertEqual(r["registros"], {"movimiento": 6, "pendiente": 2})
+        self.assertEqual(r["registros"], {"movimiento": 5, "pendiente": 3})
         (e,) = self.a.config("importaciones")
         self.assertEqual((e["id"], e["archivo"], e["tipo"], e["cuenta"]), (r["lote"], "movs.xlsx", "banco", "Nómina"))
 
@@ -1124,8 +1112,8 @@ class TestLotes(Base):
         m = next(m for m in self.movs() if m.get("lote") == a["lote"] and "Mercadona" in m["ext_texto"])
         self.a.guardar("movimiento", {**m, "categoria": "Hogar", "nota": "a mano"}, m["id"])
         msg, n = IM.deshacer_lote(self.a, a["lote"])
-        self.assertEqual(n, 8)  # 6 movimientos + 2 dudas
-        self.assertIn("6 movimientos y 2 filas por revisar", msg)
+        self.assertEqual(n, 8)  # 5 movimientos + 3 dudas
+        self.assertIn("5 movimientos y 3 filas por revisar", msg)
         self.assertIn("movs.xlsx", msg)
         self.assertEqual(sorted(m["concepto"] for m in self.movs()), sorted(["Cine a mano", next(x["concepto"] for x in self.movs() if x.get("lote") == b["lote"])]))
         self.assertTrue(all(i not in {x["id"] for x in self.movs()} for i in propias))
@@ -1164,7 +1152,7 @@ class TestLotes(Base):
         IM.deshacer_lote(self.a, a["lote"])
         self.assertEqual(self.movs(), [])
         r = self.importar(self.extracto())
-        self.assertEqual((r["nuevas"], r["dudas"], r["existentes"]), (6, 2, 0))
+        self.assertEqual((r["nuevas"], r["dudas"], r["existentes"]), (5, 3, 0))
         self.assertEqual(sorted((m["ext_fecha"], m["ext_importe"], m["ext_texto"]) for m in self.movs()), antes)
         self.assertNotEqual(r["lote"], a["lote"])
 
@@ -1185,7 +1173,7 @@ class TestLotes(Base):
         self.assertEqual(len(self.registros_del_lote(a["lote"])["ignorado"]), 1)
         IM.deshacer_lote(self.a, a["lote"])
         self.assertEqual(self.a.todos("ignorado"), [])
-        self.assertEqual(self.importar(self.extracto())["dudas"], 2)
+        self.assertEqual(self.importar(self.extracto())["dudas"], 3)
 
     def test_los_bizums_de_otro_archivo_no_se_quedan_apuntando_a_un_gasto_que_ya_no_esta(self):
         from financebuddy import bizums
@@ -1221,7 +1209,7 @@ class TestLotes(Base):
         IM.deshacer_lote(self.a, a["lote"])
         self.assertEqual([x for x in self.movs() if x.get("parte_de")], [])
         self.assertEqual(self.movs(), [])
-        self.assertEqual(self.importar(self.extracto())["nuevas"], 6)  # y vuelven como una sola fila
+        self.assertEqual(self.importar(self.extracto())["nuevas"], 5)  # y vuelven como una sola fila
 
     def test_el_broker_tambien_deja_lote_y_se_quita_con_sus_cobros_y_aportaciones(self):
         csv = ("Fecha de operación;Fecha valor;Concepto;Importe\n"
@@ -1276,11 +1264,219 @@ class TestLotes(Base):
         self.a.guardar("movimiento", {"fecha": "2026-09-20", "clase": "gasto", "categoria": "Ocio", "importe": 9.0, "concepto": "Antiguo"})
         self.a.set_config("version_esquema", 2); self.a.cerrar()
         self.a = Almacen(self.c.db)
-        self.assertEqual((self.a.config("version_esquema"), almacen.VERSION_ESQUEMA), (4, 4))
+        self.assertEqual(self.a.config("version_esquema"), almacen.VERSION_ESQUEMA)
         self.assertEqual([m["concepto"] for m in self.movs()], ["Antiguo"])  # sin lote: nunca se quita con una importación
         self.assertEqual(IM.deshacer_lote(self.a, "cualquiera")[1], 0)
 
 
+
+class TestContinuidadExtractos(Base):
+    def test_cargos_nuevos_del_mismo_dia_no_son_un_hueco(self):
+        self.importar(self.extracto([("2026-10-07", "Compra Lidl", -10)], saldo_inicial=1000))
+        r = self.importar(self.extracto([("2026-10-07", "Compra Lidl", -10), ("2026-10-07", "Compra Lidl", -8.99),
+                                        ("2026-10-08", "Compra Lidl", -20)], saldo_inicial=1000))
+        self.assertNotIn("hueco", r)
+        self.assertEqual(r["saldo_igualado"]["saldo"], 961.01)
+
+    def test_primera_importacion_compara_con_saldo_manual(self):
+        self.a.guardar("patrimonio", {"fecha": "2026-10-11", "saldos": {"Nómina": 990}})
+        self.a.guardar("movimiento", {"fecha": "2026-10-12", "cuenta": "Nómina", "clase": "gasto", "concepto": "Manual", "importe": 10})
+        r = self.importar(self.extracto([("2026-10-20", "Compra Lidl", -20)], saldo_inicial=896.8))
+        self.assertAlmostEqual(r["hueco"]["importe"], -83.2)
+
+    def test_hueco_reancla_sin_inventar_movimientos(self):
+        self.importar(self.extracto([("2026-10-11", "Compra Lidl", -10)], saldo_inicial=1000))
+        r = self.importar(self.extracto([("2026-10-20", "Compra Lidl", -20)], saldo_inicial=906.8))
+        self.assertAlmostEqual(r["hueco"]["importe"], -83.2)
+        self.assertEqual((r["hueco"]["desde"], r["hueco"]["hasta"]), ("2026-10-12", "2026-10-19"))
+        self.assertEqual(len(self.movs()), 2)
+        ultimo = max(self.a.todos("patrimonio"), key=lambda p: p["fecha"])
+        self.assertEqual(ultimo["saldos"], {"Nómina": 886.8})
+        self.assertEqual(ultimo["origen_saldos"], {"Nómina": "extracto"})
+        # El extracto que faltaba rellena la historia sin alterar el ancla actual.
+        tarde = self.importar(self.extracto([("2026-10-15", "Compra Lidl", -83.2)], saldo_inicial=990))
+        self.assertNotIn("hueco", tarde)
+        self.assertEqual(max(self.a.todos("patrimonio"), key=lambda p: p["fecha"])["saldos"]["Nómina"], 886.8)
+
+    def test_repetido_no_deja_previa_ni_lote(self):
+        from financebuddy.servidor import App
+        self.importar(self.extracto())
+        app = App(self.dir, hoy="2026-11-03", fija=True)
+        try:
+            r = app._importar(self.extracto(), previa=True)
+            self.assertTrue(r["ya_importado"])
+            self.assertNotIn("previa", r)
+            self.assertNotIn("lote", r)
+        finally: app.alm.cerrar()
+
+    def test_antiguo_no_cambia_saldo_posterior(self):
+        self.importar(self.extracto([("2026-10-20", "Compra Lidl", -20)], saldo_inicial=900))
+        self.importar(self.extracto([("2026-09-01", "Compra Lidl", -10)], saldo_inicial=1000))
+        self.assertEqual(self.a.config("saldo_extracto:Nómina"), {"fecha": "2026-10-20", "saldo": 880})
+        self.assertEqual(len(self.a.todos("patrimonio")), 1)
+
+    def test_saldos_mixtos_conservan_origen(self):
+        self.a.guardar("patrimonio", {"fecha": "2026-10-20", "saldos": {"Ahorro": 4000}, "nota": "Manual"})
+        self.importar(self.extracto([("2026-10-20", "Compra Lidl", -20)], saldo_inicial=900))
+        reg = self.a.todos("patrimonio")[0]
+        self.assertEqual(reg["saldos"], {"Ahorro": 4000, "Nómina": 880})
+        self.assertEqual(reg["origen_saldos"], {"Ahorro": "manual", "Nómina": "extracto"})
+
+    def test_carpeta_con_una_pregunta_importa_los_demas(self):
+        from financebuddy.servidor import App
+        self.extracto()
+        escribir(os.path.join(self.c.banco, "desconocido.csv"), "utf-8", "A;B;C\nuno;dos;tres\n")
+        perfil = next(p for p in self.a.todos("perfil") if p["nombre"] == "Santander")
+        self.a.guardar("perfil", {**perfil, "cuenta": "Nómina"}, perfil["id"])
+        app = App(self.dir, hoy="2026-11-03", fija=True)
+        try:
+            r = app.manejar("/api/importar/carpeta", {})
+            self.assertTrue(any(x.get("ok") and x.get("nuevas") for x in r["resultados"]))
+            self.assertTrue(any(x.get("necesita") == "perfil" for x in r["resultados"]))
+        finally: app.alm.cerrar()
+
+    def test_broker_pregunta_y_recuerda_descartar_o_responder(self):
+        from financebuddy.servidor import App
+        app = App(self.dir, hoy="2026-11-03", fija=True)
+        try:
+            csv = os.path.join(self.c.inversion, "efectivo.csv")
+            texto = "Fecha de operación;Fecha valor;Concepto;Importe\n01/09/2026;01/09/2026;Ahorro;200,00\n"
+            escribir(csv, "utf-8", texto)
+            self.assertEqual(app._importar(csv, "inversion", "Bróker")["preguntar_efectivo"], "Bróker")
+            self.assertTrue(app.manejar("/api/importar/efectivo", {"cuenta": "Bróker"})["ok"])
+            self.assertTrue(app.alm.config("efectivo_preguntado:Bróker"))
+            self.assertFalse(app.alm.todos("patrimonio"))
+            escribir(csv, "utf-8", texto)
+            self.assertNotIn("preguntar_efectivo", app._importar(csv, "inversion", "Bróker"))
+            app.manejar("/api/importar/efectivo", {"cuenta": "Bróker", "saldo": "301,50"})
+            self.assertEqual(app.alm.todos("patrimonio")[0]["saldos"], {"Bróker": 301.5})
+            self.assertEqual(app.alm.todos("patrimonio")[0]["origen_saldos"], {"Bróker": "manual"})
+        finally: app.alm.cerrar()
+
+
+class TestPreguntar(Base):
+    def test_persona_concepto_gana_y_solo_casa_bizums(self):
+        from financebuddy import clasificar as C
+        especifica = self.a.guardar("regla", {"patron": "ana ruiz", "concepto": "cena", "categoria": "Comer fuera", "clase": "gasto"})
+        self.a.guardar("regla", {"patron": "ana ruiz", "categoria": "Regalos", "clase": "gasto"})
+        self.assertEqual(C.regla_para("Bizum a Ana Ruiz concepto cena", self.a.todos("regla"))["id"], especifica)
+        self.assertEqual(C.regla_para("Bizum a Ana Ruiz concepto cine", self.a.todos("regla"))["categoria"], "Regalos")
+        self.assertEqual(C.regla_para("Compra Ana Ruiz cena", self.a.todos("regla"))["categoria"], "Regalos")
+
+    def test_preguntar_gana_serie_y_no_propaga(self):
+        self.a.guardar("regla", {"patron": "mercadona", "accion": "preguntar"})
+        r = self.importar(self.extracto([("2026-09-01", "Compra Mercadona", -10)]))
+        self.assertEqual((r["nuevas"], r["dudas"]), (0, 1))
+        p = self.a.todos("pendiente")[0]
+        self.assertTrue(p["preguntar"])
+        self.assertEqual(p["fila"]["cat"], "")
+
+    def test_memoria_bizum_no_clasifica(self):
+        for dia in range(1, 4):
+            self.a.guardar("movimiento", {"fecha": f"2026-08-0{dia}", "clase": "gasto", "categoria": "Ocio", "importe": 5,
+                                          "concepto": "Ana", "ext_texto": "Bizum a Ana Ruiz concepto cine"})
+        r = self.importar(self.extracto([("2026-09-01", "Bizum a Ana Ruiz concepto sorpresa", -5)]))
+        self.assertEqual((r["nuevas"], r["dudas"]), (0, 1))
+
+    def test_proxima_actualiza_preguntar_sin_duplicar(self):
+        rid = self.a.guardar("regla", {"patron": "ferreteria lopez", "accion": "preguntar"})
+        self.importar(self.extracto([("2026-09-01", "Compra Ferreteria Lopez", -5)]))
+        p = self.a.todos("pendiente")[0]
+        IM.resolver(self.a, p["id"], {"clase": "gasto", "categoria": "Hogar", "patron": "FERRETERIA LOPEZ", "proxima": "siempre"})
+        reglas = [r for r in self.a.todos("regla") if r["patron"] == "ferreteria lopez"]
+        self.assertEqual(len(reglas), 1)
+        self.assertEqual((reglas[0]["id"], reglas[0]["accion"], reglas[0]["categoria"]), (rid, "clasificar", "Hogar"))
+
+    def test_proxima_concepto_solo_resuelve_conceptos_iguales(self):
+        self.importar(self.extracto([("2026-09-01", "Bizum a Ana Ruiz concepto cena", -5),
+                                    ("2026-09-02", "Bizum a Ana Ruiz concepto cine", -6),
+                                    ("2026-09-03", "Bizum a Ana Ruiz concepto cena amigos", -7)]))
+        p = next(p for p in self.a.todos("pendiente") if p["fila"]["op"] == "2026-09-01")
+        IM.resolver(self.a, p["id"], {"clase": "gasto", "categoria": "Comer fuera", "patron": "ana ruiz", "proxima": "concepto", "palabra": "cena"})
+        self.assertEqual([p["fila"]["op"] for p in self.a.todos("pendiente")], ["2026-09-02"])
+        self.assertEqual(next(r for r in self.a.todos("regla") if r["patron"] == "ana ruiz")["concepto"], "cena")
+
+    def test_importar_auto_y_preguntar_reglas_usuario_y_serie(self):
+        from financebuddy.servidor import App
+        rid = self.a.guardar("regla", {"patron": "tienda inventada", "categoria": "Hogar", "clase": "gasto"})
+        self.importar(self.extracto([("2026-09-01", "Compra Tienda Inventada", -5), ("2026-09-02", "Compra Mercadona", -6)]))
+        movs = self.movs()
+        self.assertEqual(next(m for m in movs if "Inventada" in m["ext_texto"])["auto"], {"regla": rid, "serie": False})
+        serie = next(m for m in movs if "Mercadona" in m["ext_texto"])["auto"]
+        self.assertTrue(serie["serie"])
+        self.assertEqual(self.a.obtener("regla", serie["regla"])["origen"], "plantilla")
+        self.a.cerrar()
+        app = App(self.dir, fija=True)
+        try:
+            for m in movs:
+                r = app.manejar("/api/regla/preguntar", {"movimiento": m["id"]})
+                self.assertTrue(r["ok"] and r["deshacer"], r)
+                from financebuddy import clasificar as C
+                regla = C.regla_para(m["ext_texto"], app.alm.todos("regla"))
+                self.assertEqual(regla["accion"], "preguntar")
+                self.assertEqual(app.alm.obtener("movimiento", m["id"])["categoria"], m["categoria"])
+                self.assertTrue(app.manejar("/api/deshacer", {})["ok"])
+        finally:
+            app.alm.cerrar()
+            self.a = Almacen(self.c.db)
+
+    def test_migracion_idempotente_y_restauracion(self):
+        mid = self.a.insertar_crudo("movimiento", {"fecha": "2026-09-01", "clase": "gasto", "categoria": "Hogar",
+                                                "importe": 5, "concepto": "Inventado", "sugerido": "historial"})
+        self.a.set_config("guardar_sugeridos", True)
+        foto = self.a.instantanea()
+        for _ in range(2):
+            self.a.recuperar(foto)
+            self.a.migrar_revision()
+            m = self.a.obtener("movimiento", mid)
+            self.assertNotIn("sugerido", m)
+            self.assertEqual(m["auto"], {"historial": True})
+            self.assertIsNone(self.a.config("guardar_sugeridos"))
+
+    def test_datos_historial_racha_botones_y_ultimo_lote(self):
+        from financebuddy.servidor import App
+        for dia, cat in enumerate(["Ocio", "Comer fuera", "Comer fuera", "Comer fuera"], 1):
+            self.a.guardar("movimiento", {"fecha": f"2026-08-0{dia}", "clase": "gasto", "categoria": cat,
+                                          "importe": 5, "concepto": "Ana", "ext_texto": "Bizum a Ana Ruiz concepto plan"})
+        self.importar(self.extracto([("2026-09-01", "Bizum a Ana Ruiz concepto cena", -5)]))
+        self.a.cerrar()
+        app = App(self.dir, fija=True)
+        try:
+            d = app.datos()
+            p = d["pendientes"][0]
+            self.assertEqual(p["bizum"], {"persona": "Ana Ruiz", "concepto": "cena"})
+            self.assertEqual(p["historial"], [{"categoria": "Comer fuera", "n": 3}, {"categoria": "Ocio", "n": 1}])
+            self.assertEqual(p["racha"], {"categoria": "Comer fuera", "n": 3})
+            self.assertEqual(p["botones"][:2], ["Comer fuera", "Ocio"])
+            self.assertEqual(len(p["botones"]), 6)
+            self.assertEqual(d["ultimo_lote"], p["lote"])
+        finally:
+            app.alm.cerrar()
+            self.a = Almacen(self.c.db)
+
+    def test_palabra_y_botones_sin_historial_y_clase_ingreso(self):
+        from financebuddy import clasificar as C
+        d = C.detalle_revision({"texto": "Bizum a Ana Ruiz concepto cena", "importe": -5, "clase": "gasto"}, [], self.a.todos("categoria"))
+        self.assertEqual(d["palabra"], {"palabra": "cena", "categoria": "Comer fuera"})
+        self.assertEqual(d["botones"][0], "Comer fuera")
+        self.assertEqual(d["historial"], [])
+        self.assertNotIn("racha", d)
+        d = C.detalle_revision({"texto": "Ingreso inventado", "importe": 5, "clase": "ingreso"}, [], self.a.todos("categoria"))
+        ingresos = {c["nombre"] for c in self.a.todos("categoria") if c.get("grupo") == "ingreso"}
+        self.assertTrue(set(d["botones"]) <= ingresos)
+
+    def test_traspaso_con_regla_ambiguo_resuelto_no_es_automatico(self):
+        self.a.guardar("regla", {"patron": "traspaso inventado", "clase": "transferencia", "cuenta_otra": "Nómina"})
+        r = self.importar(self.extracto([("2026-09-01", "Traspaso inventado", -10)]))
+        self.assertEqual((r["nuevas"], r["dudas"]), (0, 1))
+        p = self.a.todos("pendiente")[0]
+        self.assertNotIn("auto", p["fila"])
+        # Una duda antigua que ya llevara esa marca tampoco la conserva al resolverla.
+        self.a.guardar("pendiente", {**p, "fila": {**p["fila"], "auto": {"regla": 999, "serie": False}}}, p["id"])
+        IM.resolver(self.a, p["id"], {"clase": "transferencia", "cuenta_otra": "Ahorro", "proxima": "preguntar"})
+        m = self.movs()[0]
+        self.assertEqual(m["destino"], "Ahorro")
+        self.assertNotIn("auto", m)
 
 if __name__ == "__main__":
     unittest.main()

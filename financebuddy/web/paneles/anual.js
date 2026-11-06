@@ -19,8 +19,10 @@ function vistaAnual() {
   if (!años.length) { vacio(root, "Aún no hay movimientos", " Cuando importes el extracto de tu banco, aquí verás el resumen de cada año.", { texto: "Importar el extracto", ruta: "#importar" }); return; }
   const añoHoy = Number(hoyKey.slice(0, 4));
   const año = FB.estado.añoAnual && años.includes(FB.estado.añoAnual) ? FB.estado.añoAnual : años[0];
-  const seg = root.createDiv({ cls: "fb-chips", attr: { role: "group", "aria-label": "Año" } });
-  for (const a of años) { const b = seg.createEl("button", { text: String(a), cls: a === año ? "act" : "", attr: { type: "button", "aria-pressed": String(a === año) } }); b.onclick = () => { FB.estado.añoAnual = a; FB.montar(); }; }
+  if (años.length > 1) {  // con un solo año no hay nada que elegir
+    const seg = root.createDiv({ cls: "fb-chips", attr: { role: "group", "aria-label": "Año" } });
+    for (const a of años) { const b = seg.createEl("button", { text: String(a), cls: a === año ? "act" : "", attr: { type: "button", "aria-pressed": String(a === año) } }); b.onclick = () => { FB.estado.añoAnual = a; FB.montar(); }; }
+  }
 
   const hasta = año === añoHoy ? hoyKey : `${año}-12`;
   const A = resumenAño(año, movimientos(), hasta), B = resumenAño(año - 1, movimientos(), `${año - 1}-${hasta.slice(5)}`);
@@ -64,18 +66,19 @@ function vistaAnual() {
   leyenda(pM, [["Entró", "var(--mint)"], ["Salió", "var(--coral)"]]);
   // Si todos los meses ahorraron lo mismo (p. ej. 0 €), no hay mejor ni peor
   if (A.mejor && A.mejor.ahorro - A.peor.ahorro >= 0.5) pM.createDiv({ cls: "fin-note", text: `Tu mejor mes: ${mesLbl(A.mejor.key).split(" ")[0].toLowerCase()} (ahorraste ${ahorroTxt(A.mejor.ahorro)}). El peor: ${mesLbl(A.peor.key).split(" ")[0].toLowerCase()} (${ahorroTxt(A.peor.ahorro)}).` });
+  // Sin año anterior con datos, la columna de comparar sería toda «—»: no se enseña (la nota de arriba ya dice por qué)
   plegable(pM, "Ver la tabla mes a mes", (c) => {
-    tabla(c, [{ t: "Mes" }, { t: "Entró", num: true }, { t: "Salió", num: true }, { t: "Ahorro", num: true }, { t: `Salió en ${año - 1}`, num: true, opt: true }],
+    tabla(c, [{ t: "Mes" }, { t: "Entró", num: true }, { t: "Salió", num: true }, { t: "Ahorro", num: true }, hayB && { t: `Salió en ${año - 1}`, num: true, opt: true }].filter(Boolean),
       [...A.filas.map((f, i) => {
         const b = B.filas[i];
         const nombre = mesLbl(f.key).split(" ")[0];
-        return [f.datos ? { text: nombre, onclick: verMes(f.key), title: `Ver los movimientos de ${mesLbl(f.key).toLowerCase()}` } : nombre, f.datos ? eur(f.ingresos, 2) : "—", f.datos ? eur(f.gastos, 2) : "—", f.datos ? { text: ahorroTxt(f.ahorro), cls: ahorroCls(f.ahorro) } : "—", hayB && b && b.datos ? eur(b.gastos, 2) : "—"];
-      }), conFila(["Total", eur(A.ingresos, 2), eur(A.gastos, 2), { text: ahorroTxt(A.ahorro), cls: ahorroCls(A.ahorro) }, hayB ? eur(B.gastos, 2) : "—"], "total")]);
+        return [f.datos ? { text: nombre, onclick: verMes(f.key), title: `Ver los movimientos de ${mesLbl(f.key).toLowerCase()}` } : nombre, f.datos ? eur(f.ingresos, 2) : "—", f.datos ? eur(f.gastos, 2) : "—", f.datos ? { text: ahorroTxt(f.ahorro), cls: ahorroCls(f.ahorro) } : "—", ...(hayB ? [b && b.datos ? eur(b.gastos, 2) : "—"] : [])];
+      }), conFila(["Total", eur(A.ingresos, 2), eur(A.gastos, 2), { text: ahorroTxt(A.ahorro), cls: ahorroCls(A.ahorro) }, ...(hayB ? [eur(B.gastos, 2)] : [])], "total")]);
   });
 
   // En qué gastaste, por categoría, frente al año anterior
-  const pC = panel(root, "En qué gastaste", { text: eur(A.gastos, 2) }, "Lo gastado en cada categoría, menos lo que te devolvieron. La diferencia es con los mismos meses del año anterior.");
-  const nombres = [...new Set([...A.gastoCat.keys(), ...B.gastoCat.keys()])].filter((n) => Math.abs(A.gastoCat.get(n) || 0) >= 0.5 || Math.abs(B.gastoCat.get(n) || 0) >= 0.5)
+  const pC = panel(root, "En qué gastaste", { text: eur(A.gastos, 2) }, "Lo gastado en cada categoría, menos lo que te devolvieron." + (hayB ? " La diferencia es con los mismos meses del año anterior." : ""));
+  const nombres = [...new Set([...A.gastoCat.keys(), ...(hayB ? B.gastoCat.keys() : [])])].filter((n) => Math.abs(A.gastoCat.get(n) || 0) >= 0.5 || (hayB && Math.abs(B.gastoCat.get(n) || 0) >= 0.5))
     .sort((a, b) => (A.gastoCat.get(b) || 0) - (A.gastoCat.get(a) || 0) || (B.gastoCat.get(b) || 0) - (B.gastoCat.get(a) || 0));
   if (!nombres.length) vacio(pC, "Sin gastos este año");
   else {
@@ -83,9 +86,10 @@ function vistaAnual() {
     const RD = repartoDonut([...A.gastoCat]);
     if (RD.partes.length) donut(pC, RD.partes.map((p) => ({ ...p, color: p.otras ? "var(--ink-3)" : catColor(p.nombre) })), { centro: eur(RD.total, 2) });
     const pg = paginacion(nombres, "anual_cat", () => FB.montar());
-    tabla(pC, [{ t: "Categoría" }, { t: String(año), num: true }, { t: String(año - 1), num: true }, { t: "Diferencia", num: true }],
-      [...pg.parte.map((n) => [A.gastoCat.has(n) ? { text: n, dot: catColor(n), onclick: verCat(n), title: `Ver los movimientos de ${n} en ${año}` } : { text: n, dot: catColor(n) },eur(A.gastoCat.get(n) || 0, 2), hayB ? eur(B.gastoCat.get(n) || 0, 2) : "—", hayB ? eurS(dif(n), 2) : "—"]),
-        conFila(["Total", eur(A.gastos, 2), hayB ? eur(B.gastos, 2) : "—", hayB ? eurS(A.gastos - B.gastos, 2) : "—"], "total")]);
+    const fila = (n) => [A.gastoCat.has(n) ? { text: n, dot: catColor(n), onclick: verCat(n), title: `Ver los movimientos de ${n} en ${año}` } : { text: n, dot: catColor(n) }, eur(A.gastoCat.get(n) || 0, 2)];
+    tabla(pC, [{ t: "Categoría" }, { t: String(año), num: true }, ...(hayB ? [{ t: String(año - 1), num: true }, { t: "Diferencia", num: true }] : [])],
+      [...pg.parte.map((n) => [...fila(n), ...(hayB ? [eur(B.gastoCat.get(n) || 0, 2), eurS(dif(n), 2)] : [])]),
+        conFila(["Total", eur(A.gastos, 2), ...(hayB ? [eur(B.gastos, 2), eurS(A.gastos - B.gastos, 2)] : [])], "total")]);
     pg.pie(pC);
     if (hayB) {
       const subidas = nombres.filter((n) => dif(n) >= 50).sort((a, b) => dif(b) - dif(a)).slice(0, 3);

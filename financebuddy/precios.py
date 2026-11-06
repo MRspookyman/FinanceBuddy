@@ -1,5 +1,5 @@
 # Precios por internet (OPCIONAL, apagado de serie): en vez de apuntar a mano lo que vale cada fondo, ETF o cripto, la app lo
-# consulta a Yahoo Finance, Morningstar o CoinGecko. Es lo único (junto con Jev) que sale de tu ordenador, y solo sale el
+# consulta a Yahoo Finance, Morningstar o CoinGecko. Solo sale de tu ordenador el
 # IDENTIFICADOR del producto (ISIN, ticker o nombre de la cripto): nunca importes, cuentas, movimientos ni tu nombre.
 #
 # · Cada activo dice de dónde sale su precio (activo.fuente_precio / codigo_precio / moneda).

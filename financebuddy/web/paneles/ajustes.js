@@ -15,188 +15,197 @@ async function guardarAjuste(ruta, datos) {
 }
 // Campo que se guarda solo al cambiarlo (y al salir de él): `clave` es con lo que se recupera el foco tras redibujar.
 const alCambiar = (el, clave, datos) => { el.dataset.fb = clave; el.onchange = () => guardarAjuste("/api/config", datos()); return el; };
+// Una fila de ajuste: el nombre (un <label> de verdad), el campo con su unidad al lado y, debajo, la ayuda en una frase.
+function campoAjuste(padre, { id, etiqueta, unidad, ayuda, cls = "corto", attr = {} }) {
+  const f = padre.createDiv({ cls: "fb-ajuste" });
+  f.createEl("label", { text: etiqueta, attr: { for: id } });
+  const c = f.createDiv({ cls: "c" });
+  const inp = c.createEl("input", { cls, attr: { id, ...attr } });
+  if (unidad) c.createSpan({ cls: "u", text: unidad });
+  if (ayuda) f.createDiv({ cls: "fin-note", text: ayuda });
+  return inp;
+}
+// Una casilla con su texto al lado (no debajo) y, si hace falta, la ayuda debajo del texto.
+function casillaAjuste(padre, texto, marcada, ayuda) {
+  const l = padre.createEl("label", { cls: "fb-fila fb-casilla" });
+  const c = l.createEl("input", { attr: { type: "checkbox" } }); c.checked = !!marcada;
+  const t = l.createSpan({ text: texto });
+  if (ayuda) t.createSpan({ cls: "fin-note", text: ayuda });
+  return c;
+}
+// Ajustes, por tareas: lo que decides de tu dinero, cómo se clasifica lo que importas, cómo se ve y avisa la app, los
+// servicios opcionales que salen a internet y las copias. Cada grupo tiene su ruta (#ajustes/clasificacion…); las de antes
+// (#ajustes/datos, /precios, /inicio) llevan a su grupo.
+const GRUPOS_AJUSTES = [["dinero", "Tu dinero", "💶"], ["clasificacion", "Clasificación", "🏷️"], ["aspecto", "Aspecto y avisos", "🎨"], ["servicios", "Servicios opcionales", ""], ["copias", "Copias y archivos", "🗂️"]];
+// A qué grupo vuelve «← Ajustes» desde cada lista (gestionar.js)
+const AJUSTES_DE_TIPO = { categoria: "clasificacion", regla: "clasificacion", perfil: "clasificacion" };
+const rutaAjustesDe = (tipo) => "#ajustes/" + (AJUSTES_DE_TIPO[tipo] || "dinero");
 function vistaAjustes() {
-  titulo("Ajustes", "");
-  if ((DB.info || {}).ejemplo) {
-    const e = panel(root, "Estás viendo datos de ejemplo");
-    e.createDiv({ cls: "fin-note", text: "Son inventados. Cuando quieras, vuelve a tus datos." });
+  titulo("Ajustes", "Todo se guarda solo al cambiarlo; te lo confirma abajo.");
+  const ALIAS = { general: "dinero", datos: "copias", integraciones: "servicios", jev: "servicios", precios: "servicios", inicio: "aspecto" };
+  const tab = GRUPOS_AJUSTES.some(([k]) => k === params[0]) ? params[0] : ALIAS[params[0]] || "dinero";
+  if ((DB.info || {}).ejemplo) {  // la franja de arriba ya dice que son de ejemplo: aquí solo el botón para salir
+    const e = root.createDiv({ cls: "fb-fila fb-salir-ejemplo", attr: { id: "salir-ejemplo" } });
+    e.createSpan({ text: "Estás viendo datos de ejemplo." });
     const b = e.createEl("button", { cls: "fb-btn", text: "Volver a mis datos" });
     b.onclick = async () => { await FB.api("/api/ejemplo", { activar: false }); await FB.recargar(); FB.ir("#inicio"); };
   }
-  const tab = { datos: "datos", jev: "integraciones", precios: "integraciones", integraciones: "integraciones" }[params[0]] || "general";
-  const seg = root.createDiv({ cls: "fb-seg" });
-  for (const [k, t] of [["general", "General"], ["integraciones", "Asistente y precios"], ["datos", "Tus datos y copias"]]) { const l = enlace(seg, t, "#ajustes/" + k); l.className += k === tab ? " act" : ""; }
+  const seg = root.createEl("nav", { cls: "fb-seg fb-grupos-ajustes", attr: { "aria-label": "Grupos de ajustes" } });
+  for (const [k, t, ic] of GRUPOS_AJUSTES) {
+    const l = enlace(seg, `${ic} ${t}`, "#ajustes/" + k);
+    if (k === tab) { l.className += " act"; l.setAttribute("aria-current", "true"); }
+  }
+  const col = root.createDiv({ cls: "fb-ajustes" });
   const cnt = (t) => (DB.registros[t] || []).length;
-  if (tab === "general") root.createDiv({ cls: "fin-note", text: "Todo lo de aquí se guarda solo: en cuanto cambias algo te lo confirma abajo." });
-  const g = tab === "general" ? rejilla() : null;
-  if (tab === "general") {
-  const pL = panel(g, "Tu límite de gasto variable");
-  pL.createDiv({ cls: "fin-note", text: "Al mes, sin contar gastos fijos. 0 = sin límite." });
-  const f = pL.createDiv({ cls: "fb-fila" });
-  const iL = f.createEl("input", { cls: "corto", attr: { type: "number", step: "10", "aria-label": "Tu límite de gasto variable al mes, en euros" } }); iL.value = limiteVar || "";
-  alCambiar(iL, "limite", () => ({ limite_variable: iL.value }));
-  // Meta de ahorro: si la pones, la app calcula el límite que la permite (limitePorMeta); cambiarlo es cosa tuya, con el botón
-  const fA = pL.createDiv({ cls: "fb-fila" });
-  fA.createSpan({ cls: "fb-et", text: "Quiero ahorrar al mes" });
-  const iA = fA.createEl("input", { cls: "corto", attr: { type: "number", min: "0", step: "10", placeholder: "opcional", "aria-label": "Cuánto quieres ahorrar al mes, en euros, aparte de lo que ya inviertes" } }); iA.value = metaAhorro() || "";
-  alCambiar(iA, "meta", () => ({ meta_ahorro: iA.value || 0 }));
-  const meta = metaAhorro();
-  if (!(meta > 0)) pL.createDiv({ cls: "fin-note", text: "Opcional: aparte de lo que ya inviertes cada mes. Con una meta, la app te dice qué límite te la deja cumplir." });
-  else {
-    const L = limitePorMeta(meta, datosMeta());
-    if (!(L.ingresos > 0)) pL.createDiv({ cls: "fin-note", text: "Para calcular tu límite hace falta saber lo que te entra al mes: detecta tus ingresos fijos en Fijos o importa algún mes completo." });
-    else {
-      const resta = [[L.fijos, "de fijos"], [L.suelto, "de otros gastos fijos que no tienes dados de alta"], [L.aportaciones, "que inviertes"]].filter(([v]) => v >= 0.5).map(([v, t]) => ` − ${eur(v, 2)} ${t}`).join("");
-      pL.createDiv({ cls: "fin-note", text: `Te entran ${eur(L.ingresos, 2)} al mes (${L.deFijos ? "tus ingresos fijos" : `tu media de ${L.nMeses === 1 ? "el último mes" : `los últimos ${L.nMeses} meses`}`})${resta} − ${eur(meta, 2)} de tu meta = ${eur(L.sobra, 2)} para gasto variable.` });
-      if (!L.llega) mensaje(pL, `Con lo que te entra no llega para ahorrar ${eur(meta, 2)} al mes: te faltarían ${eur(-L.sobra, 2)} aunque no gastaras nada en gasto variable.`, "err");
-      else if (Math.abs(L.limite - limiteVar) < 1) pL.createDiv({ cls: "fin-note", text: `Tu límite de ${eur(limiteVar, 2)} ya es el de tu meta.` });
-      else {
-        const fU = pL.createDiv({ cls: "fb-fila" });
-        fU.createSpan({ text: `Con tu meta, tu límite sería ${eur(L.limite, 2)} al mes (${limiteVar > 0 ? `ahora es ${eur(limiteVar, 2)}` : "ahora no tienes"}).` });
-        const bU = fU.createEl("button", { cls: "fb-btn sec", text: `Usar ${eur(L.limite, 2)}`, attr: { type: "button", "aria-label": `Usar ${eur(L.limite, 2)} al mes como límite de gasto variable` } });
-        bU.onclick = () => guardarAjuste("/api/config", { limite_variable: L.limite });
-      }
-    }
-  }
-
-  const pM = panel(g, "Tu mes y tu colchón");
-  const fM = pM.createDiv({ cls: "fb-fila" });
-  fM.createSpan({ cls: "fb-et", text: "Tu mes empieza el día" });
-  const iM = fM.createEl("input", { cls: "mini", attr: { type: "number", min: "1", max: "28", step: "1", "aria-label": "Día en que empieza tu mes (de 1 a 28)" } }); iM.value = diaInicio;
-  alCambiar(iM, "mes", () => ({ dia_inicio: iM.value || 1 }));
-  pM.createDiv({ cls: "fin-note", text: diaInicio === 1 ? "1 = el mes natural. Si cobras, por ejemplo, el 28, pon 28: tu «octubre» irá del 28 de septiembre al 27 de octubre."
-    : `Ahora ${mesLbl(hoyKey).toLowerCase()} es ${mesRango(hoyKey)}. Los saldos y la inversión siguen por meses naturales.` });
-  const fC = pM.createDiv({ cls: "fb-fila" });
-  fC.createSpan({ cls: "fb-et", text: "Colchón en la cuenta corriente" });
-  const iC = fC.createEl("input", { cls: "corto", attr: { type: "number", min: "0", step: "50", placeholder: "automático", "aria-label": "Colchón en la cuenta corriente, en euros" } }); iC.value = num(cfg.colchon) || "";
-  alCambiar(iC, "colchon", () => ({ colchon: iC.value || 0 }));
-  const RP = planReparto();
-  pM.createDiv({ cls: "fin-note", text: `Lo que quieres dejar siempre en la cuenta antes de mover lo que sobra. Vacío o 0 = lo calcula la app${RP ? ` (ahora ${eur(RP.colchonAuto, 2)}: un mes de fijos y de gasto variable, más los meses que se prevén en negativo)` : ""}.` });
-  const fP = pM.createDiv({ cls: "fb-fila" });
-  fP.createSpan({ cls: "fb-et", text: "Registros por página" });
-  const iP = fP.createEl("input", { cls: "mini", attr: { type: "number", min: "10", max: "200", step: "5", "aria-label": "Registros por página en las listas largas (de 10 a 200)" } }); iP.value = porPagina();
-  alCambiar(iP, "pagina", () => ({ por_pagina: iP.value || 40 }));
-  pM.createDiv({ cls: "fin-note", text: "Cuántas filas se ven de una vez en Movimientos, en las listas de Ajustes, en Para la renta y en las operaciones de cada activo (de 10 a 200). Las listas de «Por revisar» llevan su propio tamaño porque cada fila es una ficha." });
-
-  const pS = panel(g, "Importar", null, "Cuando un movimiento no está claro pero tu historial sugiere una categoría con confianza (mismo comercio u otro muy parecido), se guarda ya con esa categoría y cuenta en tu mes; queda marcado «por confirmar» en Por revisar. Apagado, todo lo dudoso espera en Por revisar hasta que lo decidas.");
-  const lS = pS.createEl("label", { cls: "fb-fila" });
-  const cS = lS.createEl("input", { attr: { type: "checkbox" } }); cS.checked = cfg.guardar_sugeridos !== false;
-  lS.appendText("Guardar ya lo importado con la categoría sugerida (por confirmar)");
-  cS.onchange = () => guardarAjuste("/api/config", { guardar_sugeridos: cS.checked });
-
-  const pW = panel(g, "Avisos de Windows", null, "Con la app en marcha (su icono en la bandeja), Windows te enseña un aviso cuando se acerca un recordatorio o llevas más de una semana sin importar el extracto. Cada recordatorio, una vez al día; lo de importar, una vez a la semana. No sale nada a internet.");
-  const lW = pW.createEl("label", { cls: "fb-fila" });
-  const cW = lW.createEl("input", { attr: { type: "checkbox" } }); cW.checked = cfg.avisos_windows === true;
-  lW.appendText("Avisarme de los recordatorios y de cuándo toca importar");
-  cW.onchange = () => guardarAjuste("/api/config", { avisos_windows: cW.checked });
-  // Para que lleguen sin tener que abrirla: que la abra Windows al iniciar sesión, en la bandeja y sin navegador (autoarranque.py)
-  const AR = (DB.info || {}).arranque || {};
-  const lA = pW.createEl("label", { cls: "fb-fila" });
-  const cA = lA.createEl("input", { attr: { type: "checkbox" } }); cA.checked = !!AR.activo; cA.disabled = !AR.disponible;
-  lA.appendText("Abrir FinanceBuddy al iniciar Windows (en la bandeja, sin abrir el navegador)");
-  cA.onchange = async () => {
-    const r = await FB.api("/api/arranque", { activar: cA.checked });
-    FB.aviso(r.mensaje || (r.ok ? "Guardado ✓" : "No se ha podido cambiar"), !r.ok);
-    await FB.refrescar();
-  };
-  pW.createDiv({ cls: "fin-note", text: "Las dos cosas, apagadas de serie. " + (AR.disponible ? "Con la segunda, los avisos llegan aunque no hayas abierto la app; se quita aquí o en el Administrador de tareas de Windows (Aplicaciones de inicio)." : AR.motivo || "") });
-
-  apariencia(panel(g, "Apariencia"));
-  const pT = panel(g, "Tú", null, "Tu nombre tal y como sale en el banco. Con él, el dinero que mueves entre cuentas a tu nombre se reconoce como traspaso y no como gasto o ingreso.");
-  pT.createDiv({ cls: "fin-note", text: "Se rellena solo con el titular del primer extracto que lo traiga. Si hay más titulares (cuenta conjunta), sepáralos con «;»." });
-  const fT = pT.createDiv({ cls: "fb-fila" });
-  const iT = fT.createEl("input", { attr: { type: "text", placeholder: "p. ej. GARCÍA LÓPEZ ANA", "aria-label": "Tu nombre tal y como sale en el banco" } }); iT.value = (cfg.titulares || []).join("; ");
-  iT.dataset.fb = "titulares";
-  iT.onchange = () => guardarAjuste("/api/titulares", { titulares: iT.value.split(";") });
-  }
-  if (tab === "integraciones") { panelJev(root); panelPrecios(root); }
-  if (tab === "general") {
-  const pI = panel(root, "Tu inicio", null, "Elige qué ves en la pantalla de inicio y en qué orden.");
-  pI.id = "tu-inicio";
-  personalizarInicio(pI);
-  if (params[0] === "inicio") setTimeout(() => { pI.scrollIntoView({ block: "start" }); pI.classList.add("resalta"); }, 30);
-  if (params[0] === "precios") setTimeout(() => { const e = document.getElementById("precios"); if (e) { e.scrollIntoView({ block: "start" }); e.classList.add("resalta"); } }, 30);
-  if (params[0] === "jev") setTimeout(() => { const e = document.getElementById("jev"); if (e) { e.scrollIntoView({ block: "start" }); e.classList.add("resalta"); } }, 30);
-  }
-  if (tab === "datos") {
   const accesos = (padre, lista) => {
     const box = padre.createDiv({ cls: "fb-accesos" });
     for (const [ic, t, s, ruta] of lista) {
       const a = box.createEl("a", { cls: "fb-acceso internal-link", href: ruta });
-      const av = a.createDiv({ cls: "fb-av", text: ic }); setVar(av, "--cc", "var(--brand)");
+      const av = a.createDiv({ cls: "fb-av", text: ic, attr: { "aria-hidden": "true" } }); setVar(av, "--cc", "var(--brand)");
       const d = a.createDiv(); d.createDiv({ cls: "t", text: t }); d.createDiv({ cls: "s", text: s });
     }
   };
-  const pD = panel(root, "Tus datos");
-  pD.createEl("h4", { cls: "fb-sec", text: "Dinero del día a día" });
-  accesos(pD, [
-    ["💳", "Cuentas", `${cnt("cuenta")} cuentas`, "#gestionar/cuenta"],
-    ["🔁", "Fijos", `${cnt("recurrente")} ingresos y gastos que se repiten`, "#gestionar/recurrente"],
-    ["🎯", "Objetivos", `${cnt("objetivo")} metas de ahorro`, "#gestionar/objetivo"],
-    ["⏰", "Recordatorios", "renta, ITV, seguros anuales…", "#gestionar/recordatorio"],
-  ]);
-  pD.createEl("h4", { cls: "fb-sec", text: "Cómo se clasifica" });
-  accesos(pD, [
-    ["🏷️", "Categorías", `${cnt("categoria")} categorías · fusionar y ocultar`, "#gestionar/categoria"],
-    ["🧠", "Reglas", "cómo se clasifica cada comercio · probarlas", "#gestionar/regla"],
-    ["📄", "Formatos de archivo", "cómo se lee el Excel de cada banco", "#gestionar/perfil"],
-  ]);
-  pD.createEl("h4", { cls: "fb-sec", text: "Inversión" });
-  accesos(pD, [
-    ["🌱", "Activos", `${cnt("activo")} activos · editar o borrar`, "#gestionar/activo"],
-    ["📥", "Compras de inversión", `${cnt("aportacion")} aportaciones`, "#gestionar/aportacion"],
-    ["💵", "Dividendos y comisiones", `${cnt("cobro")} registrados · para la renta`, "#gestionar/cobro"],
-  ]);
-
-  panelCompartir(root);
-  panelDeshacer(root);
-  const pC = panel(root, "Carpeta de datos y copias de seguridad");
-  pC.createDiv({ cls: "fin-note", text: `Tus datos están en ${DB.info.carpeta} (archivo datos.db). Cada día que abres la app se guarda una copia en la carpeta Copias (las 30 últimas).` });
-  const fc = pC.createDiv({ cls: "fb-fila" });
-  const bAbrir = fc.createEl("button", { cls: "fb-btn sec", text: "Abrir la carpeta" }); bAbrir.onclick = () => FB.api("/api/abrir_carpeta", { que: "datos" });
-  const bCopia = fc.createEl("button", { cls: "fb-btn sec", text: "Hacer una copia ahora" }); bCopia.onclick = async () => { const r = await FB.api("/api/copia", {}); FB.aviso(r.mensaje || "Hecho"); };
-  // Segunda copia en otro sitio (un USB, otro disco, una carpeta sincronizada): si el disco falla, las copias de al lado se van con él
-  const detX = pC.createEl("details"); detX.createEl("summary", { text: "Guardar también las copias en otro sitio" });
-  detX.createDiv({ cls: "fin-note", text: "Si pones aquí una carpeta de un USB, de otro disco o de una carpeta sincronizada, cada copia se guarda también ahí. Si ese sitio no está disponible (el USB sin poner), la app sigue como si nada y te lo dice aquí." });
-  const frX = detX.createDiv({ cls: "fb-fila" });
-  const iX = frX.createEl("input", { attr: { type: "text", placeholder: "E:\\Copias de FinanceBuddy", "aria-label": "Carpeta para la segunda copia" } });
-  iX.value = DB.config.copia_extra || "";
-  const bX = frX.createEl("button", { cls: "fb-btn sec", text: "Guardar" });
-  bX.onclick = async () => {
-    const r = await FB.api("/api/copia_extra", { carpeta: iX.value });
-    FB.aviso(r.mensaje || "Hecho", !r.ok);
-    await FB.refrescar();
-  };
-  const fallo = DB.config.copia_extra_error;
-  if (fallo) mensaje(detX, `La última copia en ${fallo.carpeta} no se pudo guardar (${fallo.motivo}). Las copias de la carpeta Copias sí están.`, "err");
-  else if (DB.config.copia_extra) detX.createDiv({ cls: "fin-note", text: "Última copia guardada ahí sin problemas." });
-  const det = pC.createEl("details"); det.createEl("summary", { text: "Restaurar una copia" });
-  const fr = det.createDiv({ cls: "fb-fila" });
-  const sCop = fr.createEl("select", { attr: { "aria-label": "Copia de seguridad" } });
-  FB.api("/api/copias").then((r) => { for (const n of r.copias || []) { const o = sCop.createEl("option", { text: n }); o.value = n; } });
-  const bRes = fr.createEl("button", { cls: "fb-btn sec", text: "Restaurar" });
-  bRes.onclick = async () => { if (!sCop.value || !(await confirmar(`Vas a volver a los datos de «${sCop.value}». Lo de ahora se guarda antes en otra copia, así que podrás recuperarlo.`, { titulo: "¿Volver a una copia?", si: "Volver a esta copia" }))) return; const r = await FB.api("/api/restaurar", { copia: sCop.value }); FB.aviso(r.mensaje || "Hecho", !r.ok); await FB.refrescar(); };
-  const det2 = pC.createEl("details"); det2.createEl("summary", { text: "Usar otra carpeta de datos" });
-  const fr2 = det2.createDiv({ cls: "fb-fila" });
-  const iC = fr2.createEl("input", { attr: { type: "text", placeholder: "C:\\Users\\…\\FinanceBuddy", "aria-label": "Carpeta de datos" } }); iC.value = DB.info.carpeta;
-  const bC = fr2.createEl("button", { cls: "fb-btn sec", text: "Cambiar" });
-  bC.onclick = async () => { let r = await FB.api("/api/carpeta", { carpeta: iC.value }); if (r.necesita_confirmar) { if (!(await confirmar(r.mensaje, { titulo: "¿Empezar de cero en esa carpeta?", si: "Crear base nueva" }))) return; r = await FB.api("/api/carpeta", { carpeta: iC.value, confirmado: true }); } FB.aviso(r.mensaje || "Hecho", !r.ok); await FB.recargar(); FB.ir("#inicio"); };
-  det2.createDiv({ cls: "fin-note", text: "La carpeta tiene que existir (créala antes en el Explorador si es nueva). Si no tiene datos, se empieza de cero allí (tus datos actuales siguen en la carpeta de antes)." });
-  const det3 = pC.createEl("details"); det3.createEl("summary", { text: "Borrar todos los datos" });
-  det3.createDiv({ cls: "fin-note", text: "Se guarda una copia antes. Escribe BORRAR para confirmar." });
-  const fr3 = det3.createDiv({ cls: "fb-fila" });
-  const iB = fr3.createEl("input", { attr: { type: "text", placeholder: "BORRAR", "aria-label": "Escribe BORRAR para confirmar" } });
-  const bB = fr3.createEl("button", { cls: "fb-btn sec peligro", text: "Borrar todo" });
-  bB.onclick = async () => { const r = await FB.api("/api/vaciar", { confirmar: iB.value }); FB.aviso(r.mensaje || "Hecho", !r.ok); if (r.ok) { await FB.recargar(); FB.ir("#bienvenida"); } };
-
+  if (tab === "dinero") {
+    const pL = panel(col, "Tu límite de gasto variable", null, "Lo que te das al mes para comer fuera, compras, ocio… sin contar los gastos fijos. Es tu tope, no el del banco.");
+    const iL = campoAjuste(pL, { id: "aj-limite", etiqueta: "Límite al mes", unidad: "€/mes", ayuda: "0 o vacío = sin límite.", attr: { type: "number", step: "10", min: "0" } }); iL.value = limiteVar || "";
+    alCambiar(iL, "limite", () => ({ limite_variable: iL.value }));
+    // Meta de ahorro: si la pones, la app calcula el límite que la permite (limitePorMeta); cambiarlo es cosa tuya, con el botón
+    const iA = campoAjuste(pL, { id: "aj-meta", etiqueta: "Quiero ahorrar al mes", unidad: "€/mes", ayuda: "Opcional, aparte de lo que ya inviertes. Con una meta, la app te dice qué límite te la deja cumplir.", attr: { type: "number", min: "0", step: "10", placeholder: "opcional" } }); iA.value = metaAhorro() || "";
+    alCambiar(iA, "meta", () => ({ meta_ahorro: iA.value || 0 }));
+    const meta = metaAhorro();
+    if (meta > 0) {
+      const L = limitePorMeta(meta, datosMeta());
+      if (!(L.ingresos > 0)) pL.createDiv({ cls: "fin-note", text: "Para calcular tu límite hace falta saber lo que te entra al mes: detecta tus ingresos fijos en Fijos o importa algún mes completo." });
+      else {
+        const resta = [[L.fijos, "de fijos"], [L.suelto, "de otros gastos fijos que no tienes dados de alta"], [L.aportaciones, "que inviertes"]].filter(([v]) => v >= 0.5).map(([v, t]) => ` − ${eur(v, 2)} ${t}`).join("");
+        pL.createDiv({ cls: "fin-note", text: `Te entran ${eur(L.ingresos, 2)} al mes (${L.deFijos ? "tus ingresos fijos" : `tu media de ${L.nMeses === 1 ? "el último mes" : `los últimos ${L.nMeses} meses`}`})${resta} − ${eur(meta, 2)} de tu meta = ${eur(L.sobra, 2)} para gasto variable.` });
+        if (!L.llega) mensaje(pL, `Con lo que te entra no llega para ahorrar ${eur(meta, 2)} al mes: te faltarían ${eur(-L.sobra, 2)} aunque no gastaras nada en gasto variable.`, "err");
+        else if (Math.abs(L.limite - limiteVar) < 1) pL.createDiv({ cls: "fin-note", text: `Tu límite de ${eur(limiteVar, 2)} ya es el de tu meta.` });
+        else {
+          const fU = pL.createDiv({ cls: "fb-fila" });
+          fU.createSpan({ text: `Con tu meta, tu límite sería ${eur(L.limite, 2)} al mes (${limiteVar > 0 ? `ahora es ${eur(limiteVar, 2)}` : "ahora no tienes"}).` });
+          const bU = fU.createEl("button", { cls: "fb-btn sec", text: `Usar ${eur(L.limite, 2)}`, attr: { type: "button", "aria-label": `Usar ${eur(L.limite, 2)} al mes como límite de gasto variable` } });
+          bU.onclick = () => guardarAjuste("/api/config", { limite_variable: L.limite });
+        }
+      }
+    }
+    const pM = panel(col, "Tu mes y tu colchón");
+    const iM = campoAjuste(pM, { id: "aj-mes", etiqueta: "Tu mes empieza el día", cls: "mini", unidad: "de cada mes",
+      ayuda: diaInicio === 1 ? "1 = el mes natural. Si cobras, por ejemplo, el 28, pon 28: tu «octubre» irá del 28 de septiembre al 27 de octubre." : `Ahora ${mesLbl(hoyKey).toLowerCase()} es ${mesRango(hoyKey)}. Los saldos y la inversión siguen por meses naturales.`,
+      attr: { type: "number", min: "1", max: "28", step: "1" } }); iM.value = diaInicio;
+    alCambiar(iM, "mes", () => ({ dia_inicio: iM.value || 1 }));
+    const RP = planReparto();
+    const iC = campoAjuste(pM, { id: "aj-colchon", etiqueta: "Colchón en la cuenta corriente", unidad: "€",
+      ayuda: `Lo que quieres dejar siempre en la cuenta antes de mover lo que sobra. Vacío = lo calcula la app${RP ? ` (ahora ${eur(RP.colchonAuto, 2)})` : ""}.`,
+      attr: { type: "number", min: "0", step: "50", placeholder: "automático" } }); iC.value = num(cfg.colchon) || "";
+    alCambiar(iC, "colchon", () => ({ colchon: iC.value || 0 }));
+    const pD = panel(col, "Tus cuentas, fijos y metas");
+    accesos(pD, [
+      ["💳", "Cuentas", `${cnt("cuenta")} cuenta${cnt("cuenta") === 1 ? "" : "s"} · añadir, personalizar y ver sus movimientos`, "#cuentas"],
+      ["🔁", "Fijos", `${cnt("recurrente")} ingresos y gastos que se repiten · y buscar más en tus movimientos`, "#gestionar/recurrente"],
+      ["🎯", "Metas de ahorro", `${cnt("objetivo")} meta${cnt("objetivo") === 1 ? "" : "s"}`, "#gestionar/objetivo"],
+      ["⏰", "Recordatorios", "renta, ITV, seguros anuales…", "#gestionar/recordatorio"],
+    ]);
+    const pI = panel(col, "Tu inversión");
+    accesos(pI, [
+      ["🌱", "Activos", `${cnt("activo")} activo${cnt("activo") === 1 ? "" : "s"} · editar o borrar`, "#gestionar/activo"],
+      ["📥", "Compras y ventas", `${cnt("aportacion")} operaciones`, "#gestionar/aportacion"],
+      ["💵", "Dividendos y comisiones", `${cnt("cobro")} anotados · para la renta`, "#gestionar/cobro"],
+    ]);
   }
-  if (tab === "general") {
-  const pS = panel(root, "FinanceBuddy");
-  pS.createDiv({ cls: "fin-note", text: `Versión ${DB.info.version}. La app funciona en tu ordenador: cerrar la pestaña no la cierra.` });
-  pS.createDiv({ cls: "fin-note", text: "Atajos de teclado: pulsa ? para verlos (D = modo discreto · I = importar · A = apuntar un movimiento · 1 a 5 = las secciones del menú)." });
-  panelVersion(pS);
-  const bS = pS.createDiv({ cls: "fb-fila" }).createEl("button", { cls: "fb-btn sec", text: "Cerrar FinanceBuddy" });
-  bS.onclick = async () => { await FB.api("/api/salir", {}); document.body.innerHTML = "<p style='padding:40px;font-family:sans-serif'>FinanceBuddy se ha cerrado. Puedes cerrar esta pestaña.</p>"; };
+  if (tab === "clasificacion") {
+    const pD = panel(col, "Cómo se clasifica lo que importas");
+    accesos(pD, [
+      ["🏷️", "Categorías", `${cnt("categoria")} categorías · icono, color, presupuesto; juntar y ocultar`, "#gestionar/categoria"],
+      ["🧠", "Reglas", "«si el texto contiene…, es esta categoría» · probarlas y corregir lo ya importado", "#gestionar/regla"],
+      ["📄", "Formatos de archivo", "qué columna es cada cosa en el Excel de cada banco", "#gestionar/perfil"],
+    ]);
+    const pT = panel(col, "Tus nombres en el banco", null, "Con ellos, el dinero que mueves entre cuentas a tu nombre se reconoce como traspaso y no como gasto o ingreso.");
+    const iT = campoAjuste(pT, { id: "aj-titulares", etiqueta: "Tu nombre tal y como sale en el banco", cls: "", ayuda: "Se rellena solo con el titular del primer extracto que lo traiga. Si hay más titulares (cuenta conjunta), sepáralos con «;».", attr: { type: "text", placeholder: "p. ej. GARCÍA LÓPEZ ANA" } });
+    iT.value = (cfg.titulares || []).join("; ");
+    iT.dataset.fb = "titulares";
+    iT.onchange = () => guardarAjuste("/api/titulares", { titulares: iT.value.split(";") });
+  }
+  if (tab === "aspecto") {
+    apariencia(panel(col, "Apariencia"));
+    const pI = panel(col, "Tu inicio", null, "Qué ves en la pantalla de inicio y en qué orden.");
+    pI.id = "tu-inicio";
+    personalizarInicio(pI);
+    const pP = panel(col, "Listas");
+    const iP = campoAjuste(pP, { id: "aj-pagina", etiqueta: "Registros por página", cls: "mini", unidad: "filas",
+      ayuda: "Cuántas filas se ven de una vez en Movimientos, en las listas de Ajustes, en Para la renta y en las operaciones de cada activo (de 10 a 200). Las tarjetas de «Por revisar» van aparte.",
+      attr: { type: "number", min: "10", max: "200", step: "5" } }); iP.value = porPagina();
+    alCambiar(iP, "pagina", () => ({ por_pagina: iP.value || 40 }));
+    const pW = panel(col, "Avisos de Windows", null, "Con la app en marcha (su icono en la bandeja), Windows te avisa de los recordatorios (una vez al día) y de cuándo toca importar (una vez a la semana). No sale nada a internet.");
+    const cW = casillaAjuste(pW, "Avisarme de los recordatorios y de cuándo toca importar", cfg.avisos_windows === true);
+    cW.onchange = () => guardarAjuste("/api/config", { avisos_windows: cW.checked });
+    // Para que lleguen sin tener que abrirla: que la abra Windows al iniciar sesión, en la bandeja y sin navegador (autoarranque.py)
+    const AR = (DB.info || {}).arranque || {};
+    const cA = casillaAjuste(pW, "Abrir FinanceBuddy al iniciar Windows (en la bandeja, sin abrir el navegador)", !!AR.activo,
+      AR.disponible ? "Así los avisos llegan aunque no hayas abierto la app. Se quita aquí o en el Administrador de tareas de Windows." : AR.motivo || "");
+    cA.disabled = !AR.disponible;
+    cA.onchange = async () => {
+      const r = await FB.api("/api/arranque", { activar: cA.checked });
+      FB.aviso(r.mensaje || (r.ok ? "Guardado ✓" : "No se ha podido cambiar"), !r.ok);
+      await FB.refrescar();
+    };
+    pW.createDiv({ cls: "fin-note", text: "Las dos cosas, apagadas de serie." });
+    const pS = panel(col, "FinanceBuddy");
+    pS.createDiv({ cls: "fin-note", text: `Versión ${DB.info.version}. La app funciona en tu ordenador: cerrar la pestaña no la cierra. Pulsa ? para ver los atajos de teclado.` });
+    panelVersion(pS);
+    const bS = pS.createDiv({ cls: "fb-fila" }).createEl("button", { cls: "fb-btn sec", text: "Cerrar FinanceBuddy" });
+    bS.onclick = async () => { await FB.api("/api/salir", {}); document.body.innerHTML = "<p style='padding:40px;font-family:sans-serif'>FinanceBuddy se ha cerrado. Puedes cerrar esta pestaña.</p>"; };
+    if (params[0] === "inicio") setTimeout(() => { pI.scrollIntoView({ block: "start" }); pI.classList.add("resalta"); }, 30);
+  }
+  if (tab === "servicios") {
+    col.createDiv({ cls: "fin-note", text: "Los precios por internet son opcionales y están apagados de serie. El aviso de versión se configura en «Aspecto y avisos»; sin estas opciones, la app no sale a internet." });
+    panelPrecios(col);
+    const ir = params[0] === "precios" ? "precios" : null;
+    if (ir) setTimeout(() => { const e = document.getElementById(ir); if (e) { e.scrollIntoView({ block: "start" }); e.classList.add("resalta"); } }, 30);
+  }
+  if (tab === "copias") {
+    // Primero, recuperar: deshacer lo último y las copias; después, sacar tus datos; y al final, plegado, lo que cambia de sitio o borra.
+    panelDeshacer(col);
+    const pC = panel(col, "Copias de seguridad");
+    pC.createDiv({ cls: "fin-note", text: `Cada día que abres la app se guarda una copia (las 30 últimas). Tus datos están en ${DB.info.carpeta} (archivo datos.db).` });
+    const fc = pC.createDiv({ cls: "fb-fila" });
+    const bCopia = fc.createEl("button", { cls: "fb-btn", text: "Hacer una copia ahora" }); bCopia.onclick = async () => { const r = await FB.api("/api/copia", {}); FB.aviso(r.mensaje || "Hecho"); };
+    const bAbrir = fc.createEl("button", { cls: "fb-btn sec", text: "Abrir la carpeta" }); bAbrir.onclick = () => FB.api("/api/abrir_carpeta", { que: "datos" });
+    const det = pC.createEl("details"); det.createEl("summary", { text: "Restaurar una copia" });
+    const fr = det.createDiv({ cls: "fb-fila" });
+    const sCop = fr.createEl("select", { attr: { "aria-label": "Copia de seguridad" } });
+    FB.api("/api/copias").then((r) => { for (const n of r.copias || []) { const o = sCop.createEl("option", { text: n }); o.value = n; } });
+    const bRes = fr.createEl("button", { cls: "fb-btn sec", text: "Restaurar" });
+    bRes.onclick = async () => { if (!sCop.value || !(await confirmar(`Vas a volver a los datos de «${sCop.value}». Lo de ahora se guarda antes en otra copia, así que podrás recuperarlo.`, { titulo: "¿Volver a una copia?", si: "Volver a esta copia" }))) return; const r = await FB.api("/api/restaurar", { copia: sCop.value }); FB.aviso(r.mensaje || "Hecho", !r.ok); await FB.refrescar(); };
+    // Segunda copia en otro sitio (un USB, otro disco, una carpeta sincronizada): si el disco falla, las copias de al lado se van con él
+    const detX = pC.createEl("details"); detX.createEl("summary", { text: "Guardar también las copias en otro sitio" });
+    detX.createDiv({ cls: "fin-note", text: "Si pones aquí una carpeta de un USB, de otro disco o de una carpeta sincronizada, cada copia se guarda también ahí. Si ese sitio no está disponible (el USB sin poner), la app sigue como si nada y te lo dice aquí." });
+    const frX = detX.createDiv({ cls: "fb-fila" });
+    const iX = frX.createEl("input", { attr: { type: "text", placeholder: "E:\\Copias de FinanceBuddy", "aria-label": "Carpeta para la segunda copia" } });
+    iX.value = DB.config.copia_extra || "";
+    const bX = frX.createEl("button", { cls: "fb-btn sec", text: "Guardar" });
+    bX.onclick = async () => {
+      const r = await FB.api("/api/copia_extra", { carpeta: iX.value });
+      FB.aviso(r.mensaje || "Hecho", !r.ok);
+      await FB.refrescar();
+    };
+    const fallo = DB.config.copia_extra_error;
+    if (fallo) mensaje(detX, `La última copia en ${fallo.carpeta} no se pudo guardar (${fallo.motivo}). Las copias de la carpeta Copias sí están.`, "err");
+    else if (DB.config.copia_extra) detX.createDiv({ cls: "fin-note", text: "Última copia guardada ahí sin problemas." });
+    panelCompartir(col);
+    const pX = panel(col, "Cambiar de carpeta o empezar de cero");
+    const det2 = pX.createEl("details"); det2.createEl("summary", { text: "Usar otra carpeta de datos" });
+    const fr2 = det2.createDiv({ cls: "fb-fila" });
+    const iC = fr2.createEl("input", { attr: { type: "text", placeholder: "C:\\Users\\…\\FinanceBuddy", "aria-label": "Carpeta de datos" } }); iC.value = DB.info.carpeta;
+    const bC = fr2.createEl("button", { cls: "fb-btn sec", text: "Cambiar" });
+    bC.onclick = async () => { let r = await FB.api("/api/carpeta", { carpeta: iC.value }); if (r.necesita_confirmar) { if (!(await confirmar(r.mensaje, { titulo: "¿Empezar de cero en esa carpeta?", si: "Crear base nueva" }))) return; r = await FB.api("/api/carpeta", { carpeta: iC.value, confirmado: true }); } FB.aviso(r.mensaje || "Hecho", !r.ok); await FB.recargar(); FB.ir("#inicio"); };
+    det2.createDiv({ cls: "fin-note", text: "La carpeta tiene que existir (créala antes en el Explorador si es nueva). Si no tiene datos, se empieza de cero allí (tus datos actuales siguen en la carpeta de antes)." });
+    const det3 = pX.createEl("details"); det3.createEl("summary", { text: "Borrar todos los datos" });
+    det3.createDiv({ cls: "fin-note", text: "Se guarda una copia antes. Escribe BORRAR para confirmar." });
+    const fr3 = det3.createDiv({ cls: "fb-fila" });
+    const iB = fr3.createEl("input", { attr: { type: "text", placeholder: "BORRAR", "aria-label": "Escribe BORRAR para confirmar" } });
+    const bB = fr3.createEl("button", { cls: "fb-btn sec peligro", text: "Borrar todo" });
+    bB.onclick = async () => { const r = await FB.api("/api/vaciar", { confirmar: iB.value }); FB.aviso(r.mensaje || "Hecho", !r.ok); if (r.ok) { await FB.recargar(); FB.ir("#bienvenida"); } };
   }
 }
 
@@ -232,64 +241,7 @@ function panelVersion(p) {
   b.onclick = async () => { b.disabled = true; const r = await FB.api("/api/actualizaciones/comprobar", { forzar: true }); if (!r.ok) FB.aviso(r.mensaje || "No se ha podido comprobar", true); await FB.refrescar(); };
 }
 // Tema (en este navegador) y color de acento (en tus datos).
-const ACENTOS = [["salvia", "#1B7558"], ["violeta", "#5A44D4"], ["azul", "#1C5DCF"], ["verde", "#327D1A"], ["coral", "#CB4520"], ["rosa", "#C4307A"], ["grafito", "#2B3340"]];
-// Asistente Jev (TypeSafe AI), opcional: la clave se guarda solo en tu carpeta de datos (cifrada) y nunca vuelve a la página.
-function panelJev(padre) {
-  const J = (DB.config || {}).jev || {};
-  const p = panel(padre, "Asistente Jev (opcional)", { text: J.activo ? "activado" : J.hay_clave ? "desactivado" : "sin clave" },
-    "Jev es un modelo de TypeSafe AI que elige entre opciones y dice con qué confianza. Solo sugiere: nunca guarda nada por su cuenta.");
-  p.id = "jev";
-  const usos = p.createEl("ul", { cls: "fb-lista-jev" });
-  for (const t of ["Por revisar: la categoría de lo que tu historial no reconoce, y qué es cada texto raro del bróker (compra, intereses, traspaso…)",
-    "Revisar tus categorías: lo que tienes en «Otros» o que parece estar en otra",
-    "Apuntar: la categoría según escribes el concepto",
-    "Fijos: si algo que se repite es una cuota o solo coincide",
-    "Un banco nuevo: qué columna es cada cosa"]) usos.createEl("li", { text: t });
-  p.createDiv({ cls: "fin-note", text: "Además del movimiento, Jev recibe contexto de tu propio historial para comparar con tu criterio: cómo has clasificado cosas parecidas, tus Bizums más habituales y qué ha pasado antes con esa persona (sin su nombre), y en un Bizum recibido, los gastos tuyos que podría devolver." });
-  p.createDiv({ cls: "fin-note", text: "Se envía a TypeSafe (EE. UU.) solo el concepto del movimiento —sin nombres de los Bizum, números de tarjeta, IBAN ni correos— y el importe. Nada de saldos, cuentas ni fechas. Sin clave, la app funciona igual." });
-  const f = p.createDiv({ cls: "fb-fila" });
-  const i = f.createEl("input", { attr: { type: "password", autocomplete: "off", placeholder: J.hay_clave ? `Clave guardada (…${J.fin_clave})` : "Pega aquí tu clave de Jev", "aria-label": "Clave de Jev" } });
-  const bG = f.createEl("button", { cls: "fb-btn", text: "Guardar" });
-  const bP = f.createEl("button", { cls: "fb-btn sec", text: "Probar" });
-  const msg = p.createDiv();
-  if (J.ilegible) mensaje(msg, "La clave guardada no se puede leer en este ordenador: se guardó en otro, o con otro usuario de Windows. Pégala otra vez.", "err");
-  // El resultado de «Probar» se guarda en FB.estado: la pantalla se redibuja al guardar y el mensaje sobrevive
-  if (FB.estado.jevPrueba) mensaje(msg, FB.estado.jevPrueba.texto, FB.estado.jevPrueba.ok ? "ok" : "err");
-  const enviar = async (d) => { const r = await FB.api("/api/jev/config", d); if (!r.ok) { msg.empty(); mensaje(msg, r.mensaje || "Error", "err"); } return r.ok; };
-  const guardar = async (d, aviso) => { if (!(await enviar(d))) return false; FB.aviso(aviso); await FB.refrescar(); return true; };
-  bG.onclick = () => { if (i.value.trim()) guardar({ clave: i.value.trim(), activo: true }, "Clave guardada ✓"); };
-  bP.onclick = async () => {
-    if (i.value.trim() && !(await enviar({ clave: i.value.trim(), activo: true }))) return;
-    bP.disabled = true; msg.empty(); mensaje(msg, "Probando…");
-    const r = await FB.api("/api/jev/probar", {});
-    FB.estado.jevPrueba = { texto: r.mensaje || "Error", ok: !!r.ok };
-    await FB.refrescar();
-  };
-  if (J.hay_clave) {
-    const o = p.createDiv({ cls: "fb-fila fb-opciones" });
-    const chk = (texto, k, v) => { const l = o.createEl("label"); const c = l.createEl("input", { attr: { type: "checkbox" } }); c.checked = v; c.onchange = () => guardar({ [k]: c.checked }, "Guardado ✓"); l.appendText(" " + texto); };
-    chk("Activado", "activo", !!J.activo);
-    chk("Pedir sugerencias al importar", "al_importar", !!J.al_importar);
-    if (!J.de_entorno) { const q = o.createEl("button", { cls: "fin-link", text: "Quitar la clave" }); q.onclick = () => guardar({ clave: "", activo: false }, "Clave quitada"); }
-    plegable(p, "Ver lo último que se ha enviado a Jev", (c) => {
-      c.createDiv({ cls: "fin-note", text: "Exactamente lo que ha salido de tu ordenador, de lo más nuevo a lo más viejo (las últimas 30 consultas). Los nombres de personas, números de tarjeta, IBAN, direcciones y tu nombre no salen." });
-      FB.api("/api/jev/enviado", {}).then((r) => {
-        if (!r.ok || !(r.enviado || []).length) { vacio(c, "Aún no se ha enviado nada", " Aparecerá aquí en cuanto Jev revise algo."); return; }
-        for (const e of r.enviado) {
-          const x = c.createDiv({ cls: "fb-enviado" });
-          x.createDiv({ cls: "c", text: e.cuando });
-          x.createDiv({ cls: "e", text: e.estado });
-          for (const q of e.preguntas) x.createDiv({ cls: "q", text: `Pregunta «${q.nombre}»: ${q.instrucciones} — ${q.tipo === "noul" ? "sí / no" : `${q.opciones.length} opciones: ${q.opciones.slice(0, 3).join(" | ")}${q.opciones.length > 3 ? " …" : ""}`}` });
-        }
-      });
-    });
-    const u = J.uso || {};
-    const n = p.createDiv({ cls: "fin-note" });
-    const coste = num(u.coste) < 0.01 ? "menos de un céntimo" : `unos ${nf(num(u.coste), 2, 2)} $`;
-    n.appendText(`Este mes: ${u.consultas || 0} consulta${u.consultas === 1 ? "" : "s"} · ${coste} (TypeSafe cobra 0,042 $ por millón de palabras enviadas). `);
-    if (J.activo) enlace(n, "Revisar tus categorías →", "#revision");
-  }
-}
+const ACENTOS = [["violeta", "#5B3FD1"], ["salvia", "#1B7558"], ["azul", "#1C5DCF"], ["verde", "#327D1A"], ["coral", "#CB4520"], ["rosa", "#C4307A"], ["grafito", "#2B3340"]];
 function apariencia(p) {
   const f1 = p.createDiv({ cls: "fb-fila" });
   f1.createSpan({ cls: "fb-et", text: "Tema" });
@@ -301,13 +253,20 @@ function apariencia(p) {
   const f2 = p.createDiv({ cls: "fb-fila" });
   f2.createSpan({ cls: "fb-et", text: "Color" });
   const g = f2.createDiv({ cls: "fb-colores" });
-  const actual = cfg.acento || "salvia";
+  const actual = cfg.acento || "violeta";
   for (const [k, col] of ACENTOS) {
-    const b = g.createEl("button", { cls: k === actual ? "act" : "", attr: { type: "button", title: cap(k), "aria-label": cap(k), "aria-pressed": String(k === actual) } });
+    const nombre = cap(k) + (k === "violeta" ? " (de serie)" : "");
+    const b = g.createEl("button", { cls: k === actual ? "act" : "", attr: { type: "button", title: nombre, "aria-label": nombre, "aria-pressed": String(k === actual) } });
     b.style.background = col;
     b.onclick = () => { document.body.dataset.acento = k; guardarAjuste("/api/config", { acento: k }); };
   }
-  p.createDiv({ cls: "fin-note", text: "Los colores e iconos de cada categoría se cambian en Tus datos → Categorías." });
+  p.createDiv({ cls: "fin-note", text: "El icono y el color de cada categoría se cambian en Clasificación → Categorías; los de cada cuenta, en Cuentas." });
+  p.createEl("h4", { text: "Tu compañero" });
+  const visible = casillaAjuste(p, `Mostrar a ${nombreMascota()}`, mascotaVisible());
+  alCambiar(visible, "mascota", () => ({ mascota: visible.checked ? "si" : "no" }));
+  const nombre = campoAjuste(p, { id: "mascota-nombre", etiqueta: "Nombre del compañero", cls: "", ayuda: "Si lo dejas vacío, se llama Nubo. Ocultarlo no cambia tus datos ni lo que hace la app.", attr: { type: "text", maxlength: "16", placeholder: "Nubo" } });
+  nombre.value = cfg.mascota_nombre || "";
+  alCambiar(nombre, "mascota_nombre", () => ({ mascota_nombre: nombre.value }));
 }
 function personalizarInicio(p) {
   const lista = panelesInicio();
@@ -321,11 +280,12 @@ function personalizarInicio(p) {
     box.innerHTML = "";
     lista.forEach((x, i) => {
       const r = box.createDiv({ cls: "r" + (x.visible ? "" : " off") });
+      // Las flechas, junto al nombre (no al otro lado de la pantalla), y cada una dice qué panel mueve.
+      const mover = (d, t, title) => { const b = r.createEl("button", { text: t, attr: { type: "button", title, "aria-label": title } }); b.disabled = !lista[i + d]; b.onclick = () => { [lista[i], lista[i + d]] = [lista[i + d], lista[i]]; pintar(); guardar(); box.querySelectorAll(".r")[i + d]?.querySelector(`button[aria-label="${title}"]`)?.focus(); }; };
+      mover(-1, "↑", `Subir ${x.t}`); mover(1, "↓", `Bajar ${x.t}`);
       const l = r.createEl("label"); const c = l.createEl("input", { attr: { type: "checkbox" } }); c.checked = x.visible;
-      l.appendText(x.t);
+      l.createSpan({ text: x.t });
       c.onchange = () => { x.visible = c.checked; pintar(); guardar(); };
-      const mover = (d, t, title) => { const b = r.createEl("button", { text: t, attr: { type: "button", title, "aria-label": title } }); b.disabled = !lista[i + d]; b.onclick = () => { [lista[i], lista[i + d]] = [lista[i + d], lista[i]]; pintar(); guardar(); }; };
-      mover(-1, "↑", "Subir"); mover(1, "↓", "Bajar");
     });
   };
   pintar();

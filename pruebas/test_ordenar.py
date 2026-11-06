@@ -80,6 +80,30 @@ class TestProbarRegla(Base):
         with self.assertRaises(ValueError): self.api("/api/regla/aplicar", {"patron": "mercadona", "clase": "transferencia", "categoria": "Ocio"})
         with self.assertRaises(ValueError): self.api("/api/regla/aplicar", {"patron": "mercadona", "clase": "gasto", "categoria": "No existe"})
 
+    def test_probar_y_aplicar_respetan_regla_con_concepto(self):
+        cena = self.mov("Bizum a Ana Ruiz concepto cena", 5, "Comer fuera")
+        cine = self.mov("Bizum a Ana Ruiz concepto cine", 6, "Ocio")
+        self.alm.guardar("regla", {"patron": "ana ruiz", "concepto": "cena", "categoria": "Comer fuera", "clase": "gasto"})
+        self.alm.guardar("regla", {"patron": "ana ruiz", "categoria": "Regalos", "clase": "gasto"})
+        d = {"patron": "ana ruiz", "categoria": "Regalos", "clase": "gasto"}
+        r = self.api("/api/regla/probar", d)
+        self.assertEqual((r["n"], r["cambian"]), (1, 1))
+        self.assertEqual([m["id"] for m in r["muestra"]], [cine])
+        self.api("/api/regla/aplicar", d)
+        self.assertEqual(self.alm.obtener("movimiento", cena)["categoria"], "Comer fuera")
+        self.assertEqual(self.alm.obtener("movimiento", cine)["categoria"], "Regalos")
+
+    def test_probar_y_aplicar_respetan_preguntar_mas_reciente(self):
+        self.alm.guardar("regla", {"patron": "mercadona", "categoria": "Supermercado", "clase": "gasto"})
+        self.alm.guardar("regla", {"patron": "mercadona valencia", "accion": "preguntar"})
+        d = {"patron": "mercadona", "categoria": "Supermercado", "clase": "gasto"}
+        r = self.api("/api/regla/probar", d)
+        self.assertEqual((r["n"], r["cambian"]), (1, 0))
+        self.api("/api/regla/aplicar", d)
+        self.assertEqual(self.alm.obtener("movimiento", self.a)["categoria"], "Ocio")
+        self.assertEqual(self.alm.obtener("movimiento", self.b)["categoria"], "Supermercado")
+
+
 class TestCategorias(Base):
     def setUp(self):
         super().setUp(); self.preparar()
@@ -119,8 +143,6 @@ class TestCategorias(Base):
         self.api("/api/categoria/ocultar", {"nombres": ["Cenas"]})
         c = self.alm.buscar("categoria", nombre="Cenas")[0]
         self.assertTrue(c["oculta"]); self.assertEqual(self.alm.obtener("movimiento", self.m)["categoria"], "Cenas")
-        from financebuddy import jev
-        self.assertNotIn("Cenas", [n for n, _ in jev.categorias_de(self.alm)[0]])
         self.api("/api/categoria/ocultar", {"nombres": ["Cenas"], "ocultar": False})
         self.assertFalse(self.alm.buscar("categoria", nombre="Cenas")[0]["oculta"])
 

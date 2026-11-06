@@ -32,6 +32,10 @@ function proyectar(u, hasta, exacto = false) {
     apo += a.importe;
     const cb = cuentaAportacion(a);
     if (!cb) { mover(principal(), -a.importe); deBanco += a.importe; continue; }
+    // Un bróker del que aún no has anotado saldo: no se sabe cuánto efectivo tenía, así que la compra no se resta de nada (ni del
+    // bróker, que no se enseña: «Sin saldo anotado», ni del banco). Si no, al dar de alta el bróker y traer sus compras,
+    // tu cuenta del banco «no cuadraba» por compras que nunca salieron de ella.
+    if (!Object.prototype.hasOwnProperty.call(u.cuentas.saldos, cb)) continue;
     const p = pagarAportacion(S[cb] || 0, a.importe);
     S[cb] = p.broker; if (p.deBanco) { mover(principal(), -p.deBanco); deBanco += p.deBanco; }
   }
@@ -44,11 +48,13 @@ function proyectar(u, hasta, exacto = false) {
   const base = activos().length ? valores : { ...u.valores };
   const sinAlta = aportaciones().filter((x) => x.pendiente && x.fecha <= hasta && !activos().some((y) => y.nombre === x.activo) && (tras(x.fecha) || !(x.activo in base)));
   for (const c of sinAlta) base[c.activo] = (base[c.activo] || 0) + c.importe;
+  // Un bróker sin saldo anotado no tiene efectivo conocido: no entra en el total (ni −199,99 € por una compra, ni sus intereses sueltos).
+  for (const c of cuentas()) if (c.tipo === "broker" && !Object.prototype.hasOwnProperty.call(u.cuentas.saldos, c.nombre)) delete S[c.nombre];
   const g = agrupar(S, base, u.otros);
   const act = sum(Object.values(g.c));
   const imp = (f) => sum(ms.filter(f).map((m) => m.importe));
   return {
-    base: u, c: g.c, cuentas: g.cuentas, deudas: u.deudas, activos: act, neto: act - u.deudas,
+    base: u, c: g.c, cuentas: g.cuentas, origen_saldos: u.origen_saldos || {}, deudas: u.deudas, activos: act, neto: act - u.deudas,
     flujo: { apo, deBanco, tr: imp(esABroker), aAh: imp(esAAhorro), deAh: imp(esDeAhorro) },
   };
 }
@@ -73,7 +79,9 @@ function conciliacion() {
   if (P.length < 2) return null;
   const a = P[P.length - 2], b = P[P.length - 1];
   const pr = proyectar(a, b.fecha.endOf("day"), true);
-  const nombres = [...new Set([...Object.keys(b.cuentas.saldos)])].filter((n) => cuentaPor(n));
+  // Solo dos saldos escritos a mano permiten comprobar los movimientos de una cuenta:
+  // el saldo del extracto viene de esos mismos movimientos y no es una comprobación independiente.
+  const nombres = Object.keys(b.cuentas.saldos).filter((n) => cuentaPor(n) && saldoManual(a, n) && saldoManual(b, n));
   return {
     desde: a.fecha, hasta: b.fecha,
     filas: nombres.map((n) => { const real = b.cuentas.saldos[n], esperado = pr.cuentas.saldos[n] ?? 0; return { nombre: n, real, esperado, dif: real - esperado }; }),

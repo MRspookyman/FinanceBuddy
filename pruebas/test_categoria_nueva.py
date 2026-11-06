@@ -1,30 +1,9 @@
-# Aconsejar una categoría nueva cuando ninguna encaja (clasificar.proponer_categoria_nueva), con Jev (servidor falso) y sin él, y la ruta
+# Aconsejar una categoría nueva cuando ninguna encaja (clasificar.proponer_categoria_nueva) y la ruta
 # que la crea al resolver un pendiente. Datos inventados. Uso: python -m unittest pruebas.test_categoria_nueva -v
-import http.server, json, os, shutil, sys, tempfile, threading, unittest
+import os, shutil, sys, tempfile, unittest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from financebuddy import clasificar as C, jev, plantilla, servidor
+from financebuddy import clasificar as C, plantilla, servidor
 
-CLAVE = "clave_de_prueba_0123456789abcdef"
-RECIBIDO = []
-
-class JevFalso(http.server.BaseHTTPRequestHandler):
-    """Para un gasto de «patitas» ninguna categoría tuya encaja (confianza baja) y la nueva adecuada es Mascotas."""
-    def log_message(self, *a): pass
-    def do_POST(self):
-        cuerpo = json.loads(self.rfile.read(int(self.headers["Content-Length"])).decode("utf-8"))
-        RECIBIDO.append(cuerpo)
-        estado = str(cuerpo["state"]).lower()
-        answers = {}
-        for nombre, q in cuerpo["questions"].items():
-            crit = q["criteria"]
-            if nombre == "nueva":
-                ch = next((k for k in crit if "patitas" in estado and "mascotas" in crit[k].lower()), "ninguna")
-                conf = 0.9
-            else:
-                ch, conf = next(iter(crit)), 0.2
-            answers[nombre] = {"type": "choice", "choice": ch, "confidence": conf, "probabilities": {k: (conf if k == ch else 0.0) for k in crit}}
-        self.send_response(200); self.send_header("Content-Type", "application/json"); self.end_headers()
-        self.wfile.write(json.dumps({"model": "jev-falso", "answers": answers, "usage": {"input_tokens": 50, "output_tokens": 5}}).encode())
 
 def cats(*nombres, ocultas=()):
     return [{"nombre": n, "grupo": "variable", **({"oculta": True} if n in ocultas else {})} for n in nombres]
@@ -71,12 +50,9 @@ class TestHeuristica(unittest.TestCase):
             if cat in ("Nómina",): continue
             r = C.proponer_categoria_nueva(patron, -10, todas)
             self.assertTrue(r is None or r["nombre"] not in {c["nombre"] for c in todas}, (patron, r))
-        # Con las de serie solo se aconsejan las que de verdad no existen (p. ej. Deporte, Donaciones)
-        self.assertEqual({c["nombre"] for c in C.categorias_nuevas_posibles(todas)}, {"Deporte", "Donaciones", "Niños", "Impuestos"})
 
 class TestRuta(unittest.TestCase):
     def setUp(self):
-        RECIBIDO.clear()
         self.dir = tempfile.mkdtemp()
         self.app = servidor.App(self.dir, hoy="2026-09-30")
         self.app.manejar("/api/bienvenida", {"cuentas": [{"nombre": "Nómina", "tipo": "corriente", "saldo": 1000}]})
@@ -90,6 +66,23 @@ class TestRuta(unittest.TestCase):
     def borrar_categoria(self, nombre):
         for c in self.alm.todos("categoria"):
             if c["nombre"] == nombre: self.alm.borrar("categoria", c["id"])
+
+    def test_sugerir_categoria_regla_historial_y_sin_coincidencia(self):
+        for texto in ("Taller Inventado Norte", "Taller Inventado Norte", "Otro Comercio"):
+            self.alm.guardar("movimiento", {"fecha": "2026-09-01", "clase": "gasto", "categoria": "Ocio", "importe": 12, "concepto": texto})
+        consulta = {"texto": "Taller Inventado Norte", "clase": "gasto"}
+        self.assertEqual(self.app.manejar("/api/categoria/sugerir", consulta),
+                         {"ok": True, "categoria": "Ocio", "motivo": "historial", "veces": 2})
+        self.alm.guardar("regla", {"patron": "taller inventado", "clase": "gasto", "categoria": "Coche"})
+        self.app.deshacer = self.alm.instantanea()
+        foto = self.app.deshacer
+        self.assertEqual(self.app.manejar("/api/categoria/sugerir", consulta),
+                         {"ok": True, "categoria": "Coche", "motivo": "regla", "veces": 0})
+        self.assertIs(self.app.deshacer, foto)
+        self.assertEqual(self.app.manejar("/api/categoria/sugerir", {"texto": "Zyxw desconocido"}),
+                         {"ok": True, "categoria": None, "motivo": None, "veces": 0})
+        self.assertEqual(self.app.manejar("/api/categoria/sugerir", {"texto": ""}),
+                         {"ok": True, "categoria": None, "motivo": None, "veces": 0})
 
     def test_el_consejo_llega_a_la_pagina_y_no_crea_nada(self):
         pid = self.pendiente("Compra Donativo Cruz Roja Madrid ES")
@@ -108,7 +101,7 @@ class TestRuta(unittest.TestCase):
         a = self.pendiente("Compra Donativo Cruz Roja Madrid ES", fecha="2026-09-20")
         b = self.pendiente("Compra Donativo Cruz Roja Madrid ES", fecha="2026-09-21")
         r = self.app.manejar("/api/resolver", {"id": a, "accion": "guardar", "clase": "gasto", "categoria": "Donaciones", "concepto": "Cruz Roja",
-                                                "categoria_nueva": {"nombre": "Donaciones", "icono": "🤝", "grupo": "variable"}, "recordar": True, "patron": "donativo cruz roja"})
+                                                "categoria_nueva": {"nombre": "Donaciones", "icono": "🤝", "grupo": "variable"}, "proxima": "siempre", "patron": "donativo cruz roja"})
         self.assertTrue(r["ok"], r)
         c = self.alm.buscar("categoria", nombre="Donaciones")[0]
         self.assertEqual((c["grupo"], c["icono"]), ("variable", "🤝"))
@@ -170,58 +163,6 @@ class TestRuta(unittest.TestCase):
         self.borrar_categoria("Mascotas")
         self.alm.set_config("categorias_fusionadas", {"Mascotas": "Otros"})
         self.assertNotIn("categoria_nueva", self.pend(self.pendiente("Veterinaria San Roque")))
-
-class TestConJev(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        cls.srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), JevFalso)
-        threading.Thread(target=cls.srv.serve_forever, daemon=True).start()
-        os.environ["FB_JEV_URL"] = f"http://127.0.0.1:{cls.srv.server_address[1]}/v1/systemone"
-    @classmethod
-    def tearDownClass(cls):
-        cls.srv.shutdown(); cls.srv.server_close(); os.environ.pop("FB_JEV_URL", None)
-    def setUp(self):
-        RECIBIDO.clear()
-        self.dir = tempfile.mkdtemp()
-        self.app = servidor.App(self.dir, hoy="2026-09-30")
-        self.app.manejar("/api/bienvenida", {"cuentas": [{"nombre": "Nómina", "tipo": "corriente", "saldo": 1000}]})
-        self.alm = self.app.alm
-        c = self.alm.buscar("categoria", nombre="Mascotas")[0]
-        self.alm.borrar("categoria", c["id"])
-    def tearDown(self):
-        self.alm.cerrar(); shutil.rmtree(self.dir, ignore_errors=True)
-    def pendiente(self, texto):
-        return self.alm.guardar("pendiente", {"tipo_import": "banco", "cuenta": "Nómina", "archivo": "x.xlsx", "perfil": "Santander", "duda": "?",
-                                              "fila": {"op": "2026-09-20", "texto": texto, "importe": -33.0, "clase": "gasto", "cat": "Otros", "concepto": "X", "duda": "?"}})
-
-    def test_jev_solo_sugiere_y_la_app_lo_ofrece(self):
-        pid = self.pendiente("Compra Patitas Felices SL, Madrid ES, Tarj. :*123456")
-        self.assertNotIn("categoria_nueva", next(p for p in self.app.datos()["pendientes"] if p["id"] == pid))  # sin Jev, ni idea
-        self.app.manejar("/api/jev/config", {"clave": CLAVE, "activo": True})
-        r = self.app.manejar("/api/jev/revisar", {})
-        self.assertTrue(r["ok"], r)
-        p = next(p for p in self.app.datos()["pendientes"] if p["id"] == pid)
-        self.assertEqual(p["jev"]["categoria_nueva"], "Mascotas")
-        n = p["categoria_nueva"]
-        self.assertEqual((n["accion"], n["nombre"], n["fuente"]), ("crear", "Mascotas", "jev"))
-        self.assertIn("Jev", n["motivo"])
-        # Privacidad: solo el concepto saneado y el importe; las opciones nuevas son del catálogo, nada del usuario
-        enviado = json.dumps(RECIBIDO, ensure_ascii=False)
-        self.assertNotIn("123456", enviado)
-        self.assertIn("nueva", enviado)
-        # Jev no ha creado nada ni resuelto nada
-        self.assertFalse(self.alm.buscar("categoria", nombre="Mascotas")); self.assertEqual(self.alm.contar("pendiente"), 1)
-        # El usuario acepta: se crea y se resuelve
-        r = self.app.manejar("/api/resolver", {"id": pid, "accion": "guardar", "clase": "gasto", "categoria": "Mascotas",
-                                               "categoria_nueva": {"nombre": "Mascotas", "icono": "🐾", "grupo": "variable"}})
-        self.assertTrue(r["ok"])
-        self.assertTrue(self.alm.buscar("categoria", nombre="Mascotas")); self.assertEqual(self.alm.contar("pendiente"), 0)
-
-    def test_si_jev_dice_ninguna_no_hay_consejo(self):
-        pid = self.pendiente("Compra Cosas Raras SL, Madrid ES")
-        self.app.manejar("/api/jev/config", {"clave": CLAVE, "activo": True})
-        self.app.manejar("/api/jev/revisar", {})
-        self.assertNotIn("categoria_nueva", next(p for p in self.app.datos()["pendientes"] if p["id"] == pid))
 
 if __name__ == "__main__":
     unittest.main()

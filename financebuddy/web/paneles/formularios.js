@@ -25,6 +25,9 @@ const FORMS = {
     campos: [
       { k: "nombre", l: "Nombre", req: true, ph: "p. ej. Cuenta nómina" },
       { k: "tipo", l: "Tipo", t: "opc", opc: Object.entries(TIPO_CUENTA) },
+      { k: "alias", l: "Nombre visible (opcional)", ayuda: "Como mucho 24 caracteres. Solo cambia cómo se ve la cuenta; su nombre interno se conserva." },
+      { k: "icono", l: "Icono de la cuenta", t: "opc", vacio: "— diseño original —", opc: [["🏦", "Banco"], ["🌱", "Planta"], ["📈", "Gráfico"], ["💼", "Maletín"], ["🏠", "Casa"], ["✈️", "Avión"], ["🎯", "Diana"], ["💶", "Billetes"]] },
+      { k: "color", l: "Color de la cuenta", t: "opc", vacio: "— diseño original —", opc: [1, 2, 3, 4, 5, 6].map((n) => [String(n), `Color ${n}`]) },
       { k: "extracto", l: "Importo sus movimientos", t: "bool", ayuda: "Márcalo si vas a importar el extracto de esta cuenta. Si no, su saldo se calcula con los traspasos desde tus otras cuentas." },
       { k: "iban", l: "Últimas 4 cifras del IBAN", ph: "p. ej. 8765", ayuda: "Si el extracto trae el IBAN, así la app sabe de qué cuenta es sin preguntar. Se rellena solo la primera vez que importas." },
       { k: "notas", l: "Notas" }],
@@ -34,39 +37,41 @@ const FORMS = {
       { k: "nombre", l: "Nombre", req: true },
       { k: "grupo", l: "Grupo", t: "opc", opc: [["variable", "Gasto variable"], ["fijo", "Gasto fijo (alquiler, recibos…)"], ["ingreso", "Ingreso"]] },
       { k: "presupuesto", l: "Presupuesto mensual (opcional)", t: "num", ayuda: "Si lo pones, verás una barra de lo gastado frente a este presupuesto y un aviso si te pasas." },
-      { k: "descripcion", l: "Qué entra aquí (opcional)", ph: "p. ej. clases de pádel y material deportivo", ayuda: "Si usas el asistente Jev, le ayuda a proponer esta categoría." },
+      { k: "descripcion", l: "Qué entra aquí (opcional)", ph: "p. ej. clases de pádel y material deportivo", ayuda: "Una nota para recordar qué gastos o ingresos agrupas en esta categoría." },
       { k: "icono", l: "Icono", t: "emoji" },
       { k: "color", l: "Color", t: "color" },
-      { k: "oculta", l: "Ocultar", t: "bool", ayuda: "Una categoría oculta no sale al elegir categoría ni la propone Jev, pero sus movimientos se conservan y siguen contando en los totales." }],
+      { k: "oculta", l: "Ocultar", t: "bool", ayuda: "Una categoría oculta no sale al elegir categoría ni en las sugerencias, pero sus movimientos se conservan y siguen contando en los totales." }],
     fila: (r) => [`${r.icono || catIcono(r.nombre)}  ${r.nombre}`, ({ variable: "variable", fijo: "fijo", ingreso: "ingreso" }[r.grupo] || r.grupo) + (r.oculta ? " · oculta" : ""), r.presupuesto ? eur(r.presupuesto, 2) : ""], cols: ["Nombre", "Grupo", "Presupuesto"] },
   movimiento: { uno: "movimiento", plural: "Movimientos", ayuda: "Todo lo importado del banco y lo apuntado a mano.",
     campos: [
       { k: "fecha", l: "Fecha", t: "fecha", req: true, defecto: () => hoy.toISODate() },
       { k: "clase", l: "Tipo", t: "opc", opc: Object.entries(CLASE_MOV) },
       { k: "importe", l: "Importe (€, sin signo)", t: "num", req: true },
-      { k: "_otra_divisa", l: "Lo pagué en otra moneda (dólares, libras…)", t: "bool", virtual: true, redibuja: true, si: (d) => d.clase !== "transferencia",
+      { k: "_otra_divisa", l: "Lo pagué en otra moneda (dólares, libras…)", t: "bool", virtual: true, redibuja: true, si: (d) => d.clase !== "transferencia", g: "Más datos", abre: (d) => !!d._otra_divisa,
         ayuda: "El importe de arriba, en euros, es el que cuenta (lo que salió de tu cuenta). Aquí solo apuntas lo que costó en la otra moneda; la app no convierte nada ni consulta cambios por internet." },
-      { k: "importe_divisa", l: "Cuánto fue en esa moneda", t: "num", si: (d) => d._otra_divisa && d.clase !== "transferencia", ph: "p. ej. 50" },
-      { k: "divisa", l: "Moneda (código de 3 letras)", si: (d) => d._otra_divisa && d.clase !== "transferencia", ph: "p. ej. USD" },
+      { k: "importe_divisa", l: "Cuánto fue en esa moneda", t: "num", si: (d) => d._otra_divisa && d.clase !== "transferencia", ph: "p. ej. 50", g: "Más datos" },
+      { k: "divisa", l: "Moneda (código de 3 letras)", si: (d) => d._otra_divisa && d.clase !== "transferencia", ph: "p. ej. USD", g: "Más datos" },
       { k: "concepto", l: "Concepto", req: true, ph: "p. ej. Cena con amigos", alSalir: sugerirCategoria },
-      { k: "categoria", l: "Categoría", t: "opc", opc: catSegunClase, si: (d) => d.clase !== "transferencia",
+      // En la ficha de un movimiento la categoría se cambia arriba, a un clic y con Deshacer (cambioCategoria): aquí no se repite,
+      // salvo que cambies el tipo (de gasto a ingreso…), que pide otra categoría.
+      { k: "categoria", l: "Categoría", t: "opc", opc: catSegunClase, si: (d) => d.clase !== "transferencia" && !(d._enFicha && d.clase === d._claseFicha),
         nota: (d) => (d._sug && d._sug.cat === d.categoria ? d._sug.txt : "") },
       { k: "cuenta", l: "Cuenta", t: "opc", opc: opcCuentas(), defecto: () => principal() },
       { k: "_dir", l: "Dirección", t: "opc", opc: [["destino", "Sale hacia…"], ["origen", "Entra desde…"]], si: (d) => d.clase === "transferencia", virtual: true },
       { k: "_otra", l: "Otra cuenta", t: "opc", opc: opcCuentas(), si: (d) => d.clase === "transferencia", virtual: true },
-      { k: "reembolsa", l: "Devuelve parte de este gasto", t: "opc", opc: opcGastosRecientes, vacio: "— ninguno —", si: (d) => d.clase === "reembolso",
+      { k: "reembolsa", l: "Devuelve parte de este gasto", t: "opc", opc: opcGastosRecientes, vacio: "— ninguno —", si: (d) => d.clase === "reembolso", g: "Compartir o devolver", abre: (d) => d.clase === "reembolso",
         ayuda: "Si te devuelven dinero de un gasto que pagaste tú (un Bizum de un amigo…), elige cuál: así ves cuánto te costó de verdad." },
-      { k: "recurrente", l: "Es el pago/cobro de este recurrente", t: "opc", opc: opcRecurrentes(), vacio: "— ninguno —", si: (d) => d.clase === "gasto" || d.clase === "ingreso",
-        ayuda: "Si lo enlazas, ese mes el recurrente no se cuenta dos veces." },
-      { k: "a_medias", l: "Lo he pagado yo pero lo comparto (a medias)", t: "bool", redibuja: true, si: (d) => d.clase === "gasto" && !d.parte_de,
+      { k: "recurrente", l: "Es el pago o el cobro de este fijo", t: "opc", opc: opcRecurrentes(), vacio: "— ninguno —", si: (d) => d.clase === "gasto" || d.clase === "ingreso", g: "Pago de un fijo", abre: (d) => !!d.recurrente,
+        ayuda: "Si lo enlazas, ese mes el fijo no se cuenta dos veces. Para quitar el enlace, elige «— ninguno —»." },
+      { k: "a_medias", l: "Lo he pagado yo pero lo comparto (a medias)", t: "bool", redibuja: true, si: (d) => d.clase === "gasto" && !d.parte_de, g: "Compartir o devolver", abre: (d) => !!d.a_medias,
         ayuda: "Para una cena o un regalo que pagas tú entero y otros te devuelven su parte. El importe de arriba es lo que salió de tu cuenta; en tus gastos solo cuenta tu parte." },
-      { k: "mi_parte", l: "Tu parte (€)", t: "num", si: (d) => d.clase === "gasto" && d.a_medias && !d.parte_de, ph: "p. ej. 25",
+      { k: "mi_parte", l: "Tu parte (€)", t: "num", si: (d) => d.clase === "gasto" && d.a_medias && !d.parte_de, ph: "p. ej. 25", g: "Compartir o devolver",
         nota: (d) => (num(d.mi_parte) >= 0 && hasNum(d.mi_parte) && num(d.importe) > num(d.mi_parte) ? `Te deben ${eur(num(d.importe) - num(d.mi_parte))}.` : "") },
-      { k: "cobrado", l: "Ya me han pagado el resto", t: "bool", si: (d) => d.clase === "gasto" && d.a_medias && !d.parte_de,
+      { k: "cobrado", l: "Ya me han pagado el resto", t: "bool", si: (d) => d.clase === "gasto" && d.a_medias && !d.parte_de, g: "Compartir o devolver",
         ayuda: "Márcalo cuando te hayan dado lo que te debían. Si te lo pagan con un Bizum, enlázalo a este gasto (tipo «Te lo devolvieron») y se da por cobrado solo." },
-      { k: "etiquetas", l: "Etiquetas (opcional)", t: "lista", ph: "p. ej. vacaciones, regalo de boda",
+      { k: "etiquetas", l: "Etiquetas (opcional)", t: "lista", ph: "p. ej. vacaciones, regalo de boda", g: "Más datos", abre: (d) => (Array.isArray(d.etiquetas) ? d.etiquetas.length : !!d.etiquetas),
         ayuda: "Palabras libres separadas por comas para juntar movimientos de cualquier categoría (un viaje, una reforma…). Luego los filtras en Movimientos → Más filtros." },
-      { k: "nota", l: "Nota" }],
+      { k: "nota", l: "Nota", g: "Más datos", abre: (d) => !!d.nota }],
     fila: (r) => [fechaCorta(r.fecha), r.concepto, r.clase === "transferencia" ? `entre cuentas${r.destino ? " → " + r.destino : r.origen ? " ← " + r.origen : ""}` : r.categoria || "", { text: (r.clase === "gasto" ? "−" : r.clase === "transferencia" ? "" : "+") + eur(r.importe), cls: r.clase === "ingreso" ? "pos" : "" }],
     cols: ["Fecha", "Concepto", "Categoría", "Importe"], orden: (a, b) => String(b.fecha).localeCompare(String(a.fecha)) || b.id - a.id,
     antes: (d) => {
@@ -170,15 +175,17 @@ const FORMS = {
     cols: ["Qué", "Fecha", "Cuándo", ""],
     // pendientes primero (por fecha) y los hechos al final
     orden: (a, b) => (a.estado === "hecho") - (b.estado === "hecho") || String(a.fecha).localeCompare(String(b.fecha)) },
-  regla: { uno: "regla", plural: "Reglas de clasificación", ayuda: "Si el texto de un movimiento importado contiene el patrón, se clasifica así. Las tuyas mandan sobre las de serie.",
+  regla: { uno: "regla", plural: "Reglas de clasificación", textoGuardar: "Guardar para próximas importaciones", ayuda: "Si el texto de un movimiento importado contiene lo que pongas aquí, se clasifica así. Las tuyas mandan sobre las de serie.",
     campos: [
       { k: "patron", l: "El texto contiene", req: true, ph: "p. ej. mercadona" },
+      { k: "concepto", l: "Solo Bizum cuyo concepto contenga", ph: "Opcional: p. ej. cena" },
+      { k: "accion", l: "La próxima vez", t: "opc", opc: [["clasificar", "Clasificar sin preguntar"], ["preguntar", "Pregúntame"]] },
       { k: "clase", l: "Tipo", t: "opc", opc: [["gasto", "Gasto"], ["ingreso", "Ingreso"], ["reembolso", "Te lo devolvieron"], ["transferencia", "Entre tus cuentas"]] },
-      { k: "categoria", l: "Categoría", t: "opc", opc: catSegunClase, si: (d) => d.clase !== "transferencia" },
-      { k: "cuenta_otra", l: "Otra cuenta", t: "opc", opc: opcCuentas(), si: (d) => d.clase === "transferencia" },
-      { k: "recurrente", l: "Enlazar con el recurrente", t: "opc", opc: opcRecurrentes(), vacio: "— ninguno —", si: (d) => d.clase !== "transferencia" },
+      { k: "categoria", l: "Categoría", t: "opc", opc: catSegunClase, si: (d) => d.accion !== "preguntar" && d.clase !== "transferencia" },
+      { k: "cuenta_otra", l: "Otra cuenta", t: "opc", opc: opcCuentas(), si: (d) => d.accion !== "preguntar" && d.clase === "transferencia" },
+      { k: "recurrente", l: "Enlazar con el fijo", t: "opc", opc: opcRecurrentes(), vacio: "— ninguno —", si: (d) => d.accion !== "preguntar" && d.clase !== "transferencia" },
       { k: "origen", l: "", t: "oculto", defecto: () => "usuario" }],
-    fila: (r) => [r.patron, r.clase === "transferencia" ? `entre cuentas${r.cuenta_otra ? " · " + r.cuenta_otra : ""}` : r.categoria, r.origen === "plantilla" ? "de serie" : "tuya"], cols: ["Patrón", "Categoría", ""],
+    fila: (r) => [r.patron + (r.concepto ? ` · concepto «${r.concepto}»` : ""), r.accion === "preguntar" ? "Pregúntame" : r.clase === "transferencia" ? `entre cuentas${r.cuenta_otra ? " · " + r.cuenta_otra : ""}` : r.categoria, r.origen === "plantilla" ? "de serie" : "tuya"], cols: ["El texto contiene", "Categoría", ""],
     orden: (a, b) => (a.origen === "plantilla") - (b.origen === "plantilla") || b.id - a.id, extra: panelProbarRegla },
   perfil: { uno: "formato de archivo", plural: "Formatos de archivo", ayuda: "Cómo leer el Excel/CSV de cada banco o bróker. Se crean solos al importar un archivo nuevo.",
     campos: [
@@ -206,10 +213,29 @@ function formulario(padre, tipo, reg, opciones = {}) {
   const p = padre.createDiv({ cls: "fin-panel" });
   const form = p.createDiv({ cls: "fb-form" });
   const msg = p.createDiv();
+  // Campos con `g`: van plegados en su grupo (abierto si tiene algo puesto o si lo abriste tú), para que la ficha empiece
+  // por lo que se suele corregir (fecha, concepto, importe, cuenta).
+  const abiertos = FB.estado.formGrupos = FB.estado.formGrupos || {};
   const dibujar = () => {
     form.innerHTML = "";
-    for (const c of F.campos) {
+    const grupos = {};
+    const dondeVa = (c) => {
+      if (!c.g) return form;
+      if (!grupos[c.g]) {
+        const det = form.createEl("details", { cls: "fb-form-grupo" });
+        det.open = abiertos[c.g] ?? F.campos.some((x) => x.g === c.g && x.abre && (!x.si || x.si(d)) && x.abre(d));
+        det.addEventListener("toggle", () => { abiertos[c.g] = det.open; });
+        det.createEl("summary", { text: c.g });
+        grupos[c.g] = det.createDiv({ cls: "fb-form" });
+      }
+      return grupos[c.g];
+    };
+    // Primero lo de siempre; los grupos plegados, al final y en este orden (lo que más se usa, antes)
+    const ORDEN_G = ["Pago de un fijo", "Compartir o devolver", "Más datos"], pos = (g) => (ORDEN_G.includes(g) ? ORDEN_G.indexOf(g) : ORDEN_G.length);
+    const campos = [...F.campos.filter((c) => !c.g), ...F.campos.filter((c) => c.g).sort((a, b) => pos(a.g) - pos(b.g))];
+    for (const c of campos) {
       if (c.si && !c.si(d)) continue;
+      const dst = dondeVa(c);
       if (c.t === "oculto") continue;
       if (c.t === "buscador") { buscadorPrecio(form, d, dibujar); continue; }
       if (c.t === "mapa") {
@@ -217,18 +243,18 @@ function formulario(padre, tipo, reg, opciones = {}) {
         if (!claves.length) continue;
         d[c.k] = d[c.k] || {};
         for (const k of claves) {
-          form.createDiv({ cls: "et", text: `${c.l} ${k}` });
-          const i = form.createEl("input", { attr: { type: c.texto ? "text" : "number", step: "0.01" } });
+          dst.createDiv({ cls: "et", text: `${c.l} ${k}` });
+          const i = dst.createEl("input", { attr: { type: c.texto ? "text" : "number", step: "0.01" } });
           i.value = d[c.k][k] ?? "";
           i.oninput = () => { if (i.value === "") delete d[c.k][k]; else d[c.k][k] = i.value; };
         }
         continue;
       }
-      const et = form.createDiv({ cls: "et", text: c.l + (c.req ? " *" : "") });
+      const et = dst.createDiv({ cls: "et", text: c.l + (c.req ? " *" : "") });
       if (c.ayuda) ayuda(et, c.ayuda);
       let el;
       if (c.t === "opc") {
-        el = form.createEl("select");
+        el = dst.createEl("select");
         const ops = typeof c.opc === "function" ? c.opc(d) : c.opc;
         const conVacio = !!c.vacio || (!c.req && typeof c.opc === "function");  // una lista cerrada (tipo, estado…) siempre tiene valor
         if (conVacio) { const o = el.createEl("option", { text: c.vacio || "—" }); o.value = ""; }
@@ -240,9 +266,14 @@ function formulario(padre, tipo, reg, opciones = {}) {
         d[c.k] = el.value;
         el.onchange = () => { d[c.k] = el.value; dibujar(); };
         const nota = c.nota && c.nota(d);
-        if (nota) form.createDiv({ cls: "s", text: nota });
+        if (nota) {
+          const n = dst.createDiv({ cls: "s" });
+          if (c.k === "categoria" && d._sug && d._sug.cat === d.categoria) {
+            n.innerHTML = `${mascota("pensando", { tam: 40 })}<span>${mascotaVisible() ? `${esc(nombreMascota())}: ` : ""}${esc(nota)}</span>`;
+          } else n.textContent = nota;
+        }
       } else if (c.t === "bool") {
-        const l = form.createEl("label", { cls: "fb-check" });
+        const l = dst.createEl("label", { cls: "fb-check" });
         el = l.createEl("input", { attr: { type: "checkbox" } });
         el.checked = !!d[c.k];
         l.appendText(" sí");
@@ -253,14 +284,14 @@ function formulario(padre, tipo, reg, opciones = {}) {
         };
       } else if (c.t === "emoji") {
         // Un emoji: escribirlo o elegir uno de la lista
-        el = form.createDiv({ cls: "fb-picker" });
+        el = dst.createDiv({ cls: "fb-picker" });
         const i = el.createEl("input", { cls: "mini", attr: { type: "text", maxlength: "8", placeholder: catIcono(d.nombre || "") } });
         i.value = d[c.k] ?? "";
         i.oninput = () => { d[c.k] = i.value.trim(); };
         const g = el.createDiv({ cls: "fb-emojis" });
         for (const e of EMOJIS) { const b = g.createEl("button", { text: e, attr: { type: "button" } }); if (e === d[c.k]) b.className = "act"; b.onclick = () => { d[c.k] = e; dibujar(); }; }
       } else if (c.t === "color") {
-        el = form.createDiv({ cls: "fb-picker" });
+        el = dst.createDiv({ cls: "fb-picker" });
         const g = el.createDiv({ cls: "fb-colores" });
         const actual = d[c.k] || "";
         const b0 = g.createEl("button", { cls: "auto" + (actual ? "" : " act"), text: "auto", attr: { type: "button", title: "El de serie" } }); b0.onclick = () => { d[c.k] = ""; dibujar(); };
@@ -268,15 +299,15 @@ function formulario(padre, tipo, reg, opciones = {}) {
         const i = g.createEl("input", { attr: { type: "color", title: "Otro color" } }); i.value = actual || catColor(d.nombre || "x");
         i.onchange = () => { d[c.k] = i.value.toUpperCase(); dibujar(); };
       } else if (c.t === "area") {
-        el = form.createEl("textarea", { attr: { rows: "4" } });
+        el = dst.createEl("textarea", { attr: { rows: "4" } });
         el.value = d[c.k] ?? "";
         el.oninput = () => { d[c.k] = el.value; };
       } else {
         const tipoInput = c.t === "fecha" ? "date" : c.t === "num" || c.t === "int" ? "number" : "text";
-        el = form.createEl("input", { attr: { type: tipoInput, placeholder: c.ph || "" } });
+        el = dst.createEl("input", { attr: { type: tipoInput, placeholder: c.ph || "" } });
         if (tipoInput === "number") el.setAttribute("step", c.paso || (c.t === "int" ? "1" : "0.01"));
         el.value = Array.isArray(d[c.k]) ? d[c.k].join(", ") : d[c.k] ?? "";
-        const notaVida = c.nota && form.createDiv({ cls: "s" });  // una nota que se actualiza mientras escribes (p. ej. «Te deben 25,00 €»)
+        const notaVida = c.nota && dst.createDiv({ cls: "s" });  // una nota que se actualiza mientras escribes (p. ej. «Te deben 25,00 €»)
         const pintaNota = () => { const t = c.nota(d); notaVida.textContent = t || ""; notaVida.hidden = !t; };
         if (notaVida) pintaNota();
         el.oninput = () => { d[c.k] = el.value; if (notaVida) pintaNota(); };
@@ -289,17 +320,15 @@ function formulario(padre, tipo, reg, opciones = {}) {
   };
   dibujar();
   const botones = p.createDiv({ cls: "fb-fila fb-botones" });
-  const bG = botones.createEl("button", { cls: "fb-btn", text: opciones.textoGuardar || "Guardar" });
+  const bG = botones.createEl("button", { cls: "fb-btn", text: opciones.textoGuardar || F.textoGuardar || "Guardar" });
   bG.onclick = async () => {
-    const datos = { ...d };
-    if (F.antes) F.antes(datos);
-    for (const c of F.campos) if (c.virtual || !c.k) delete datos[c.k];
-    for (const k of Object.keys(datos)) if (k[0] === "_") delete datos[k];  // ayudas de la pantalla (p. ej. _sug)
+    const datos = datosDeFormulario(tipo, d);
     bG.disabled = true;
     const r = await FB.api("/api/guardar", { tipo, id: reg && reg.id, datos });
     bG.disabled = false;
     if (!r.ok) { msg.innerHTML = ""; mensaje(msg, r.mensaje || "No se ha podido guardar", "err"); return; }
-    FB.aviso(opciones.avisoGuardado || "Guardado ✓");
+    const deshacer = r.deshacer ? { texto: "Deshacer", fn: async () => { await FB.api("/api/deshacer", {}); await FB.refrescar(); } } : null;
+    FB.aviso(opciones.avisoGuardado || "Guardado ✓", false, deshacer);
     await FB.recargar();
     if (opciones.alGuardar) opciones.alGuardar(r.id); else FB.ir(opciones.volver || `#gestionar/${tipo}`);
   };
@@ -308,7 +337,7 @@ function formulario(padre, tipo, reg, opciones = {}) {
     bB.onclick = async () => {
       const nOps = tipo === "activo" ? (DB.registros.aportacion || []).filter((x) => x.activo === reg.nombre).length : 0;
       if (!(await confirmar(tipo === "activo" ? `Se borrará «${reg.nombre}» con sus ${nOps} operaciones y dividendos. No se puede deshacer (salvo restaurando una copia de seguridad).\n\nSi solo quieres dejar de verlo porque lo vendiste, mejor cámbiale el estado a «Vendido».`
-        : `Se borrará este ${F.uno}. No se puede deshacer (salvo restaurando una copia de seguridad).`, { titulo: "¿Borrar?", si: "Borrar", peligro: true }))) return;
+        : `Se borrará este ${F.uno}. Si te equivocas, pulsa «Deshacer» en el aviso de abajo (o en Ajustes → Copias y archivos) antes de cambiar otra cosa.`, { titulo: "¿Borrar?", si: "Borrar", peligro: true }))) return;
       let r = tipo === "activo" ? await FB.api("/api/activo/borrar", { id: reg.id }) : await FB.api("/api/borrar", { tipo, id: reg.id });
       // Si algo se apoya en esto (movimientos de una cuenta, gastos de una categoría…), el servidor no lo borra sin que lo veas
       if (r.necesita_confirmar) {
@@ -316,7 +345,7 @@ function formulario(padre, tipo, reg, opciones = {}) {
         r = await FB.api("/api/borrar", { tipo, id: reg.id, confirmar: true });
       }
       if (!r.ok) { mensaje(msg, r.mensaje || "Error", "err"); return; }
-      FB.aviso("Borrado");
+      FB.aviso("Borrado", false, r.deshacer ? { texto: "Deshacer", fn: async () => { await FB.api("/api/deshacer", {}); await FB.refrescar(); } } : null);
       await FB.recargar();
       FB.ir(opciones.volver || `#gestionar/${tipo}`);
     };
@@ -325,27 +354,39 @@ function formulario(padre, tipo, reg, opciones = {}) {
   if (F.extra) F.extra(p, d);
   return p;
 }
-// Probar una regla antes de guardarla: qué movimientos ya importados casarían (recuento y los más recientes) y, si quieres,
-// pasarlos a la categoría de la regla (con confirmación y un «Deshacer»). No guarda la regla: eso lo hace «Guardar».
+// Lo que se guarda de un formulario: sin los campos de ayuda de la pantalla (virtuales, _sug…) y con su arreglo final (F.antes).
+function datosDeFormulario(tipo, d) {
+  const F = FORMS[tipo], datos = { ...d };
+  if (F.antes) F.antes(datos);
+  for (const c of F.campos) if (c.virtual || !c.k) delete datos[c.k];
+  for (const k of Object.keys(datos)) if (k[0] === "_") delete datos[k];
+  delete datos.id; delete datos.file;
+  return datos;
+}
+// Probar una regla antes de guardarla: qué movimientos ya importados coincidirían (recuento y los más recientes) y, si quieres,
+// guardar la regla y corregirlos de una vez: primero se guarda la regla (para lo que importes después) y lo último es corregir
+// los ya importados, así el «Deshacer» que se ofrece es el de esa corrección y no lo anula ningún Guardar posterior.
 function panelProbarRegla(p, d) {
+  if (d.accion === "preguntar" || d.concepto) return;
   const caja = p.createDiv({ cls: "fb-prueba" });
-  caja.createDiv({ cls: "fb-prueba-t", text: "Probar la regla con lo que ya has importado" });
+  caja.createDiv({ cls: "fb-prueba-t", text: "Y lo que ya has importado" });
   const fila = caja.createDiv({ cls: "fb-fila" });
-  const bP = fila.createEl("button", { cls: "fb-btn sec", text: "Ver qué movimientos casan", attr: { type: "button" } });
+  const bP = fila.createEl("button", { cls: "fb-btn sec", text: "Ver qué movimientos coinciden", attr: { type: "button" } });
   const res = caja.createDiv({ cls: "fb-prueba-res", attr: { "aria-live": "polite" } });
   const pedir = () => ({ patron: String(d.patron || "").trim(), clase: d.clase || "gasto", categoria: d.categoria || "" });
   const probar = async () => {
     const q = pedir(); res.innerHTML = "";
+    if (d.accion === "preguntar" || d.concepto) { res.createDiv({ cls: "fin-note", text: "Esta regla solo se usará en próximas importaciones; no cambia movimientos ya guardados." }); return; }
     if (q.patron.length < 2) { res.createDiv({ cls: "fin-note", text: "Escribe primero el texto que debe contener (al menos 2 letras)." }); return; }
     bP.disabled = true;
     const r = await FB.api("/api/regla/probar", q);
     bP.disabled = false;
     res.innerHTML = "";
     if (!r.ok) { mensaje(res, r.mensaje || "No se ha podido probar", "err"); return; }
-    if (!r.n) { res.createDiv({ cls: "fin-note", text: `Ningún movimiento importado contiene «${q.patron}».` + (r.pendientes ? ` Sí casan ${r.pendientes} en «Por revisar».` : "") }); return; }
+    if (!r.n) { res.createDiv({ cls: "fin-note", text: `Ningún movimiento importado contiene «${q.patron}».` + (r.pendientes ? ` Sí coinciden ${r.pendientes} en «Por revisar».` : "") }); return; }
     const t = res.createDiv({ cls: "fb-prueba-n" });
     t.createEl("b", { text: `${r.n} movimiento${r.n === 1 ? "" : "s"}` });
-    t.appendText(q.clase === "transferencia" ? " casan con esta regla (se usará al importar)." : r.cambian ? ` casan · ${r.cambian} cambiarían de categoría${r.ya ? ` y ${r.ya} ya la tienen` : ""}.` : " casan y ya tienen esa categoría.");
+    t.appendText(q.clase === "transferencia" ? " coinciden con esta regla (se usará al importar)." : r.cambian ? ` coinciden · ${r.cambian} cambiarían de categoría${r.ya ? ` y ${r.ya} ya la tienen` : ""}.` : " coinciden y ya tienen esa categoría.");
     const ul = res.createEl("ul", { cls: "fb-prueba-lista" });
     for (const m of r.muestra) {
       const li = ul.createEl("li");
@@ -356,36 +397,45 @@ function panelProbarRegla(p, d) {
     }
     const resto = (r.cambian || r.n) - r.muestra.length;
     if (resto > 0) res.createDiv({ cls: "fin-note", text: `…y ${resto} más.` });
-    if (r.pendientes) res.createDiv({ cls: "fin-note", text: `Además, ${r.pendientes} dudas de «Por revisar» casan con ella (se quedan ahí hasta que las revises).` });
+    if (r.pendientes) res.createDiv({ cls: "fin-note", text: `Además, ${r.pendientes} dudas de «Por revisar» coinciden con ella (se quedan ahí hasta que las revises).` });
     if (r.aplicable) {
-      const b = res.createEl("button", { cls: "fb-btn", text: `Aplicar a los ${r.cambian} ya importados`, attr: { type: "button" } });
+      const b = res.createEl("button", { cls: "fb-btn", text: `Guardar la regla y corregir los ${r.cambian} ya importados`, attr: { type: "button" } });
       b.onclick = async () => {
-        if (!(await confirmar(`Vas a pasar ${r.cambian} movimiento${r.cambian === 1 ? "" : "s"} a «${q.categoria}». Podrás deshacerlo justo después.`, { titulo: "¿Aplicar la regla?", si: "Aplicar" }))) return;
+        if (d.accion === "preguntar" || d.concepto) { probar(); return; }
+        const ya = pedir();  // ¿sigue siendo la regla que se probó?
+        if (ya.patron !== q.patron || ya.clase !== q.clase || ya.categoria !== q.categoria) { probar(); FB.aviso("Has cambiado la regla: mira de nuevo qué movimientos coinciden"); return; }
+        if (!(await confirmar(`Se guarda la regla para lo que importes después y ${r.cambian} movimiento${r.cambian === 1 ? "" : "s"} ya importado${r.cambian === 1 ? "" : "s"} pasa${r.cambian === 1 ? "" : "n"} a «${q.categoria}». Podrás deshacer la corrección justo después.`, { titulo: "¿Guardar y corregir?", si: "Guardar y corregir" }))) return;
         b.disabled = true;
-        const a = await FB.api("/api/regla/aplicar", q);
-        FB.aviso(a.mensaje || "Hecho", !a.ok, a.ok ? avisoDeshacer() : undefined);
-        await FB.recargar(); probar();  // sin repintar la pantalla: lo que llevas escrito en el formulario se conserva
+        if (d.accion === "preguntar" || d.concepto) { b.disabled = false; probar(); return; }
+        // Se guarda y se corrige exactamente lo que se probó: si has cambiado el texto, el tipo o la categoría desde entonces, se vuelve a probar
+        const ahora = pedir();
+        if (ahora.patron !== q.patron || ahora.clase !== q.clase || ahora.categoria !== q.categoria) { b.disabled = false; probar(); FB.aviso("Has cambiado la regla: mira de nuevo qué movimientos coinciden"); return; }
+        const g = await FB.api("/api/guardar", { tipo: "regla", id: d.id, datos: datosDeFormulario("regla", d) });
+        if (!g.ok) { b.disabled = false; mensaje(res, g.mensaje || "No se ha podido guardar la regla", "err"); return; }
+        const a = await FB.api("/api/regla/aplicar", q);  // lo último: su «Deshacer» es el que vale
+        FB.aviso(a.ok ? `Regla guardada · ${a.mensaje}` : a.mensaje || "No se ha podido corregir", !a.ok, a.ok ? avisoDeshacer() : undefined);
+        await FB.recargar();
+        FB.ir("#gestionar/regla");
       };
-      res.createDiv({ cls: "fin-note", text: "Esto no guarda la regla: para que valga con lo que importes después, pulsa «Guardar»." });
+      res.createDiv({ cls: "fin-note", text: "Solo para lo que importes después, basta con «Guardar para próximas importaciones»." });
     }
   };
   bP.onclick = probar;
   if (d.id && d.patron) probar();
 }
-// Apuntar a mano: al escribir el concepto, la categoría que dicen tus reglas, tu historial o (si lo tienes activado) Jev.
+// Apuntar a mano: al escribir el concepto, la categoría que dicen tus reglas o tu historial.
 // Solo si aún no has elegido una tú.
 async function sugerirCategoria(d, dibujar, form) {
-  const texto = String(d.concepto || "").trim();
+  const texto = String(d.concepto || "").trim(), clase = d.clase;
   const libre = () => !d.categoria || (d._sug && d._sug.cat === d.categoria);
   if (d.id || d.clase === "transferencia" || texto.length < 3 || !libre()) return;
   if (d._sug && d._sug.texto === texto && d._sug.clase === d.clase) return;
-  const imp = Math.abs(num(d.importe)) || 1;
-  const r = await FB.api("/api/jev/categoria", { texto, importe: d.clase === "ingreso" ? imp : -imp }).catch(() => ({}));
-  if (!r.ok || !r.categoria || String(d.concepto || "").trim() !== texto || !libre()) return;
+  const r = await FB.api("/api/categoria/sugerir", { texto, clase }).catch(() => ({}));
+  if (!r.ok || !r.categoria || String(d.concepto || "").trim() !== texto || d.clase !== clase || !libre()) return;
   if ((grupoDe(r.categoria) === "ingreso") !== (d.clase === "ingreso")) return;
   d.categoria = r.categoria;
   d._sug = { cat: r.categoria, texto, clase: d.clase,
-    txt: r.fuente === "jev" ? `✨ Sugerida por Jev (${Math.round(100 * num(r.confianza))} %): cámbiala si no es` : r.fuente === "regla" ? "✨ Según tu regla para este texto" : "✨ Como otras veces que apuntaste algo así" };
+    txt: r.motivo === "regla" ? `tu regla lo pone en ${r.categoria}` : `sueles ponerlo en ${r.categoria}` };
   const ctrls = () => [...form.querySelectorAll("input,select,textarea,button")];
   const foco = ctrls().indexOf(document.activeElement);  // redibujar sin perder dónde estabas escribiendo
   dibujar();

@@ -154,7 +154,7 @@
     async recargar() {
       const d = await FB.api("/api/datos");
       if (d.registros) FB.DB = d; else FB.aviso(d.mensaje || "No se han podido cargar los datos", true);
-      if (d.config) document.body.dataset.acento = d.config.acento || "salvia";
+      if (d.config) document.body.dataset.acento = d.config.acento || "violeta";
       barra();
     },
     // Recarga los datos y vuelve a dibujar la pantalla actual sin perder la posición (las pantallas leen FB.DB al montarse).
@@ -218,6 +218,7 @@
   const ICO = {
     inicio: '<path d="M4 10.5 12 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5.5h-5V20H5a1 1 0 0 1-1-1z"/>',
     bienvenida: '<path d="M4 10.5 12 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5.5h-5V20H5a1 1 0 0 1-1-1z"/>',
+    cuentas: '<rect x="3" y="5" width="18" height="14" rx="3"/><path d="M3 10h18M7 15h4"/>',
     movimientos: '<path d="M5 7h11M5 7l3-3M5 7l3 3M19 17H8m11 0-3-3m3 3-3 3"/>',
     importar: '<path d="M12 4v11m0 0-4-4m4 4 4-4M5 19h14"/>',
     inversion: '<path d="M4 19h16M6 15l4-4 3 3 5-6"/><path d="M15 8h3v3"/>',
@@ -225,7 +226,7 @@
     ajustes: '<path d="M4 7h9m4 0h3M4 17h3m4 0h9"/><circle cx="15" cy="7" r="2.2"/><circle cx="9" cy="17" r="2.2"/>',
   };
   const SECCION = { resumen: "inicio", gastos: "movimientos", prevision: "inicio", patrimonio: "inicio", objetivos: "ajustes",
-    gestionar: "ajustes", editar: "ajustes", fijos: "ajustes", revision: "ajustes", cerrar: "inicio", valores: "inversion", activo: "inversion", renta: "inversion", reparto: "inversion", independencia: "inversion", anual: "movimientos" };
+    gestionar: "ajustes", editar: "ajustes", fijos: "ajustes", cerrar: "inicio", valores: "inversion", activo: "inversion", renta: "inversion", reparto: "inversion", independencia: "inversion", anual: "movimientos" };
   function barra() {
     const DB = FB.DB; if (!DB) return;
     const fechas = (DB.registros.movimiento || []).map((m) => m.fecha).sort();
@@ -239,9 +240,10 @@
     const sinCuentas = !((DB.registros || {}).cuenta || []).length;
     // [ruta, nombre]. «Importar» no está en el menú: es el botón de la barra (y la tecla I).
     const items = sinCuentas ? [["bienvenida", "Primeros pasos"], ["ajustes", "Ajustes"]]
-      : [["inicio", "Inicio"], ["movimientos", "Movimientos"], ["inversion", "Inversión"], hay ? ["revisar", "Por revisar"] : null, ["ajustes", "Ajustes"]].filter(Boolean);
+      : [["inicio", "Inicio"], ["cuentas", "Cuentas"], ["movimientos", "Movimientos"], ["inversion", "Inversión"], hay ? ["revisar", "Por revisar"] : null, ["ajustes", "Ajustes"]].filter(Boolean);
     const [v, t] = ruta(), PORTIPO = { movimiento: "movimientos", aportacion: "inversion", activo: "inversion" };
     let act = (v === "editar" || v === "gestionar") && PORTIPO[t] ? PORTIPO[t] : SECCION[v] || v;
+    if (v === "editar" && t === "cuenta") act = "cuentas";
     if (sinCuentas && act !== "ajustes" && act !== "importar") act = "bienvenida";  // todo eso enseña la Bienvenida
     const menu = document.getElementById("menu");
     document.querySelector("#cabecera .apuntar").classList.toggle("act", act === "importar");
@@ -310,7 +312,12 @@
   }
   FB.montar = montar;
   let actual = location.hash;
-  window.addEventListener("hashchange", () => { FB.anterior = actual; actual = location.hash; FB.estado = {}; FB._nav = true; montar(); });
+  window.addEventListener("hashchange", () => {
+    FB.anterior = actual; actual = location.hash;
+    const { imp, impLote, impEnCurso, revisarMovimiento, volverMovimientos, restaurarMovimientos } = FB.estado;
+    FB.estado = { imp, impLote, impEnCurso, revisarMovimiento, volverMovimientos, restaurarMovimientos };
+    FB._nav = true; montar();
+  });
   // Enlaces internos: navegación sin recargar
   document.addEventListener("click", (e) => {
     const a = e.target.closest && e.target.closest("a.internal-link");

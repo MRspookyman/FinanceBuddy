@@ -17,6 +17,7 @@ for (let i = 1; i < P.length; i++) {
   caso(`Registro ${P[i].fecha.toISODate()} = anterior + movimientos`, Math.max(...dif) <= 0.01, dif);
 }
 
+
 // El cuadre solo cuenta movimientos de verdad: un fijo previsto que el banco aún no trajo no puede explicar (ni crear) una diferencia.
 {
   const u = P[P.length - 1], h = u.fecha.plus({ months: 2 }).endOf("day");
@@ -37,6 +38,23 @@ for (let i = 1; i < P.length; i++) {
   const sinExacto = F.proyectar(P[P.length - 2], u.fecha.endOf("day")).cuentas.saldos["Bróker"];
   apos.forEach((x) => (x.auto = false)); u.cuentas.saldos["Bróker"] = antes;
   caso("El cuadre no cuenta las aportaciones automáticas: el Bróker con 600 € cuadra", u.fecha.toISODate() === "2026-08-31" && apos.length === 2 && cerca(fila.esperado, 600) && cerca(fila.dif, 0) && cerca(sinExacto, 400), [apos.length, fila, sinExacto]);
+}
+// La primera vez que anotas una cuenta (una que acabas de crear) es su saldo de partida: el cuadre no la compara con los
+// movimientos de antes. Antes salía «No cuadra: Ahorro +2.800 €» al dar de alta una cuenta y anotar lo que tenía.
+{
+  const a = P[P.length - 2], antes = a.cuentas.saldos["Ahorro"];
+  delete a.cuentas.saldos["Ahorro"];
+  const K2 = F.conciliacion();
+  a.cuentas.saldos["Ahorro"] = antes;
+  caso("El cuadre no compara una cuenta que aparece por primera vez en el último registro", K2 && !K2.filas.some((f) => f.nombre === "Ahorro") && K2.filas.length > 0, K2 && K2.filas.map((f) => f.nombre));
+}
+// Un bróker sin saldo anotado no tiene efectivo conocido: sus compras no se restan del banco ni dejan «sin invertir» en negativo.
+{
+  const u = P[P.length - 1], antes = u.cuentas.saldos["Bróker"], liq = F.estimacion().c.Liquidez;
+  delete u.cuentas.saldos["Bróker"];
+  const E2 = F.estimacion();
+  u.cuentas.saldos["Bróker"] = antes;
+  caso("Un bróker sin saldo anotado no cuenta efectivo ni paga con el banco", E2.c["Efectivo bróker"] === 0 && E2.c.Liquidez >= liq - 0.005, [E2.c["Efectivo bróker"], E2.c.Liquidez, liq]);
 }
 // Cada movimiento cuenta desde el día en que el banco lo apuntó: un gasto de 100 € con valor 30/08 y operación 02/09 no estaba
 // en el saldo anotado el 31/08, así que se resta después. Igual en la estimación de hoy que en el cuadre.
@@ -435,8 +453,11 @@ caso("Colchón automático si no se fija a mano", !PLANC || (!PLANC.manual && PL
 const d0 = (iso) => F.DateTime.fromISO(iso);
 const AVx = [{ nivel: "warn", ruta: "#revisar" }, { nivel: "warn", ruta: "#a" }, { nivel: "info", ruta: "#importar" }, { nivel: "warn", ruta: "#b" }, { nivel: "warn", ruta: "#c" }, { nivel: "info", ruta: "#d" }];
 const RAx = F.repartirAvisos(AVx, ["#importar"]);
-caso("Avisos: dos a la vista; el resto y las notas, plegados; nada de «Por revisar» ni lo que ya sale arriba",
-  RAx.arriba.map((a) => a.ruta).join() === "#a,#b" && RAx.resto.map((a) => a.ruta).join() === "#c,#d", JSON.stringify(RAx));
+caso("Avisos: tres a la vista, warn primero; sin repetir revisión ni acciones de arriba",
+  RAx.arriba.map((a) => a.ruta).join() === "#a,#b,#c" && RAx.resto.map((a) => a.ruta).join() === "#d", JSON.stringify(RAx));
+const RAinfo = F.repartirAvisos([{ nivel: "info", ruta: "#a" }, { nivel: "warn", ruta: "#b" }, { nivel: "info", ruta: "#c" }, { nivel: "info", ruta: "#d" }]);
+caso("Avisos: las notas completan los tres huecos después de los warn",
+  RAinfo.arriba.map((a) => a.ruta).join() === "#b,#a,#c" && RAinfo.resto.map((a) => a.ruta).join() === "#d", JSON.stringify(RAinfo));
 caso("Avisos: los del ejemplo no se pierden (a la vista + plegados = todos menos «Por revisar»)",
   (() => { const t = F.avisos(), r = F.repartirAvisos(t); return r.arriba.length + r.resto.length === t.filter((a) => a.ruta !== "#revisar").length; })());
 const JP = F.objetivos().find((o) => o.nombre === "Viaje a Japón");
@@ -1133,5 +1154,69 @@ caso("Importe escrito: «300», «300,50», «1.200», «1.200,50 €» y «300.
     FB.DB.pendientes = PEND;
     F.reiniciarCachesCalculo();
   }
+}
+// Un extracto no comprueba sus propios movimientos: solo se comparan dos saldos manuales de la misma cuenta.
+{
+  const PAT = FB.DB.registros.patrimonio, [c1, c2] = F.cuentas().slice(0, 2).map((c) => c.nombre);
+  const a = { id: 99801, fecha: "2026-09-28", saldos: { [c1]: 1000, [c2]: 2000 }, valores: { "Valor inventado": 300 }, otros: 40, deudas: 20 };
+  const b = { id: 99802, fecha: "2026-09-29", saldos: { [c1]: 1100, [c2]: 2100 } };
+  const medir = (x, y) => {
+    FB.DB.registros.patrimonio = [x, y];
+    F.reiniciarCachesCalculo();
+    return F.conciliacion();
+  };
+  try {
+    const manual = medir(a, b), pp = F.patrimonio(), esperado = F.proyectar(pp[0], pp[1].fecha.endOf("day"), true);
+    caso("Dos saldos manuales sin marca conservan la comprobación de movimientos por cuenta",
+      manual.filas.length === 2 && manual.filas.every((f) => cerca(f.dif, b.saldos[f.nombre] - esperado.cuentas.saldos[f.nombre])), manual);
+    const origen = { [c1]: "extracto", [c2]: "extracto" };
+    for (const [nombre, x, y] of [
+      ["extracto frente a manual", { ...a, origen_saldos: origen }, b],
+      ["manual frente a extracto", a, { ...b, origen_saldos: origen }],
+      ["extracto frente a extracto", { ...a, origen_saldos: origen }, { ...b, origen_saldos: origen }],
+    ]) {
+      const k = medir(x, y);
+      caso(`Sin cuadre de ${nombre}`, k.filas.length === 0, k);
+    }
+    const mixto = medir({ ...a, origen_saldos: { [c1]: "extracto", [c2]: "manual" } }, { ...b, origen_saldos: { [c1]: "manual", [c2]: "manual" } });
+    caso("Orígenes mezclados: solo cuadra la cuenta manual en ambos registros", mixto.filas.length === 1 && mixto.filas[0].nombre === c2, mixto);
+    for (const nota of ["Saldo del extracto", "Saldo del primer extracto"]) {
+      const k = medir({ ...a, nota }, b);
+      caso(`El legado «${nota}» no es un saldo manual`, k.filas.length === 0, k);
+    }
+    const explicito = medir({ ...a, nota: "Saldo del extracto", origen_saldos: { [c2]: "manual" } }, b);
+    caso("La marca manual por cuenta prevalece sobre una nota antigua de extracto", explicito.filas.length === 1 && explicito.filas[0].nombre === c2, explicito);
+    medir(a, { ...b, saldos: { [c1]: 1100 }, origen_saldos: { [c1]: "extracto" } });
+    const parciales = F.patrimonio(), anterior = F.proyectar(parciales[0], parciales[1].fecha.endOf("day"), true), actual = parciales[1];
+    caso("Un ancla parcial conserva la otra cuenta proyectada y no la trata como escrita",
+      cerca(actual.cuentas.saldos[c2], anterior.cuentas.saldos[c2]) && actual.origen_saldos[c2] === "extracto" && F.conciliacion().filas.length === 0, actual);
+    caso("Un ancla parcial conserva valores, otros y deudas ausentes",
+      actual.valores["Valor inventado"] === 300 && actual.otros === 40 && actual.deudas === 20, actual);
+    const proyectado = F.proyectar(actual, F.hoy.endOf("day"), true);
+    caso("La proyección conserva el origen de cada cuenta", proyectado.origen_saldos[c1] === "extracto" && proyectado.origen_saldos[c2] === "extracto", proyectado.origen_saldos);
+    caso("El origen no cambia qué fecha permite cerrar un mes",
+      !F.cierreVale({ mes: "2026-09", fecha: "2026-09-29", origen_saldos: origen }) && F.cierreVale({ mes: "2026-09", fecha: "2026-09-30", origen_saldos: origen }));
+  } finally {
+    FB.DB.registros.patrimonio = PAT;
+    F.reiniciarCachesCalculo();
+  }
+}
+// Los saldos antiguos de extracto tampoco son una comprobación manual; un cierre vacío no hereda inversión.
+{
+  const antes = FB.DB.registros.patrimonio, c = "Cuenta nómina";
+  FB.DB.registros.patrimonio = [
+    { fecha: "2026-07-31", saldos: { [c]: 1000 }, valores: { "Fondo inventado": 500 } },
+    { fecha: "2026-08-31", saldos: { [c]: 900 }, nota: "Saldo del primer extracto" },
+    { fecha: "2026-09-30", saldos: { [c]: 800 }, nota: "Cierre escrito" },
+  ];
+  F.reiniciarCachesCalculo();
+  const ps = F.patrimonio();
+  caso("El extracto antiguo usa nota y conserva inversión", ps[1].origen_saldos[c] === "extracto" && ps[1].valores["Fondo inventado"] === 500, ps[1].origen_saldos);
+  caso("Un cierre sin valores no hereda inversiones antiguas", Object.keys(ps[2].valores).length === 0, ps[2].valores);
+  // También la ruta de compatibilidad de saldoManual, sin la marca calculada por cuenta.
+  delete ps[1].origen_saldos[c];
+  caso("El cuadre no compara un extracto antiguo sin marca de origen", F.conciliacion().filas.length === 0, F.conciliacion());
+  FB.DB.registros.patrimonio = antes;
+  F.reiniciarCachesCalculo();
 }
 return casos;

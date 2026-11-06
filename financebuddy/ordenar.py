@@ -7,12 +7,20 @@ CLASES_MOV = ("gasto", "ingreso", "reembolso")
 
 def _entra(clase): return clase in ("ingreso", "reembolso")
 
-def _casan(alm, patron, clase):
+def _casan(alm, patron, clase, concepto=""):
     """Movimientos ya importados (con texto del extracto) a los que se aplicaría una regla con este patrón y tipo."""
     if len(C.limpio(patron)) < 2: return []
+    reglas = alm.todos("regla")
+    existente = next((r for r in C.ordenar_reglas(reglas) if r.get("origen") != "plantilla"
+                      and C.norm(r["patron"]) == C.norm(patron) and C.norm(r.get("concepto") or "") == C.norm(concepto)), None)
+    candidata = {**(existente or {}), "id": existente["id"] if existente else max((r["id"] for r in reglas), default=0) + 1,
+                 "patron": patron, "concepto": concepto, "origen": "usuario", "accion": "clasificar"}
+    reglas = [r for r in reglas if r["id"] != candidata["id"]] + [candidata]
     out = []
     for m in alm.todos("movimiento"):
         if m.get("clase") not in CLASES_MOV or not m.get("ext_texto") or m.get("parte_de") or not C.aplica(patron, m["ext_texto"]): continue  # lo dividido a mano no se toca
+        ganadora = C.regla_para(m["ext_texto"], reglas)
+        if not ganadora or ganadora["id"] != candidata["id"]: continue
         if clase in CLASES_MOV and _entra(m["clase"]) != _entra(clase): continue  # un gasto no se mezcla con un ingreso
         out.append(m)
     return out
@@ -22,11 +30,11 @@ def probar_regla(alm, d):
     Las reglas de «entre cuentas» solo se cuentan: se usan al importar, no cambian lo ya importado."""
     patron, clase, cat = str(d.get("patron") or "").strip(), d.get("clase") or "gasto", str(d.get("categoria") or "").strip()
     if len(C.limpio(patron)) < 2: return {"patron": patron, "n": 0, "cambian": 0, "ya": 0, "pendientes": 0, "muestra": [], "aplicable": False, "corto": True}
-    if clase == "transferencia":
+    if clase == "transferencia" or d.get("accion") == "preguntar":
         ms = [m for m in alm.todos("movimiento") if m.get("ext_texto") and C.aplica(patron, m["ext_texto"])]
         return {"patron": patron, "n": len(ms), "cambian": 0, "ya": 0, "pendientes": _pendientes(alm, patron), "aplicable": False,
                 "muestra": [_fila(m) for m in ms[:8]]}
-    ms = _casan(alm, patron, clase)
+    ms = _casan(alm, patron, clase, d.get("concepto") or "")
     cambian = [m for m in ms if cat and m.get("categoria") != cat]
     ms.sort(key=lambda m: m.get("fecha") or "", reverse=True); cambian.sort(key=lambda m: m.get("fecha") or "", reverse=True)
     return {"patron": patron, "n": len(ms), "cambian": len(cambian), "ya": len(ms) - len(cambian), "pendientes": _pendientes(alm, patron),
@@ -41,9 +49,9 @@ def _fila(m):
 def aplicar_regla(alm, d):
     """Pone la categoría de la regla a los movimientos ya importados que casan. Devuelve un mensaje."""
     r, cat = str(d.get("patron") or "").strip(), str(d.get("categoria") or "").strip()
-    if d.get("clase") == "transferencia": raise ValueError("Las reglas de «entre cuentas» solo sirven al importar.")
+    if d.get("clase") == "transferencia" or d.get("accion") == "preguntar": raise ValueError("Esta regla solo sirve al importar.")
     if not any(c["nombre"] == cat for c in alm.todos("categoria")): raise ValueError("Elige una categoría.")
-    ms = [m for m in _casan(alm, r, d.get("clase") or "gasto") if m.get("categoria") != cat]
+    ms = [m for m in _casan(alm, r, d.get("clase") or "gasto", d.get("concepto") or "") if m.get("categoria") != cat]
     with alm.transaccion():
         for m in ms: alm.guardar("movimiento", {**m, "categoria": cat}, m["id"])
     return f"{len(ms)} movimiento{'s' if len(ms) != 1 else ''} pasado{'s' if len(ms) != 1 else ''} a «{cat}»"
@@ -69,13 +77,12 @@ def vista_fusion(alm, origen, destino):
     """Lo que pasaría al fusionar `origen` dentro de `destino` (sin tocar nada)."""
     o, d = _dos(alm, origen, destino)
     u = uso(alm)[origen]
-    pend = sum(1 for q in alm.todos("pendiente") if ((q.get("jev") or {}).get("categoria")) == origen)
     pres = round((o.get("presupuesto") or 0) + (d.get("presupuesto") or 0), 2)
-    return {"ok": True, **u, "pendientes": pend, "presupuesto_origen": o.get("presupuesto") or 0, "presupuesto_destino": d.get("presupuesto") or 0,
+    return {"ok": True, **u, "presupuesto_origen": o.get("presupuesto") or 0, "presupuesto_destino": d.get("presupuesto") or 0,
             "presupuesto": pres, "grupo_cambia": o.get("grupo") != d.get("grupo")}
 
 def fusionar(alm, origen, destino):
-    """Mueve a `destino` los movimientos, fijos, reglas y sugerencias pendientes de `origen`, suma su presupuesto y borra `origen`.
+    """Mueve a `destino` los movimientos, fijos y reglas de `origen`, suma su presupuesto y borra `origen`.
     Se recuerda en config (`categorias_fusionadas`) para que una actualización de la plantilla no la vuelva a crear."""
     o, d = _dos(alm, origen, destino)
     with alm.transaccion():
@@ -83,9 +90,6 @@ def fusionar(alm, origen, destino):
         for tipo in ("movimiento", "recurrente", "regla"):
             for r in alm.todos(tipo):
                 if r.get("categoria") == origen: alm.guardar(tipo, {**r, "categoria": destino}, r["id"]); n += 1 if tipo == "movimiento" else 0
-        for q in alm.todos("pendiente"):
-            j = q.get("jev")
-            if j and j.get("categoria") == origen: alm.guardar("pendiente", {**q, "jev": {**j, "categoria": destino}}, q["id"])
         pres = round((o.get("presupuesto") or 0) + (d.get("presupuesto") or 0), 2)
         alm.guardar("categoria", {**d, **({"presupuesto": pres} if pres else {})}, d["id"])
         alm.borrar("categoria", o["id"])

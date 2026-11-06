@@ -18,6 +18,43 @@ class TestCarpetaYBaseDatos(unittest.TestCase):
         rutas.AJUSTES = self.ajustes_reales
         self.app.alm.cerrar(); shutil.rmtree(self.dir, ignore_errors=True)
 
+    def test_migrar_configuracion_retirada_es_idempotente(self):
+        alm = self.app.alm
+        claves = ("jev", "jev_uso", "jev_enviado", "jev_revision", "jev_fijos")
+        for clave in claves: alm.set_config(clave, {"prueba": True})
+        alm.set_config("mascota", "no")
+        alm.set_config("precios", {"activo": False})
+        datos = {"tipo_import": "banco", "fila": {"texto": "Comercio inventado", "importe": -12}, "jev": {"categoria": "Ocio"}, "extra_antiguo": "conservar"}
+        pid = alm.insertar_crudo("pendiente", datos)
+        limpio = alm.guardar("pendiente", {"tipo_import": "inversion", "fila": {"texto": "Fondo inventado"}})
+        antes = alm.obtener("pendiente", limpio)
+        for _ in range(2):
+            self.app.alm.cerrar()
+            self.app.alm = Almacen(self.app.carpeta.db)
+            alm = self.app.alm
+            self.assertFalse(set(claves) & alm.config().keys())
+            self.assertEqual(alm.obtener("pendiente", pid), {"id": pid, **{k: v for k, v in datos.items() if k != "jev"}})
+            self.assertEqual(alm.obtener("pendiente", limpio), antes)
+            self.assertEqual(alm.config("mascota"), "no")
+            self.assertEqual(alm.config("precios"), {"activo": False})
+            self.assertEqual(alm.config("version_esquema"), almacen.VERSION_ESQUEMA)
+
+    def test_restaurar_copia_antigua_no_expone_configuracion_retirada(self):
+        alm = self.app.alm
+        for clave in ("jev", "jev_uso", "jev_enviado", "jev_revision", "jev_fijos"):
+            alm.set_config(clave, {"clave": "secreto_inventado"})
+        pid = alm.insertar_crudo("pendiente", {"tipo_import": "banco", "cuenta": "Inventada",
+                                             "fila": {"texto": "Comercio inventado", "importe": -12},
+                                             "jev": {"categoria": "Ocio"}})
+        copia = os.path.basename(self.app.copia("antigua", forzar=True))
+        alm.quitar_restos_jev()
+        alm.borrar("pendiente", pid)
+        self.assertTrue(self.app.manejar("/api/restaurar", {"copia": copia})["ok"])
+        datos = self.app.datos()
+        self.assertFalse(any(k.startswith("jev") for k in datos["config"]))
+        self.assertNotIn("jev", next(p for p in datos["pendientes"] if p["id"] == pid))
+        self.assertNotIn("jev", alm.obtener("pendiente", pid))
+
     def test_cambiar_a_una_carpeta_imposible_no_deja_la_app_inservible(self):
         archivo = os.path.join(self.dir, "soy-un-archivo.txt")
         with open(archivo, "w", encoding="utf-8") as fh: fh.write("x")

@@ -259,9 +259,9 @@ function saludInversion(soloDe) {
     }
     if (/^Fondo [A-Z]{2}[A-Z0-9]{9}\d$/.test(a.nombre)) add({ clave: `nombre|${a.nombre}`, nivel: "info", activo: a, accion: { text: "Ponle nombre", ruta: `#editar/activo/${a.p.id}` },
       texto: `«${a.nombre}» solo se conoce por su ISIN: ponle el nombre del fondo.` });
-    if (V.fuente === "metido") add({ clave: `valor|${a.nombre}`, nivel: "info", activo: a, accion: { text: "Anotar", ruta: "#valores" },
+    if (V.fuente === "metido") add({ clave: `valor|${a.nombre}`, nivel: "info", activo: a, accion: { text: "Anotar valores a mano", ruta: "#inversion/anotar" },
       texto: `«${a.nombre}» no tiene valor ni precio: cuenta por lo que has metido (sin ganancia ni pérdida).` });
-    else if (V.fuente === "anotado" && a.fechaValor && diasDesde(a.fechaValor) > 60) add({ clave: `viejo|${a.nombre}|${a.p.fecha_valor}`, nivel: "info", activo: a, accion: { text: "Actualizar", ruta: "#valores" },
+    else if (V.fuente === "anotado" && a.fechaValor && diasDesde(a.fechaValor) > 60) add({ clave: `viejo|${a.nombre}|${a.p.fecha_valor}`, nivel: "info", activo: a, accion: { text: "Anotar valores a mano", ruta: "#inversion/anotar" },
       texto: `El valor de «${a.nombre}» es del ${a.fechaValor.toFormat("dd/MM/yy")}.` });
   }
   // El mismo activo dos veces (nombres que se contienen, o el mismo ISIN): hay que unirlos

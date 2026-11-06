@@ -12,18 +12,20 @@ function vistaRenta() {
   enlace(bot, "+ Dividendo o comisión", "#editar/cobro/nuevo").className = "fb-btn sec";
   if (!años.length) {
     vacio(root, "Aún no hay ventas ni dividendos", " Cuando vendas algo o cobres un dividendo, aquí verás el resultado de cada año.");
-    if (R.sinDatos.length) root.createDiv({ cls: "fin-note", text: `Para calcular las ventas hacen falta las participaciones de cada operación. Faltan en: ${R.sinDatos.join(", ")}.` });
+    if (R.sinDatos.length) notaSinParticipaciones(root, R.sinDatos, "Para calcular lo que ganes al vender hacen falta las participaciones de cada compra. Faltan en ");
     return;
   }
   let año = FB.estado.añoRenta && años.includes(FB.estado.añoRenta) ? FB.estado.añoRenta : años[0];
-  const seg = root.createDiv({ cls: "fb-chips" });
-  for (const a of años) { const b = seg.createEl("button", { text: String(a), cls: a === año ? "act" : "" }); b.onclick = () => { FB.estado.añoRenta = a; montar(); }; }
+  if (años.length > 1) {  // con un solo año no hay nada que elegir
+    const seg = root.createDiv({ cls: "fb-chips", attr: { role: "group", "aria-label": "Año" } });
+    for (const a of años) { const b = seg.createEl("button", { text: String(a), cls: a === año ? "act" : "", attr: { type: "button", "aria-pressed": String(a === año) } }); b.onclick = () => { FB.estado.añoRenta = a; montar(); }; }
+  }
 
   const V = R.ventas.filter((v) => v.fecha.year === año).sort((a, b) => a.fecha - b.fecha);
   const D = CB.filter((c) => c.fecha.year === año);
   const resultado = sum(V.map((v) => v.resultado)), com = sum(D.filter((c) => c.tipo === "comision").map((c) => c.importe));
   const DV = D.filter((c) => c.tipo === "dividendo"), ret = sum(DV.map((c) => c.retencion)), div = sum(DV.map((c) => c.importe)) + ret;  // bruto = lo que llegó + lo retenido
-  const bDesc = bot.createEl("button", { cls: "fb-btn sec", text: `Descargar ${año} (CSV)`, attr: { type: "button" } });
+  const bDesc = bot.createEl("button", { cls: "fb-btn", text: `Descargar ${año} (CSV)`, attr: { type: "button" } });  // lo que se viene a hacer aquí: el botón principal
   bDesc.onclick = () => { descargarArchivo(`FinanceBuddy-renta-${año}.csv`, csvRenta(año, V, D), "text/csv;charset=utf-8"); FB.aviso("Descargado ✓ · se abre con Excel"); };
   tiles(root, [
     { l: `Resultado de las ventas de ${año}`, v: eurS(resultado, 2), t: tone(resultado), s: `${V.length} venta${V.length === 1 ? "" : "s"} · ganancias ${eur(sum(V.filter((v) => v.resultado > 0).map((v) => v.resultado)), 2)} · pérdidas ${eur(-sum(V.filter((v) => v.resultado < 0).map((v) => v.resultado)), 2)}` },
@@ -78,6 +80,18 @@ function vistaRenta() {
   else { const pgD = paginacion(D, "renta_d", () => FB.montar()); tabla(pD, [{ t: "Fecha" }, { t: "Activo" }, { t: "Qué" }, { t: "Retenido", num: true, opt: true }, { t: "Te llegó", num: true }],
     pgD.parte.map((c) => [{ text: fechaCorta(c.fecha.toISODate()), ruta: `#editar/cobro/${c.p.id}` }, c.activo, c.tipo === "comision" ? "Comisión" : "Dividendo", c.retencion ? eur(c.retencion, 2) : "", { text: (c.tipo === "comision" ? "−" : "+") + eur(c.importe, 2), cls: c.tipo === "comision" ? "neg" : "pos" }])); pgD.pie(pD); }
 
-  if (R.sinDatos.length) root.createDiv({ cls: "fin-note", text: `No se pueden calcular las ventas de: ${R.sinDatos.join(", ")} (faltan participaciones en alguna operación). Ábrelos y cuádralos con tu bróker.` });
+  if (R.sinDatos.length) notaSinParticipaciones(root, R.sinDatos, "No se pueden calcular las ventas de ");
   root.createDiv({ cls: "fin-note", text: "Orientativo: cálculo por FIFO con lo que hay anotado en la app. Las pérdidas que podrían caer en la regla de los dos meses se marcan, pero se siguen restando; tampoco mira la fiscalidad de cada producto. Compáralo con el informe fiscal de tu bróker y consulta a un profesional si tienes dudas." });
+}
+
+// «Faltan las participaciones de A, B»: cada nombre lleva a «Ajustar participaciones» de su ficha, donde se arregla.
+function notaSinParticipaciones(padre, nombres, inicio) {
+  const n = padre.createDiv({ cls: "fin-note" });
+  n.appendText(inicio);
+  nombres.forEach((nombre, i) => {
+    if (i) n.appendText(i === nombres.length - 1 ? " y " : ", ");
+    const reg = (DB.registros.activo || []).find((a) => a.nombre === nombre);
+    if (reg) enlace(n, nombre, `#activo/${reg.id}/cuadrar`).className = "fin-link"; else n.appendText(nombre);
+  });
+  n.appendText(": pulsa cada uno para ajustar sus participaciones a las de tu bróker.");
 }
